@@ -1,0 +1,32 @@
+# Copy to config.yaml and edit.
+
+# MakerWorld public handle (without @)
+handle: "your-username"
+
+# CrowPanel IP from the e-paper display
+panel_host: "192.168.1.50"
+panel_port: 80
+
+# Optional color panels (Waveshare 3.16", CrowPanel 4.3/5/7"). IP is on the Status screen.
+# Several: separate with commas, e.g. "192.168.1.50, makermonitor-e3b7d.local"
+# Leave empty to disable. Its Settings menu can change the poll interval.
+color_panel_host: ""
+color_panel_port: 80
+
+# How often to poll MakerWorld (seconds)
+poll_interval_sec: 600
+# Seconds each page stays up before the panel flips to the next (min 10)
+page_cycle_sec: 30
+
+# Local API for the Chrome extension (bind LAN so phone/PC can reach it)
+listen_host: "0.0.0.0"
+listen_port: 8787
+
+# Shared secret — set the same value in the extension popup
+api_token: "change-me"
+
+# Optional: path for cookie + last stats persistence
+data_dir: "data"
+
+# Browser-like UA (should roughly match the browser that minted cf_clearance)
+user_agent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
