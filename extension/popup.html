@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>MakerMonitor</title>
+  <style>
+    :root {
+      --bg: #f4f1ea;
+      --ink: #1a1a1a;
+      --muted: #5c5c5c;
+      --ok: #1b7f4a;
+      --bad: #a12828;
+      --line: #d6d0c4;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      width: 320px;
+      font: 13px/1.4 "IBM Plex Sans", "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+      padding: 14px;
+    }
+    h1 {
+      margin: 0 0 4px;
+      font-size: 16px;
+      letter-spacing: 0.02em;
+    }
+    .sub { color: var(--muted); margin-bottom: 12px; }
+    label {
+      display: block;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin: 10px 0 4px;
+    }
+    input[type="text"], input[type="password"] {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      font: inherit;
+    }
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    button {
+      border: 0;
+      border-radius: 6px;
+      padding: 8px 12px;
+      font: inherit;
+      cursor: pointer;
+      background: var(--ink);
+      color: #fff;
+    }
+    button.secondary { background: #fff; color: var(--ink); border: 1px solid var(--line); }
+    button:disabled { opacity: 0.5; cursor: default; }
+    #status {
+      margin-top: 12px;
+      padding: 10px;
+      border-radius: 6px;
+      background: #fff;
+      border: 1px solid var(--line);
+      white-space: pre-wrap;
+      font-family: ui-monospace, monospace;
+      font-size: 11px;
+    }
+    .ok { color: var(--ok); }
+    .bad { color: var(--bad); }
+  </style>
+</head>
+<body>
+  <h1>MakerMonitor</h1>
+  <div class="sub">Cookie courier for your LAN poller</div>
+
+  <label for="pollerUrl">Poller URL</label>
+  <input id="pollerUrl" type="text" placeholder="http://192.168.1.10:8787" />
+
+  <label for="apiToken">API token</label>
+  <input id="apiToken" type="password" autocomplete="off" />
+
+  <div class="row">
+    <input id="enabled" type="checkbox" />
+    <label for="enabled" style="margin:0;text-transform:none;letter-spacing:0;">Push cookies when browsing MakerWorld</label>
+  </div>
+
+  <div class="row" style="margin-top:14px;">
+    <button id="save">Save</button>
+    <button id="push" class="secondary">Push now</button>
+    <button id="refresh" class="secondary">Refresh status</button>
+  </div>
+
+  <div id="status">Loading…</div>
+  <script src="popup.js"></script>
+</body>
+</html>
