@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import logging
 import socket
 from logging.handlers import RotatingFileHandler
@@ -29,6 +30,9 @@ log = logging.getLogger(__name__)
 
 # Seconds between retries when polls fail right after startup.
 STARTUP_RETRIES = (15, 30, 60, 120)
+# After a failed poll later on (a MakerWorld blip): retry sooner, then back
+# to the normal interval.
+FAIL_RETRIES = (120, 300)
 
 
 def setup_logging(log_path) -> None:
@@ -116,6 +120,7 @@ class AppContext:
         self.creator = CreatorStats(settings.data_path)
         self.health["model-stats"] = self.creator.health
         self.auth_state = "none"
+        self._auth_fails = 0  # polls refused in a row (401/403)
         self._health_client: Any = None
         self._self_url = ""
         self.last_state: dict[str, Any] | None = None
@@ -265,6 +270,7 @@ class AppContext:
         # failed polls retry on a short schedule until one succeeds. Requests
         # still go through LIMITER, so its hourly cap and backoff apply.
         retries: list[int] | None = list(STARTUP_RETRIES)
+        fail_retries = list(FAIL_RETRIES)
         wait: int | None = None
         while True:
             if time.time() - last >= (wait or self.poll_interval):
@@ -278,12 +284,16 @@ class AppContext:
                     log.exception("Poll loop error: %s", exc)
                 if ok:
                     retries = None
+                    fail_retries = list(FAIL_RETRIES)
                 elif retries:
                     wait = retries.pop(0)
                     log.info("startup poll failed; retrying in %ss (%d retries left)", wait, len(retries))
                 elif retries is not None:
                     retries = None
                     log.info("startup retries used up; back to the %ss interval", self.poll_interval)
+                elif fail_retries:
+                    wait = fail_retries.pop(0)
+                    log.info("poll failed; trying again in %ss", wait)
             # Wake every 15 s to pick up panel settings / "poll now".
             await asyncio.sleep(max(1.0, min(15.0, last + (wait or self.poll_interval) - time.time())))
             if await self._check_color_settings():
@@ -405,6 +415,7 @@ class AppContext:
                 raise RuntimeError(f"partial data ({snap.source}): keeping the last full snapshot")
             store.status.auth_ok = bool(cookie)
             store.status.last_poll_ok = True
+            self._auth_fails = 0
             store.status.last_error = ""
             store.status.last_poll_at = time.time()
             store.save_snapshot(snap)
@@ -491,6 +502,19 @@ class AppContext:
             return result
 
         except AuthError as exc:
+            # MakerWorld also refuses (403) while it is failing (5xx). One such
+            # refusal during server errors isn't an expired cookie: only a second
+            # refused poll in a row, or a refusal without server errors, is.
+            self._auth_fails += 1
+            outage = any(re.search(r"\b5\d\d\b", str(v)) for v in client.results.values())
+            if outage and self._auth_fails < 2:
+                store.status.last_poll_ok = False
+                store.status.last_error = str(exc)
+                store.status.last_poll_at = time.time()
+                log.warning("poll refused (%s) while MakerWorld returns server errors; not treating the cookie as "
+                            "expired unless the next poll is refused too", exc)
+                result["error"] = str(exc)
+                return result
             store.status.auth_ok = False
             store.status.last_poll_ok = False
             store.status.last_error = str(exc)

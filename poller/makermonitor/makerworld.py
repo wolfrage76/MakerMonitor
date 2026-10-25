@@ -68,6 +68,11 @@ class MakerWorldClient:
             self.results["models"] = str(exc)[:80] or "error"
             errors.append(f"design_api:{exc}")
             log.warning("Design API fetch failed: %s", exc)
+            # With full data already, the profile page can't stand in for it (no
+            # per-model numbers, totals that don't match): fail this poll instead
+            # of spending more requests on a page that would be thrown away.
+            if prev is not None and prev.models:
+                raise RuntimeError(f"design API: {exc}")
 
         # 1) Public (or cookie-enhanced) profile page via __NEXT_DATA__
         try:
