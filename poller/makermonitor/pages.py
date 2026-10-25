@@ -166,7 +166,7 @@ def today_pages(day: dict[str, Any] | None) -> list[Any]:
     if not day:
         return []
     t, y = day["today"], day.get("yday")
-    title = "TODAY" if day.get("midnight") else f"TODAY SINCE {datetime.fromtimestamp(day['since']):%H:%M}"
+    title = "TODAY" if day.get("midnight") else f"TODAY SINCE {datetime.fromtimestamp(day['since']):%-I:%M %p}"
 
     def yday(*keys: str) -> str:
         if not y:

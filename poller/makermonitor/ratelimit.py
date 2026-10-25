@@ -119,7 +119,7 @@ class Limiter:
                 raise RateLimited("hourly budget used")
         b = self.backoff.get(endpoint)
         if b and b["until"] > time.time() and (not core or b.get("status") == 429):
-            raise RateLimited(f"{endpoint} backing off until {time.strftime('%H:%M', time.localtime(b['until']))}")
+            raise RateLimited(f"{endpoint} backing off until {time.strftime('%-I:%M %p', time.localtime(b['until']))}")
         async with self._lock:
             if not core and (self.core_active or self.paused()):
                 raise RateLimited("core poll running" if self.core_active else "paused")
