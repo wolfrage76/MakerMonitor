@@ -17,6 +17,7 @@ class ModelStats:
     likes: int = 0
     comments: int = 0
     collects: int = 0
+    published: str = ""  # ISO publish time from the design list
 
 
 @dataclass

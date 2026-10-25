@@ -22,7 +22,8 @@ STATS = ("boosts", "likes", "collects", "downloads", "prints")
 MODEL_KEYS = {"boosts": "boosts", "likes": "likes", "collects": "collects",
               "downloads": "downloads", "prints": "prints"}
 KEEP_DAYS = 30
-KEEP_MODEL_BASES = 8
+KEEP_MODEL_BASES = 31   # per-model daily history for the panel's model detail
+KEEP_HOUR_DAYS = 35     # per-day hourly buckets for best-time insights
 KEEP_FEED = 40
 
 
@@ -35,6 +36,7 @@ def counters(snap: Snapshot) -> dict[str, float]:
         "downloads": snap.downloads,
         "prints": snap.prints,
         "points": round(snap.points, 2),
+        "followers": int(acct.get("followers", 0)),
     }
 
 
@@ -48,6 +50,8 @@ def model_counts(snap: Snapshot) -> dict[str, dict[str, int]]:
 def _diff(a: dict[str, float], b: dict[str, float]) -> dict[str, float]:
     out = {k: b.get(k, 0) - a.get(k, 0) for k in (*STATS, "points")}
     out["points"] = round(out["points"], 2)
+    # Followers joined the counters later: a baseline without them counts 0.
+    out["followers"] = int(b["followers"] - a["followers"]) if "followers" in a and "followers" in b else 0
     return out
 
 
@@ -73,6 +77,10 @@ class DayTracker:
             d = self.d
             if d.get("day") != today:
                 self._roll(d, today, now, cur, models)
+            # Baselines from before followers were tracked: count from now.
+            for b in (d.get("base"), d.get("last")):
+                if b is not None and "followers" not in b:
+                    b["followers"] = cur["followers"]
             last = d.get("last") or cur
             delta = _diff(last, cur)
             hour = datetime.fromtimestamp(now).hour
@@ -111,6 +119,11 @@ class DayTracker:
         mb[today] = d["base_models"]
         for k in sorted(mb)[:-KEEP_MODEL_BASES]:
             del mb[k]
+        # Keep the closed day's hourly buckets for best-time insights.
+        if d.get("day") and d.get("hours"):
+            hd = [x for x in d.get("hour_days", []) if x.get("date") != d["day"]]
+            hd.append({"date": d["day"], "hours": d["hours"]})
+            d["hour_days"] = hd[-KEEP_HOUR_DAYS:]
         d["day"] = today
         d["hours"] = {k: [0] * 24 for k in STATS}
 
@@ -130,8 +143,46 @@ class DayTracker:
     def today(self) -> dict[str, float]:
         with self._lock:
             if not self.d.get("base") or not self.d.get("last"):
-                return {k: 0 for k in (*STATS, "points")}
+                return {k: 0 for k in (*STATS, "points", "followers")}
             return _diff(self.d["base"], self.d["last"])
+
+    def insights(self, metrics: tuple[str, ...] = ("downloads", "prints", "boosts"),
+                 window: int = 30, min_days: int = 7) -> dict[str, Any]:
+        """Activity by hour of day and by weekday over the last `window` days
+        (local time), from the stored per-day hourly buckets plus today."""
+        with self._lock:
+            days = list(self.d.get("hour_days", []))[-(window - 1):]
+            if self.d.get("day"):
+                days.append({"date": self.d["day"], "hours": self.d.get("hours") or {}})
+        out: dict[str, Any] = {"days": len(days), "has": len(days) >= min_days}
+        for m in metrics:
+            hours, wday = [0] * 24, [0] * 7
+            for x in days:
+                h = (x.get("hours") or {}).get(m) or [0] * 24
+                wd = date.fromisoformat(x["date"]).weekday()  # Mon = 0
+                for i, v in enumerate(h[:24]):
+                    hours[i] += int(v)
+                wday[wd] += int(sum(h))
+            out[m] = {"hour": hours, "wday": wday,
+                      "bestHour": max(range(24), key=lambda i: hours[i]) if any(hours) else -1,
+                      "bestDay": max(range(7), key=lambda i: wday[i]) if any(wday) else -1}
+        return out
+
+    def model_history(self, mid: str) -> list[dict[str, Any]]:
+        """Daily activity of one model, oldest first, from the per-day model
+        baselines (taken around midnight) plus today's live counts."""
+        with self._lock:
+            mb = dict(self.d.get("model_bases", {}))
+            last = (self.d.get("last_models") or {}).get(mid)
+        dates = sorted(mb)
+        rows = []
+        for i, dt in enumerate(dates):
+            a = mb[dt].get(mid)
+            b = mb[dates[i + 1]].get(mid) if i + 1 < len(dates) else last
+            if not a or not b:
+                continue
+            rows.append({"d": dt, **{k: max(0, int(b.get(k, 0)) - int(a.get(k, 0))) for k in STATS}})
+        return rows
 
     def view(self) -> dict[str, Any]:
         with self._lock:

@@ -62,10 +62,18 @@ def _top(snap: Snapshot, base: dict[str, dict[str, int]] | None, count: int = 4)
         score = vals["prints"] * 3 + vals["downloads"] * 2 + vals["boosts"] * 5 + vals["collects"] + vals["likes"]
         if score <= 0:
             continue
-        rows.append((score, {"n": ascii_text(m.name or mid)[:60], "b": vals["boosts"], "l": vals["likes"],
+        rows.append((score, {"id": str(mid), "n": ascii_text(m.name or mid)[:60], "b": vals["boosts"], "l": vals["likes"],
                              "c": vals["collects"], "d": vals["downloads"], "p": vals["prints"], "s": score}))
     rows.sort(key=lambda r: -r[0])
     return [r[1] for r in rows[:count]]
+
+
+def followers_view(total: int, today: int, daily: list[int]) -> dict[str, Any]:
+    """Follower count and gains. series30: gains per day, oldest first, ending
+    with today's live gain (MakerWorld's daily list stops at yesterday)."""
+    series = [int(x) for x in daily[-29:]] + [today]
+    return {"total": total, "today": today, "d7": sum(series[-7:]), "d30": sum(series),
+            "days": len(series), "series30": series}
 
 
 def build_state(snap: Snapshot, day: DayTracker, status: dict[str, Any], poll_sec: int) -> dict[str, Any]:
@@ -75,6 +83,7 @@ def build_state(snap: Snapshot, day: DayTracker, status: dict[str, Any], poll_se
     week_key = sorted(bases)[0] if bases else None
     month = dict(snap.extras.get("month") or {})
     yday_reach = month.pop("yesterday", {}) or {}
+    fol_days = month.pop("followers_daily", None) or []
     month["yday_impressions"] = yday_reach.get("impressions", 0)
     month["yday_views"] = yday_reach.get("views", 0)
     comments = [
@@ -108,6 +117,7 @@ def build_state(snap: Snapshot, day: DayTracker, status: dict[str, Any], poll_se
         },
         "feed": [{k: e[k] for k in ("k", "n", "m", "t") if k in e} for e in v["feed"]],
         "month": month,
+        "followers": followers_view(int(acct.get("followers", 0)), int(v["today"].get("followers", 0)), fol_days),
         "comments": comments,
         "status": {**status, "pollSec": poll_sec},
     }

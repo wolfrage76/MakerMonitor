@@ -9,6 +9,7 @@ from typing import Any
 
 from curl_cffi.requests import AsyncSession
 
+from .ratelimit import LIMITER, RateLimited
 from .state import ModelStats, Snapshot
 
 log = logging.getLogger(__name__)
@@ -31,6 +32,8 @@ class MakerWorldClient:
         self.handle = handle.lstrip("@")
         self.user_agent = user_agent
         self.cookie = cookie.strip()
+        # Per-source outcome of the last fetch: "ok", "auth" (401/403) or an error.
+        self.results: dict[str, str] = {}
 
     def with_cookie(self, cookie: str) -> MakerWorldClient:
         return MakerWorldClient(self.handle, self.user_agent, cookie)
@@ -56,10 +59,13 @@ class MakerWorldClient:
         try:
             snap = await self._from_design_api(prev)
             snap.fetched_at = time.time()
+            self.results["models"] = "ok"
             return snap
         except AuthError:
+            self.results["models"] = "auth"
             raise
         except Exception as exc:  # noqa: BLE001
+            self.results["models"] = str(exc)[:80] or "error"
             errors.append(f"design_api:{exc}")
             log.warning("Design API fetch failed: %s", exc)
 
@@ -106,7 +112,7 @@ class MakerWorldClient:
     async def _from_design_api(self, prev: Snapshot | None = None) -> Snapshot:
         url = f"{BASE}/en/@{self.handle}"
         async with _session(30.0) as client:
-            r = await client.get(url, headers=self._headers("text/html"))
+            r = await LIMITER.get(client, endpoint="profile", core=True, url=url, headers=self._headers("text/html"))
             if r.status_code in (401, 403):
                 raise AuthError(f"Profile HTTP {r.status_code}")
             r.raise_for_status()
@@ -119,7 +125,7 @@ class MakerWorldClient:
             models: dict[str, ModelStats] = {}
             offset, limit = 0, 50
             while True:
-                r = await client.get(
+                r = await LIMITER.get(client, endpoint="models", core=True, url=
                     f"{BASE}/api/v1/design-service/published/{uid}/design"
                     f"?handle=@{self.handle}&limit={limit}&offset={offset}",
                     headers=self._headers(),
@@ -141,6 +147,7 @@ class MakerWorldClient:
                         likes=int(_num(h.get("likeCount"))),
                         comments=int(_num(h.get("commentCount"))),
                         collects=int(_num(h.get("collectionCount"))),
+                        published=str(h.get("publishTime") or h.get("createTime") or ""),
                     )
                 offset += len(hits)
                 if not hits or offset >= int(_num(data.get("total"))):
@@ -174,24 +181,31 @@ class MakerWorldClient:
                 if bal is not None:
                     snap.points = bal
                     snap.source = "design_api+point_bill"
-            except AuthError:
-                raise
+                self.results["points"] = "ok" if bal is not None else "no data"
+            except AuthError as exc:
+                log.warning("point balance rejected (%s); counts still update", exc)
+                self.results["points"] = "auth"
             except Exception as exc:  # noqa: BLE001
                 log.info("point balance skipped: %s", exc)
-            # MakerWorld's data-overview page fails now and then (502, empty
-            # summary). Retry once, then keep the last good report so the
-            # panels don't drop to "no data" for a whole poll interval.
+                self.results["points"] = str(exc)[:80] or "error"
+            # MakerWorld's data-overview page fails now and then (403, 502, empty
+            # summary). A rejected cookie there must not throw away the model
+            # counts already fetched. Retry once, then keep the last good report.
             month = None
             for attempt in range(2):
                 try:
                     month = await self._last_30_days()
-                except AuthError:
-                    raise
+                except AuthError as exc:
+                    log.warning("30-day stats rejected (%s); counts still update", exc)
+                    self.results["reach"] = "auth"
+                    break
                 except Exception as exc:  # noqa: BLE001
                     log.info("30-day stats attempt %d failed: %s", attempt + 1, exc)
+                    self.results["reach"] = str(exc)[:80] or "error"
                 if month:
                     break
             if month:
+                self.results["reach"] = "ok"
                 snap.extras["month"] = month
             elif prev and prev.extras.get("month"):
                 snap.extras["month"] = prev.extras["month"]
@@ -214,7 +228,7 @@ class MakerWorldClient:
                 if old and old.comments == m.comments and mid in cached:
                     out.extend(cached[mid])
                     continue
-                r = await client.get(
+                r = await LIMITER.get(client, endpoint="comments", core=True, url=
                     f"{BASE}/api/v1/comment-service/comment?designId={mid}&offset=0&limit=3",
                     headers=self._headers(),
                 )
@@ -247,9 +261,11 @@ class MakerWorldClient:
             f"?startDate={start.isoformat()}&endDate={end.isoformat()}"
         )
         async with _session(45.0) as client:
-            r = await client.get(url, headers=self._headers(extra={"x-nextjs-data": "1"}))
+            r = await LIMITER.get(client, endpoint="reach", core=True, url=url, headers=self._headers(extra={"x-nextjs-data": "1"}))
             if r.status_code in (401, 403):
                 raise AuthError(f"data-overview HTTP {r.status_code}")
+            if r.status_code == 404:
+                _clear_build()
             if not r.ok:
                 raise RuntimeError(f"data-overview HTTP {r.status_code}")
             page = (r.json() or {}).get("pageProps") or {}
@@ -260,7 +276,11 @@ class MakerWorldClient:
         # MakerWorld only reports whole days and today stays empty until it ends.
         yday_key = (end - timedelta(days=1)).strftime("%Y/%m/%d")
         yday = next((d for d in stats.get("dateList") or [] if d.get("intervalVal") == yday_key), {})
+        # Followers gained per whole day, oldest first (today is never in it).
+        daily = sorted((d for d in stats.get("dateList") or [] if d.get("intervalVal")),
+                       key=lambda d: d["intervalVal"])
         return {
+            "followers_daily": [int(_num(d.get("follower"))) for d in daily if d["intervalVal"] < end.strftime("%Y/%m/%d")],
             "yesterday": {
                 "impressions": int(_num(yday.get("impression"))),
                 "views": int(_num(yday.get("view"))),
@@ -284,7 +304,7 @@ class MakerWorldClient:
         """Current spendable balance = lifetime income - lifetime expense."""
         url = f"{BASE}/api/v1/point-service/point-bill/my?offset=0&limit=1&filter=all"
         async with _session(30.0) as client:
-            r = await client.get(url, headers=self._headers())
+            r = await LIMITER.get(client, endpoint="points", core=True, url=url, headers=self._headers())
             if r.status_code in (401, 403):
                 raise AuthError(f"point-bill HTTP {r.status_code}")
             if not r.ok:
@@ -302,7 +322,7 @@ class MakerWorldClient:
     async def _from_profile_page(self) -> Snapshot:
         url = f"{BASE}/en/@{self.handle}"
         async with _session(30.0) as client:
-            r = await client.get(url, headers=self._headers("text/html"))
+            r = await LIMITER.get(client, endpoint="profile", core=True, url=url, headers=self._headers("text/html"))
             if r.status_code in (401, 403):
                 raise AuthError(f"Profile HTTP {r.status_code}")
             if "/sign" in str(r.url) or "/login" in str(r.url):
@@ -334,7 +354,7 @@ class MakerWorldClient:
             f"?startDate={start.isoformat()}&endDate={end.isoformat()}"
         )
         async with _session(45.0) as client:
-            r = await client.get(
+            r = await LIMITER.get(client, endpoint="reach", core=True, url=
                 url,
                 headers=self._headers(extra={"x-nextjs-data": "1"}),
             )
@@ -387,7 +407,7 @@ class MakerWorldClient:
             log.debug("point-bill skipped: %s", exc)
 
         # Fetch a few model details for per-model counters (capped)
-        for mid in list(models.keys())[:40]:
+        for mid in list(models.keys())[:10]:
             try:
                 detail = await self._model_detail(build_id, int(mid), start, end)
                 s = detail.get("summary") or {}
@@ -418,7 +438,7 @@ class MakerWorldClient:
             f"?startDate={start.isoformat()}&endDate={end.isoformat()}"
         )
         async with _session(45.0) as client:
-            r = await client.get(url, headers=self._headers(extra={"x-nextjs-data": "1"}))
+            r = await LIMITER.get(client, endpoint="reach", core=True, url=url, headers=self._headers(extra={"x-nextjs-data": "1"}))
             if r.status_code in (401, 403):
                 raise AuthError(f"points HTTP {r.status_code}")
             if not r.ok:
@@ -430,7 +450,7 @@ class MakerWorldClient:
     async def _points_from_bill(self) -> float | None:
         url = f"{BASE}/api/v1/point-service/point-bill/my?offset=0&limit=1&filter=all"
         async with _session(30.0) as client:
-            r = await client.get(url, headers=self._headers())
+            r = await LIMITER.get(client, endpoint="points", core=True, url=url, headers=self._headers())
             if r.status_code in (401, 403):
                 raise AuthError(f"point-bill HTTP {r.status_code}")
             if not r.ok:
@@ -446,9 +466,14 @@ class MakerWorldClient:
                         return _num(data["data"][key])
         return None
 
-    async def _get_build_id(self) -> tuple[str, str]:
+    async def _get_build_id(self, fresh: bool = False) -> tuple[str, str]:
+        """Next.js build id for the _next/data routes. Cached for 6 h (one less
+        request per poll); a 404 on a data route clears it."""
+        global _BUILD
+        if not fresh and _BUILD[0] and time.time() - _BUILD[2] < 6 * 3600:
+            return _BUILD[0], _BUILD[1]
         async with _session(30.0) as client:
-            r = await client.get(LIST_PAGE, headers=self._headers("text/html"))
+            r = await LIMITER.get(client, endpoint="build", core=True, url=LIST_PAGE, headers=self._headers("text/html"))
             if r.status_code in (401, 403):
                 raise AuthError(f"data-overview HTTP {r.status_code}")
             if "/sign" in str(r.url) or "/login" in str(r.url):
@@ -458,6 +483,7 @@ class MakerWorldClient:
         m = re.search(r'"buildId":"([^"]+)"', html)
         if not m:
             raise RuntimeError("buildId not found — MakerWorld layout may have changed")
+        _BUILD = (m.group(1), html, time.time())
         return m.group(1), html
 
     async def _model_detail(
@@ -468,9 +494,17 @@ class MakerWorldClient:
             f"?startDate={start.isoformat()}&endDate={end.isoformat()}&designId={design_id}"
         )
         async with _session(30.0) as client:
-            r = await client.get(url, headers=self._headers(extra={"x-nextjs-data": "1"}))
+            r = await LIMITER.get(client, endpoint="model-detail", core=True, url=url, headers=self._headers(extra={"x-nextjs-data": "1"}))
             r.raise_for_status()
             return ((r.json() or {}).get("pageProps") or {}).get("modelData") or {}
+
+
+_BUILD: tuple[str, str, float] = ("", "", 0.0)
+
+
+def _clear_build() -> None:
+    global _BUILD
+    _BUILD = ("", "", 0.0)
 
 
 def _num(v: Any) -> float:
