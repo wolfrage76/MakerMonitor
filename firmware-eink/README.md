@@ -1,5 +1,7 @@
 # CrowPanel e-ink firmware
 
+> **On hold.** Work is focused on the color panels for now. The e-ink firmware is unchanged apart from what is described here (the BEST TIMES and per-model 7/30-day pages, the DATA STALE chip and night mode). The poller's newer features, such as creator stats, are not shown on e-paper.
+
 Targets the **Elecrow CrowPanel ESP32 2.13″ e-paper** (JD79661 controller, 250×122 landscape).
 
 ## Board settings (Arduino IDE equivalent)
@@ -62,8 +64,10 @@ curl -F "firmware=@.pio/build/crowpanel_213/firmware.bin" \
 ## Sections and buttons
 
 The poller pushes sections: TODAY (since midnight, with yesterday underneath),
-LAST 30 DAYS, TOP MODELS (one model per page), COMMENTS (one per page) and
-ACCOUNT. The firmware inserts its own ALL TIME section (totals, points,
+LAST 30 DAYS, TOP MODELS (one model per page, each followed by a page with its
+last 7 and 30 days), BEST TIMES (downloads and prints by hour of day and by
+weekday over the last 30 days, best hour and day marked; "Collecting data"
+until 7 days are stored), COMMENTS (one per page) and ACCOUNT. The firmware inserts its own ALL TIME section (totals, points,
 account, sync age) right after TODAY. The header band shows the section index
 ("2/6") and one square per page. Pages auto-cycle within the current section.
 Text you need to read is 16 px or larger; there is no bold below 24 px because
@@ -97,7 +101,7 @@ Hold HOME for **Settings** and **Status**.
 | Alerts | On / Off | On |
 | Alert time | 10 / 20 / 40 s | 20 s |
 | Sound | On / Off | Off |
-| Quiet hours | Off / 22-07 / 23-07 / 00-07: no auto-cycle, alert screens or chirps (totals still update) | Off |
+| Quiet hours | Off / 22-07 / 23-07 / 00-07: night mode. The panel does not refresh at all (no auto-cycle, poll updates, alert screens or chirps); a key press still redraws it. Totals keep updating in memory | Off |
 | Deep refresh | every 4 / 8 / 16 refreshes: an extra white pass that clears ghosting | 8 |
 
 The JD79661 controller has no partial refresh, so every frame (menus
@@ -135,7 +139,7 @@ Same shape as [makerworld-live-monitor](https://github.com/aquascape123/makerwor
 { "auth": "ok", "message": "synced 2m ago", "lastPollAgeSec": 120 }
 ```
 
-`auth`: `ok` | `needed` | `error`
+`auth`: `ok` | `needed` | `stale` | `error`. `stale` (the poller's MakerWorld data is older than 3 poll intervals) shows a **DATA STALE** chip in the header, like `AUTH NEEDED` and `ERROR`.
 
 ## Pins
 
