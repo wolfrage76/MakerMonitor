@@ -4,16 +4,18 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class Settings(BaseModel):
     handle: str = Field(..., description="MakerWorld handle without @")
-    # E-ink CrowPanel; leave empty when there is none.
+    # Panels to push to: IPs or .local names ("host:port" for another port).
+    # Color or e-paper is detected per host (panels.py).
+    panels: list[str] = Field(default_factory=list)
+    # Before `panels`: one e-ink host and comma-separated color hosts. Still
+    # read and merged into the list; the log asks to move them.
     panel_host: str = ""
     panel_port: int = 80
-    # Optional color panels (Waveshare 3.16", Elecrow CrowPanel 4.3/5/7").
-    # One host, or several separated by commas; "host:port" overrides the port.
     color_panel_host: str = ""
     color_panel_port: int = 80
     poll_interval_sec: int = 600
@@ -29,22 +31,38 @@ class Settings(BaseModel):
         "(KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
     )
 
+    @field_validator("panels", mode="before")
+    @classmethod
+    def _panels_list(cls, v: Any) -> list[str]:
+        if v is None:
+            return []
+        if isinstance(v, str):
+            v = v.split(",")
+        return [str(h).strip() for h in v if str(h).strip()]
+
     @property
     def data_path(self) -> Path:
         return Path(self.data_dir)
 
     @property
-    def color_panel_bases(self) -> list[str]:
-        bases = []
-        for host in self.color_panel_host.split(","):
-            host = host.strip()
-            if host:
-                bases.append(f"http://{host}" if ":" in host else f"http://{host}:{self.color_panel_port}")
-        return bases
+    def legacy_panel_keys(self) -> list[str]:
+        return [k for k in ("color_panel_host", "panel_host") if getattr(self, k).strip()]
 
     @property
-    def panel_base(self) -> str:
-        return f"http://{self.panel_host}:{self.panel_port}" if self.panel_host else ""
+    def panel_hosts(self) -> list[str]:
+        """Every panel host, `panels` first, then the old keys, without repeats."""
+        out: list[str] = []
+        legacy = [(h, self.color_panel_port) for h in self.color_panel_host.split(",")]
+        legacy.append((self.panel_host, self.panel_port))
+        for h in self.panels + [f"{h.strip()}:{p}" if h.strip() and ":" not in h and p != 80 else h for h, p in legacy]:
+            h = h.strip()
+            if h and h not in out:
+                out.append(h)
+        return out
+
+    @property
+    def panel_bases(self) -> list[str]:
+        return [f"http://{h}" if ":" in h else f"http://{h}:80" for h in self.panel_hosts]
 
 
 def config_path(path: str | Path | None = None) -> Path:

@@ -2095,7 +2095,7 @@ static void refreshStatus() {
   char a[96], b[96];
   uint32_t n = nowUtc();
   if (!st.valid) {
-    setCell(ST_POLLER, C_IDLE, "Waiting", "set color_panel_host on the poller");
+    setCell(ST_POLLER, C_IDLE, "Waiting", "add it to the poller's panels list");
     setCell(ST_COOKIE, C_IDLE, "-", "");
     setCell(ST_NEXT, C_IDLE, "-", "");
     setCell(ST_BASE, C_IDLE, "-", "");
@@ -4253,7 +4253,7 @@ static void guideOpen() {
   snprintf(body, sizeof(body),
            "1.  This panel is online as %s  (%s).\n"
            "2.  On the PC that runs the MakerMonitor poller, open poller/config.yaml.\n"
-           "3.  Set  color_panel_host: \"%s\"  and restart the poller.",
+           "3.  Add it to the panel list:  panels: [\"%s\"]  (or in the dashboard's Settings).",
            host, g_net.ip, host);
   lv_obj_t* l = label(guideRoot, COMPACT ? F14 : F16, C_TXT, tx, y0, body);
   lv_obj_set_width(l, tw);

@@ -238,6 +238,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--acc);box-shadow:0 0 0
  <div class="card s12"><h2>MakerWorld data sources</h2><div class=src id=srcs></div></div>
  <div class="card s6"><h2>Request budget<span class=sp></span><small>shared by every MakerWorld request</small></h2><div id=limiter></div></div>
  <div class="card s6"><h2>Poller</h2><dl class=kv id=pinfo></dl></div>
+ <div class="card s12"><h2>Panels<span class=sp></span><small><a href="#settings/panels">Manage</a></small></h2><div class=src id=pnls></div></div>
 </div></section>
 
 <section class=view id=v-settings><div class=set>
@@ -413,7 +414,13 @@ function renderHealth(){const h=S.health||{},src=h.src||{},st=S.status||{};
   ${bo.length?`<p style="color:var(--warn)">Backing off: ${bo.map(([k,t])=>esc(k)+" until "+hm(t)).join(", ")}</p>`:`<p class=mut>No backoff in effect.</p>`}`;
  $("pinfo").innerHTML=[["Last poll",st.lastPoll?hm(st.lastPoll)+" ("+ago(st.lastPoll)+")":"never"],["Result",st.ok===false?esc(st.msg||"failed"):"ok"],
   ["Poll interval",(st.pollSec||"–")+" s"],["Panel URL",esc(S.poller||"–")],["Data as of",S.t?new Date(S.t*1e3).toLocaleDateString()+" "+hm(S.t):"–"]]
-  .map(([k,v])=>`<dt>${k}</dt><dd>${v}</dd>`).join("")}
+  .map(([k,v])=>`<dt>${k}</dt><dd>${v}</dd>`).join("")
+ const pl=h.panels||[];
+ $("pnls").innerHTML=pl.length?pl.map(p=>`<div class="${p.up===false?"err":p.type=="unknown"?"idle":""}"><b>${esc(p.host)}</b>
+   <div class=ink2>${PTYPE[p.type]||"Not detected yet"}${p.board?" · "+esc(p.board):""}${p.fw?" · v"+esc(p.fw):""}</div>
+   <div class=mut>${p.up===false?"Not answering":p.up?"Answering":"Not checked yet"}</div></div>`).join("")
+  :`<p class=mut>No panels. Add one under <a href="#settings/panels">Settings</a>.</p>`}
+const PTYPE={color:"Color panel",eink:"E-paper panel"};
 
 function renderAll(){if(!S)return;renderHead();renderOverview();renderActivity();renderHealth();renderModels()}
 async function load(){try{const c=await fetch("/v2/creator");if(c.ok)C=await c.json()}catch(e){}
@@ -438,7 +445,7 @@ function fld(path,label,{type="text",hint="",wide=false,val,ph="",opts=null,min,
 function evChips(path,list,all=Object.keys(EV)){const on=new Set(list||[]);
  return `<div class=chips data-ev="${path}">${all.map(k=>`<button type=button class="chip${on.has(k)?" on":""}" data-k="${k}" aria-pressed="${on.has(k)}">${EV[k]||k}</button>`).join("")}</div>`}
 function renderSettings(){const t=F.top,n=F.notifications,d=n.defaults,eff=F.effective.poll_interval_sec,ro=F.readonly;
- const hosts=String(t.color_panel_host||"").split(",").map(s=>s.trim()).filter(Boolean);
+ const hosts=Array.isArray(t.panels)?t.panels:String(t.panels||"").split(",").map(s=>s.trim()).filter(Boolean);
  const dg=d.quiet_digest===undefined?true:d.quiet_digest;
  $("form").innerHTML=`
  <div class=card id=sec-mw><h2 class=h2>MakerWorld</h2><p class=desc>Your account and the browser cookie that unlocks creator stats.</p>
@@ -453,15 +460,11 @@ function renderSettings(){const t=F.top,n=F.notifications,d=n.defaults,eff=F.eff
    hint:eff!=t.poll_interval_sec?`Running at ${eff} s right now, set from a panel. Saving a new value here takes over.`:"60 to 3600. About 120 MakerWorld requests an hour are shared by everything."})}
   ${fld("top.page_cycle_sec","Panel page time (seconds)",{type:"number",val:t.page_cycle_sec,min:10,hint:"How long each e-paper page stays before it flips"})}</div></div>
 
- <div class=card id=sec-panels><h2 class=h2>Panels</h2><p class=desc>Displays the poller pushes stats to. Leave empty for none.</p>
-  <div class=sub>Color panels</div><div class=hosts id=hosts>${hosts.map((h,i)=>hostRow(h,i)).join("")}</div>
-  ${ERR["top.color_panel_host"]?`<div class=err style="color:var(--err)">${esc(ERR["top.color_panel_host"])}</div>`:""}
-  <div class=row style="margin-top:10px"><button class="btn sm" id=addhost type=button>Add color panel</button>
-   <span class=mut style="font-size:12.5px">The .local name (makermonitor-xxxxx.local) survives IP changes. Use host:port for a non-standard port.</span></div>
-  <div class=fields style="margin-top:14px">${fld("top.color_panel_port","Default color panel port",{type:"number",val:t.color_panel_port})}</div>
-  <div class=sub>E-paper panel</div>
-  <div class=host><input type=text data-p="top.panel_host" value="${esc(t.panel_host)}" placeholder="192.168.1.50 (empty = none)" autocomplete=off>
-   <input class=port type=number data-p="top.panel_port" value="${esc(t.panel_port)}"><button class="btn sm" type=button data-test=eink>Check</button><span class=res id=res-eink></span></div></div>
+ <div class=card id=sec-panels><h2 class=h2>Panels</h2><p class=desc>Displays the poller pushes stats to: color or e-paper, it works out which. Leave empty for none.</p>
+  <div class=hosts id=hosts>${hosts.map((h,i)=>hostRow(h,i)).join("")}</div>
+  ${ERR["top.panels"]?`<div class=err style="color:var(--err)">${esc(ERR["top.panels"])}</div>`:""}
+  <div class=row style="margin-top:10px"><button class="btn sm" id=addhost type=button>Add panel</button>
+   <span class=mut style="font-size:12.5px">An IP or a .local name (makermonitor.local survives IP changes). Use host:port for a port other than 80.</span></div></div>
 
  <div class=card id=sec-notify><h2 class=h2>Notifications</h2><p class=desc>Push messages to your phone or chat when things happen. Each poll sends at most one message per channel.</p>
   <div class=sub>Defaults for every channel</div>
@@ -484,9 +487,11 @@ function renderSettings(){const t=F.top,n=F.notifications,d=n.defaults,eff=F.eff
   <p class=mut style="margin-bottom:0">Every save keeps the previous file as config.yaml.bak-&lt;time&gt; next to it (the last 10).</p></div>`;
  bindSettings();dirty()}
 const TYPE_LABEL={discord:"Discord",pushbullet:"Pushbullet",pushover:"Pushover",ntfy:"ntfy",telegram:"Telegram",homeassistant:"Home Assistant",apprise:"Apprise (Slack, Matrix, Gotify...)",webhook:"Webhook"};
-function hostRow(h,i){return `<div class=host><input type=text data-host=${i} value="${esc(h)}" placeholder="makermonitor-xxxxx.local" autocomplete=off>
- <span class=port></span><button class="btn sm" type=button data-test=color data-i=${i}>Check</button>
- <span class=row><span class=res id=res-color-${i}></span><button class="btn ghost sm dan" type=button data-rmhost=${i} aria-label="Remove">Remove</button></span></div>`}
+function hostRow(h,i){const d=(F.panels_detected||[]).find(p=>p.host==h||p.host==h.replace(/:80$/,""));
+ const seen=d&&d.type!="unknown"?`${PTYPE[d.type]}${d.board?" · "+esc(d.board):""}${d.fw?" · v"+esc(d.fw):""}`:h?"Not detected yet":"";
+ return `<div class=host><input type=text data-host=${i} value="${esc(h)}" placeholder="makermonitor.local or 192.168.1.50" autocomplete=off>
+ <span class="badge mut">${seen}</span><button class="btn sm" type=button data-test=panel data-i=${i}>Check</button>
+ <span class=row><span class=res id=res-panel-${i}></span><button class="btn ghost sm dan" type=button data-rmhost=${i} aria-label="Remove">Remove</button></span></div>`}
 function chanCard(c,j){const fields=F.schema.types[c.type]||[],P=`channels.${j}`,isOpen=open.has(j)||Object.keys(ERR).some(k=>k.startsWith(P+"."));
  const errs=["form","env","type"].map(k=>ERR[P+"."+k]).filter(Boolean);const usesDef=c.events==null;
  return `<div class="ch${isOpen?" open":""}${c.enabled===false?" off":""}" data-j=${j}><header data-tog=${j}>
@@ -507,7 +512,7 @@ function chanCard(c,j){const fields=F.schema.types[c.type]||[],P=`channels.${j}`
    <span class=sp style="flex:1"></span><button class="btn ghost sm dan" type=button data-rmch=${j}>Remove channel</button></div></div></div>`}
 function setPath(path,val){const p=path.split(".");let o=p[0]=="top"?F.top:p[0]=="defaults"?F.notifications.defaults:F.notifications.channels;
  for(let i=1;i<p.length-1;i++){o[p[i]]=o[p[i]]??{};o=o[p[i]]}o[p[p.length-1]]=val}
-function syncHosts(){F.top.color_panel_host=[...document.querySelectorAll("[data-host]")].map(i=>i.value.trim()).filter(Boolean).join(", ")}
+function syncHosts(){F.top.panels=[...document.querySelectorAll("[data-host]")].map(i=>i.value.trim()).filter(Boolean)}
 function bindSettings(){const form=$("form");
  form.querySelectorAll("[data-p]").forEach(el=>{el.oninput=el.onchange=()=>{const p=el.dataset.p;let v=el.type=="checkbox"?el.checked:el.value;
   const m=p.match(/^channels\.(\d+)\.(\w+)$/);
@@ -518,11 +523,11 @@ function bindSettings(){const form=$("form");
   setPath(box.dataset.ev,[...box.querySelectorAll(".chip.on")].map(x=>x.dataset.k));dirty()}));
  form.querySelectorAll("[data-host]").forEach(el=>el.oninput=()=>{syncHosts();dirty()});
  form.querySelectorAll("[data-rmhost]").forEach(b=>b.onclick=()=>{b.closest(".host").remove();syncHosts();renderSettings()});
- $("addhost").onclick=()=>{syncHosts();F.top.color_panel_host=(F.top.color_panel_host?F.top.color_panel_host+", ":"")+" ";renderSettings();
-  const ins=document.querySelectorAll("[data-host]");ins[ins.length-1].focus()};
- form.querySelectorAll("[data-test]").forEach(b=>b.onclick=async()=>{const color=b.dataset.test=="color",res=$(color?"res-color-"+b.dataset.i:"res-eink");
-  const host=color?document.querySelector(`[data-host="${b.dataset.i}"]`).value:F.top.panel_host;res.className="res";res.textContent="Checking";
-  const r=await api("/api/settings/panel",{host,port:color?F.top.color_panel_port:F.top.panel_port,kind:color?"color":"eink"});const j=await r.json().catch(()=>({}));
+ $("addhost").onclick=()=>{syncHosts();F.top.panels=[...F.top.panels," "];renderSettings();
+  const ins=document.querySelectorAll("[data-host]");ins[ins.length-1].value="";ins[ins.length-1].focus()};
+ form.querySelectorAll("[data-test]").forEach(b=>b.onclick=async()=>{const res=$("res-panel-"+b.dataset.i);
+  const host=document.querySelector(`[data-host="${b.dataset.i}"]`).value;res.className="res";res.textContent="Checking";
+  const r=await api("/api/settings/panel",{host});const j=await r.json().catch(()=>({}));
   res.className="res "+(j.ok?"ok":"no");res.textContent=j.msg||"no answer"});
  form.querySelectorAll("[data-tog]").forEach(h=>h.onclick=()=>{const j=+h.dataset.tog;open.has(j)?open.delete(j):open.add(j);renderSettings()});
  form.querySelectorAll("[data-en]").forEach(el=>el.onchange=()=>{const c=F.notifications.channels[+el.dataset.en];if(el.checked)delete c.enabled;else c.enabled=false;renderSettings()});

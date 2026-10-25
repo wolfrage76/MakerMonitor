@@ -212,3 +212,30 @@ def build_events(prev: Snapshot, cur: Snapshot) -> list[dict[str, Any]]:
         )
 
     return events
+
+
+class PanelGroup:
+    """Every e-paper panel behind the same calls as one PanelClient."""
+
+    def __init__(self, clients: list[PanelClient]) -> None:
+        self.clients = clients
+
+    @property
+    def base_url(self) -> str:
+        return ", ".join(c.base_url for c in self.clients)
+
+    async def ping(self) -> bool:
+        return any([await c.ping() for c in self.clients])
+
+    async def sync(self, snap: Snapshot) -> bool:
+        return bool(self.clients) and all([await c.sync(snap) for c in self.clients])
+
+    async def notify(self, payload: dict[str, Any]) -> bool:
+        return bool(self.clients) and all([await c.notify(payload) for c in self.clients])
+
+    async def pages(self, payload: dict[str, Any]) -> bool:
+        return bool(self.clients) and all([await c.pages(payload) for c in self.clients])
+
+    async def status(self, auth: str, message: str, last_poll_age_sec: int | None = None) -> bool:
+        return bool(self.clients) and all([await c.status(auth, message, last_poll_age_sec) for c in self.clients])
+

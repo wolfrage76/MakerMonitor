@@ -19,7 +19,8 @@ from .dashboard import DASHBOARD_HTML, LOGIN_HTML
 from .makerworld import AuthError, MakerWorldClient
 from .pages import build_sections
 from .notify import NotifyHub
-from .panel import PanelClient, build_events
+from .panel import PanelClient, PanelGroup, build_events
+from .panels import PanelDirectory
 from .ratelimit import LIMITER
 from . import settings_api
 from .state import Snapshot, Store
@@ -93,8 +94,14 @@ class AppContext:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.store = Store(settings.data_path)
-        self.panel = PanelClient(settings.panel_base)
-        self.colors = [ColorPanelClient(base) for base in settings.color_panel_bases]
+        # One `panels` list; each host's kind (color / e-paper) is detected
+        # and cached (panels.py). Until a host has answered once it gets nothing.
+        self.panel_dir = PanelDirectory(settings.data_path)
+        self.panel = PanelGroup([])
+        self.colors: list[ColorPanelClient] = []
+        self._probes: dict[str, ColorPanelClient] = {}
+        self._panel_up: dict[str, bool] = {}
+        self._rebuild_panels()
         self.day = DayTracker(settings.data_path)
         # Any panel's Settings menu (e-ink or color) can override the interval.
         self.poll_interval = settings.poll_interval_sec
@@ -138,6 +145,30 @@ class AppContext:
         elif client.results.get("models") == "ok":
             self.auth_state = "ok"
 
+    def _rebuild_panels(self) -> None:
+        """Color clients and the e-paper group from the detected kinds."""
+        bases = self.settings.panel_bases
+        have = {p.base_url: p for p in self.colors}
+        self.colors = [have.get(b) or ColorPanelClient(b) for b in bases if self.panel_dir.kind(b) == "color"]
+        self.panel = PanelGroup([PanelClient(b) for b in bases if self.panel_dir.kind(b) == "eink"])
+        self._probes = {b: self._probes.get(b) or ColorPanelClient(b) for b in bases}
+
+    async def refresh_panels(self, force: bool = False) -> None:
+        """Detect hosts not seen yet (or due a re-check) and regroup."""
+        before = {b: self.panel_dir.kind(b) for b in self.settings.panel_bases}
+        for b in self.settings.panel_bases:
+            await self.panel_dir.check(b, force=force)
+        after = {b: self.panel_dir.kind(b) for b in self.settings.panel_bases}
+        if after != before or force:
+            self._rebuild_panels()
+            log.info("panels: color=%s eink=%s unknown=%s",
+                     ",".join(p.base_url for p in self.colors) or "none",
+                     self.panel.base_url or "none",
+                     ",".join(b for b, k in after.items() if k == "unknown") or "none")
+
+    def panels_view(self) -> list[dict[str, Any]]:
+        return self.panel_dir.view(self.settings.panel_bases, self._panel_up)
+
     def apply_settings(self, new: Settings) -> None:
         """Live-apply a config saved from the dashboard's Settings tab.
 
@@ -150,12 +181,14 @@ class AppContext:
         for name in type(new).model_fields:
             if name not in ("listen_host", "listen_port", "data_dir", "api_token"):
                 setattr(old, name, getattr(new, name))
-        if self.panel.base_url != old.panel_base:
-            self.panel = PanelClient(old.panel_base)
-        have = {p.base_url: p for p in self.colors}
-        self.colors = [have.get(b) or ColorPanelClient(b) for b in old.color_panel_bases]
-        live = {old.panel_base, *old.color_panel_bases}
+        self._rebuild_panels()
+        try:
+            asyncio.get_running_loop().create_task(self.refresh_panels())
+        except RuntimeError:
+            pass
+        live = set(old.panel_bases)
         self._color_seen = {k: v for k, v in self._color_seen.items() if k in live}
+        self._panel_up = {k: v for k, v in self._panel_up.items() if k in live}
         self._self_url = ""
         # New hub, same health state and held messages per channel name.
         hub = NotifyHub(old.notifications, old.handle)
@@ -167,8 +200,8 @@ class AppContext:
                 p = held[c.name]
                 c.held, c.quiet_held, c._was_quiet = p.held, p.quiet_held, p._was_quiet
         self.notifier = hub
-        log.info("settings applied: interval=%ss eink=%s color=%s notify=%s", self.poll_interval,
-                 old.panel_base or "none", ",".join(old.color_panel_bases) or "none",
+        log.info("settings applied: interval=%ss panels=%s notify=%s", self.poll_interval,
+                 ",".join(old.panel_hosts) or "none",
                  ",".join(c.name for c in hub.channels) or "none")
 
     def health_view(self) -> dict[str, Any]:
@@ -181,6 +214,8 @@ class AppContext:
             "src": {k: {"t": int(h["t"]), "f": h["fails"], "e": h["err"][:40]} for k, h in self.health.items()},
             # All MakerWorld requests from this poller (ratelimit.py).
             "limiter": LIMITER.view(),
+            # Each configured panel: host, detected kind, board, firmware, answering.
+            "panels": self.panels_view(),
         }
 
     def creator_full(self) -> dict[str, Any] | None:
@@ -197,7 +232,7 @@ class AppContext:
         """This poller as seen from the panels' network (for lazy fetches)."""
         if not self._self_url:
             ip = "127.0.0.1"
-            hosts = [b.split("//", 1)[-1].split(":")[0] for b in self.settings.color_panel_bases]
+            hosts = [b.split("//", 1)[-1].split(":")[0] for b in self.settings.panel_bases]
             try:
                 with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sk:
                     sk.connect((socket.gethostbyname(hosts[0]) if hosts else "192.168.1.1", 80))
@@ -221,6 +256,10 @@ class AppContext:
     async def _poll_loop(self) -> None:
         # Small delay so HTTP server is up first
         await asyncio.sleep(2)
+        if self.settings.legacy_panel_keys:
+            log.warning("config: %s still work but are deprecated; list every panel under `panels:` instead "
+                        "(the dashboard's Settings tab does this when you save)", ", ".join(self.settings.legacy_panel_keys))
+        await self.refresh_panels(force=True)
         last = 0.0
         # Right after boot the network or cookie is often not ready yet, so
         # failed polls retry on a short schedule until one succeeds. Requests
@@ -233,6 +272,7 @@ class AppContext:
                 wait = None
                 ok = False
                 try:
+                    await self.refresh_panels()  # new hosts, and the 6-hourly re-check
                     ok = bool((await self.poll_once()).get("ok"))
                 except Exception as exc:  # noqa: BLE001
                     log.exception("Poll loop error: %s", exc)
@@ -255,14 +295,19 @@ class AppContext:
         The poll interval follows whichever panel's setting changed last.
         """
         poll_now = False
-        for panel in [p for p in (self.panel, *self.colors) if p.base_url]:
+        regroup = False
+        for panel in self._probes.values():
             cfg = await panel.settings()
+            self._panel_up[panel.base_url] = bool(cfg)
             if not cfg:
                 down = self._color_seen.get(panel.base_url)
                 if down != ("down", None):
                     log.warning("panel %s settings unreachable", panel.base_url)
                     self._color_seen[panel.base_url] = ("down", None)
                 continue
+            # A host that answers for the first time (or changed firmware)
+            # joins the right group straight away.
+            regroup |= self.panel_dir.note_board(panel.base_url, cfg)
             sec = int(cfg.get("pollSec") or 0)
             seq = cfg.get("pollNow")
             seen = self._color_seen.get(panel.base_url)
@@ -274,6 +319,10 @@ class AppContext:
             if seen not in (None, ("down", None)) and seq != seen[1]:
                 poll_now = True
             self._color_seen[panel.base_url] = (sec, seq)
+        if regroup:
+            self._rebuild_panels()
+            log.info("panels: color=%s eink=%s", ",".join(p.base_url for p in self.colors) or "none",
+                     self.panel.base_url or "none")
         return poll_now
 
     def _color_status(self, auth: str, message: str) -> dict[str, Any]:
@@ -333,7 +382,7 @@ class AppContext:
         prev = store.status.last_snapshot
         result: dict[str, Any] = {"ok": False}
 
-        store.status.panel_reachable = await self.panel.ping()
+        store.status.panel_reachable = await self.panel.ping() or any(self._panel_up.values())
         started = time.time()
         age = int(time.time() - store.status.cookie_updated_at) if store.status.cookie_updated_at else None
         log.info(
@@ -523,11 +572,10 @@ def create_app(settings: Settings, cfg_path=None) -> FastAPI:
         if ctx.store.status.cookie_updated_at:
             cookie_age = int(time.time() - ctx.store.status.cookie_updated_at)
         log.info(
-            "poller up handle=@%s interval=%ss eink=%s color=%s cookie=%s age=%s log=%s",
+            "poller up handle=@%s interval=%ss panels=%s cookie=%s age=%s log=%s",
             settings.handle,
             settings.poll_interval_sec,
-            settings.panel_base or "none",
-            ",".join(settings.color_panel_bases) or "none",
+            ",".join(settings.panel_hosts) or "none",
             "yes" if ctx.store.status.cookie_present else "no",
             _fmt_age(cookie_age) if cookie_age is not None else "none",
             settings.data_path / "poller.log",
@@ -543,7 +591,7 @@ def create_app(settings: Settings, cfg_path=None) -> FastAPI:
 
     @app.get("/status")
     async def status(_: None = Depends(require_token)) -> dict[str, Any]:
-        return ctx.store.public_status()
+        return {**ctx.store.public_status(), "panels": ctx.panels_view()}
 
     @app.post("/auth/cookie")
     async def auth_cookie(body: CookieIn, _: None = Depends(require_token)) -> dict[str, Any]:

@@ -3,18 +3,13 @@
 # MakerWorld public handle (without @)
 handle: "your-username"
 
-# CrowPanel IP from the e-paper display (leave empty if you have none)
-panel_host: "192.168.1.50"
-panel_port: 80
-
-# Optional color panels (Waveshare 3.16", CrowPanel 4.3/5/7"). The IP and the
-# .local name are on the Status screen and under Settings > Network; the .local
-# name (makermonitor-xxxxx.local, or the hostname set in the panel's web
-# console) survives DHCP changes.
-# Several: separate with commas, e.g. "192.168.1.50, makermonitor-e3b7d.local"
-# Leave empty to disable. Its Settings menu can change the poll interval.
-color_panel_host: ""
-color_panel_port: 80
+# Panels to push stats to: IPs or .local names, color or e-paper. The poller
+# works out which kind each one is. A color panel shows its address on its
+# Status page and under Settings > Network; makermonitor.local (or the name you
+# set in its web console) keeps working when the IP changes. Use "host:port"
+# for a port other than 80. Leave the list empty (or remove it) for none.
+# A panel's own Settings can change the poll interval.
+panels: ["makermonitor.local", "192.168.1.50"]
 
 # How often to poll MakerWorld (seconds). All MakerWorld requests share one
 # limiter (about 120 an hour); see README "MakerWorld requests".

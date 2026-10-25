@@ -32,11 +32,10 @@ from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
 from ruamel.yaml.scalarstring import DoubleQuotedScalarString
 
-from .color import ColorPanelClient
 from .config import Settings
 from .notify import CHANNELS, EVENT_TYPES, NotifyHub
 from .notify.base import expand_env
-from .panel import PanelClient
+from .panels import detect
 
 log = logging.getLogger(__name__)
 
@@ -46,10 +45,10 @@ BACKUPS = 10  # config.yaml.bak-<time> files kept next to config.yaml
 # Top-level fields the form edits. listen_*, data_dir and api_token stay
 # file-only: changing them needs a restart and can lock the dashboard out.
 TOP = {
-    "handle": str, "poll_interval_sec": int, "page_cycle_sec": int,
-    "panel_host": str, "panel_port": int, "color_panel_host": str, "color_panel_port": int,
-    "user_agent": str,
+    "handle": str, "poll_interval_sec": int, "page_cycle_sec": int, "panels": list, "user_agent": str,
 }
+# Replaced by `panels`; a save from the form moves them into it.
+LEGACY_PANEL_KEYS = ("panel_host", "panel_port", "color_panel_host", "color_panel_port")
 READONLY = ("listen_host", "listen_port", "data_dir")
 
 # Per channel type: (key, label, kind, required, secret, hint). kind is text,
@@ -168,7 +167,8 @@ class SettingsService:
     def read(self) -> dict[str, Any]:
         text, doc = self._raw()
         st = self.ctx.settings
-        top = {k: doc.get(k, getattr(st, k)) for k in TOP}
+        top = {k: doc.get(k, getattr(st, k)) for k in TOP if k != "panels"}
+        top["panels"] = st.panel_hosts  # `panels` plus anything still under the old keys
         n = doc.get("notifications") or {}
         defaults = {k: _plain(n.get(k)) for k in DEFAULT_KEYS if n.get(k) is not None}
         defaults["events"] = _effective(n.get("events"), n.get("exclude")) or list(EVENT_TYPES)
@@ -191,6 +191,7 @@ class SettingsService:
             "top": _plain(top),
             "readonly": {k: getattr(st, k) for k in READONLY},
             "effective": {"poll_interval_sec": self.ctx.poll_interval},
+            "panels_detected": self.ctx.panels_view(),
             "notifications": {"defaults": defaults, "channels": channels},
             "schema": {
                 "events": list(EVENT_TYPES),
@@ -300,6 +301,24 @@ class SettingsService:
             if k not in top:
                 continue
             v = top[k]
+            if t is list:  # panels: hosts or .local names, "host:port" for another port
+                hosts = v.split(",") if isinstance(v, str) else list(v or [])
+                clean: list[str] = []
+                for h in hosts:
+                    h = str(h).strip().removeprefix("http://").removeprefix("https://").rstrip("/")
+                    if not h or h in clean:
+                        continue
+                    if " " in h or "/" in h:
+                        errors["top.panels"] = f'"{h}" is not a host name or address'
+                    clean.append(h)
+                seq = CommentedSeq([_q(h) for h in clean])
+                seq.fa.set_flow_style()
+                if clean or "panels" in doc:
+                    doc["panels"] = seq
+                for old in LEGACY_PANEL_KEYS:
+                    if old in doc:
+                        del doc[old]
+                continue
             try:
                 v = int(v) if t is int else str(v if v is not None else "").strip()
             except (TypeError, ValueError):
@@ -315,10 +334,6 @@ class SettingsService:
         cyc = doc.get("page_cycle_sec", 30)
         if isinstance(cyc, int) and cyc < 10:
             errors["top.page_cycle_sec"] = "at least 10 seconds"
-        for k in ("panel_port", "color_panel_port"):
-            p = doc.get(k, 80)
-            if isinstance(p, int) and not 1 <= p <= 65535:
-                errors[f"top.{k}"] = "1 to 65535"
         if not str(doc.get("handle") or "").strip():
             errors["top.handle"] = "required"
 
@@ -475,18 +490,16 @@ class SettingsService:
         return {"ok": ok, "errors": {} if ok else {"channel.form": why[:300]}}
 
     async def test_panel(self, body: dict[str, Any]) -> dict[str, Any]:
-        host = str(body.get("host") or "").strip()
-        port = int(body.get("port") or 80)
+        host = str(body.get("host") or "").strip().removeprefix("http://").rstrip("/")
         if not host:
             return {"ok": False, "msg": "no host"}
-        base = f"http://{host}" if ":" in host else f"http://{host}:{port}"
-        client = ColorPanelClient(base) if body.get("kind") == "color" else PanelClient(base)
-        cfg = await client.settings()
-        if cfg:
-            return {"ok": True, "msg": f"answers ({cfg.get('board') or 'panel'}, poll {cfg.get('pollSec', '?')} s)"}
-        if isinstance(client, PanelClient) and await client.ping():
-            return {"ok": True, "msg": "answers"}
-        return {"ok": False, "msg": f"no answer from {base}"}
+        base = f"http://{host}" if ":" in host else f"http://{host}:80"
+        found = await detect(base)
+        if not found:
+            return {"ok": False, "msg": f"no answer from {host}"}
+        kind = "Color panel" if found["type"] == "color" else "E-paper panel"
+        fw = f", v{found['fw']}" if found["fw"] else ""
+        return {"ok": True, "type": found["type"], "msg": f"{kind} ({found['board']}{fw})"}
 
     def cookie_status(self) -> dict[str, Any]:
         st = self.ctx.store.status
