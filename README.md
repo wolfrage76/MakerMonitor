@@ -1,61 +1,184 @@
 # MakerMonitor
 
-Desk display and notifier for MakerWorld creator stats: an **Elecrow CrowPanel ESP32 2.13″ e-paper** and color panels (**Waveshare ESP32-S3 3.16″**, **Elecrow CrowPanel ESP32-S3 HMI 4.3″ / 5″ / 7″**). The 7″ color panel is the one currently in use.
+**Your MakerWorld stats at a glance.** Downloads, prints, boosts, likes, collects, comments, followers and points, as they happen, without keeping a MakerWorld tab open all day.
 
-No permanent MakerWorld browser tab. A thin Chrome extension refreshes session cookies when you visit MakerWorld; a Python poller keeps stats flowing to the panels and, optionally, to Discord, Pushover, ntfy, Telegram, Home Assistant and other notification services.
+I publish models on [MakerWorld](https://makerworld.com/en/@Wofl) and kept refreshing my profile to see what was moving. MakerMonitor does that for me: a small poller on my home network checks MakerWorld every few minutes and puts the numbers wherever I want them. On a phone, in Discord, or on a little touchscreen on my desk.
+
+![Today on the 7" color panel](docs/screens/today.png)
+
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+## Pick your setup
+
+The **poller** is the heart of it. Everything else is optional, so start small and add pieces when you want them.
+
+| Setup | You need | You get |
+|---|---|---|
+| **1. Web dashboard** | The poller | A dashboard on your phone or desktop: today's numbers, 7/30-day totals, every model in a sortable table, creator insights, followers, best times, health, and a Settings tab |
+| **2. Notifications** | The poller | Messages in Discord, Pushover, ntfy, Telegram, Home Assistant, Pushbullet, Apprise (Slack, Matrix, Gotify and 100+ more) or any webhook. No hardware at all |
+| **3. Color panel** | The poller + an Elecrow CrowPanel 7", 5" or 4.3", or a Waveshare 3.16" | A desk display with live banners and chimes as things happen, swipeable pages and touch (or knob) controls |
+| **4. E-ink panel** | The poller + an Elecrow CrowPanel 2.13" e-paper | A low-power glanceable summary (this firmware is on hold, so it doesn't get the newer creator pages) |
+| **5. Mix and match** | Any of the above | The dashboard is always there; add channels and panels side by side, several panels if you like |
 
 ```
-You browse makerworld.com (occasionally)
+You browse makerworld.com now and then
         │
         ▼
-Chrome extension  ──cookie update──►  Python poller (always on)
-                                           │
-                                           ├── HTTP /sync /notify ──►  e-paper panel
-                                           ├── HTTP /v2/state     ──►  color panel
-                                           └── notifications      ──►  Discord, Pushover, ntfy, Telegram, ...
+Browser extension ──cookie──►  Poller (always on, port 8787)
+                                  │
+                                  ├──►  Web dashboard   (any browser on your LAN)
+                                  ├──►  Notifications   (Discord, Pushover, ntfy, Telegram, ...)
+                                  ├──►  Color panels    (makermonitor.local)
+                                  └──►  E-ink panel
 ```
 
-## Pieces
+The browser extension is how the poller stays logged in: when you visit MakerWorld, it hands your session cookie to the poller on your LAN. Without it you still get public counts; with it you also get points, the 30-day reach report and the creator analytics.
 
-| Path | Role |
-|------|------|
-| [`firmware-eink/`](firmware-eink/) | CrowPanel e-paper: WiFiManager + HTTP API + e-paper UI |
-| [`firmware-color/`](firmware-color/) | Color panels (Waveshare 3.16" with knob, Elecrow CrowPanel 4.3/5/7" with touch): today's stats, 7/30-day trends, top models with per-model detail, best times, creator stats and followers, live banners, quiet hours, on-screen Wi-Fi setup, web console, screen-on firmware updates (7"), screenshot and page-switch API for testing |
-| [`poller/`](poller/) | Background agent: cookie store, MakerWorld fetch, panel push, notifications ([`NOTIFICATIONS.md`](poller/NOTIFICATIONS.md)) |
-| [`extension/`](extension/) | MV3 cookie courier + status popup |
+## Features
+
+### 📊 Dashboard
+- Opens at `http://<poller-host>:8787/` and works well on a phone. Light or dark follows your system, times are 12-hour.
+- **Overview** with today's numbers, top models with sparklines, followers, 7/30-day totals and best times.
+- **Models**: every model in one sortable table (downloads, views, downloads per view, prints, likes, collects, points, trend, unanswered comments), with links to MakerWorld.
+- **Activity**, **Health** (each data source, the cookie, the request budget) and a **Settings** tab that edits `config.yaml` and applies it without a restart.
+
+### 🔔 Notifications
+- Eight channel types, each with its own look: Discord, Pushbullet, Pushover, ntfy, Telegram, Home Assistant, Apprise and a generic JSON webhook.
+- One message per poll, grouped by event type: downloads, prints, boosts, likes, collects, comments, followers, points, plus health alerts when the cookie expires or data goes stale.
+- Per channel: which events, quiet hours, a "While you were away" digest when they end, and a minimum count before it bothers you.
+
+### 🖥️ Panels
+- **Color panels**: Today with 7/30-day context, a live feed, top models with per-model detail, trends, points, reach, comments, best times and creator pages. Banners (and on the 7", a chime) when something happens.
+- Quiet hours with a night mode, a Settings page on the screen itself, on-screen Wi-Fi setup and a small web console at `http://makermonitor.local/` (the name is yours to change).
+- Firmware updates over Wi-Fi; on the 7" the screen stays on with a progress bar.
+- **E-ink panel**: today, 30 days, top models, best times, comments and account pages.
+
+### 🧠 Creator insights
+From MakerWorld's own per-model analytics (needs the cookie): downloads per view, prints per download, engagement per 100 downloads, rising and stalled models, your latest launch against your typical one, points per model, the long-tail share from older models, and comments you haven't replied to yet.
+
+### 👥 Followers
+Your follower count, today's gain, 7 and 30 days, and a bar per day for the last month, plus which models brought followers in. On the dashboard, the color panel and in notifications.
+
+### 🕑 Best times
+When your downloads, prints and boosts happen, by hour of day and by weekday, over the last 30 days. Handy for deciding when to publish.
 
 ## Quick start
 
-1. **Flash a panel** — e-paper: [`firmware-eink/README.md`](firmware-eink/README.md). Color: [`firmware-color/README.md`](firmware-color/README.md). Note the IP on the display.
-2. **Run the poller** — see [`poller/README.md`](poller/README.md). Copy `config.example.yaml` to `config.yaml`, then set your `@handle`, panel address, and `api_token`. Panels are optional: the poller can run with notifications only.
-3. **Load the extension** — see [`extension/README.md`](extension/README.md). Visit MakerWorld once so the cookie is delivered.
-4. Optional: add notification channels under `notifications:` and test them with `.venv/bin/python -m makermonitor --test-notify` (see [`poller/NOTIFICATIONS.md`](poller/NOTIFICATIONS.md)).
-5. The e-paper panel leaves `WAITING SYNC` after the first successful poll. A color panel fills in on its Today screen (until then it shows a **Connect the poller** page with the `color_panel_host` line to set). Its web console is `http://<panel-ip>/` or `http://<name>.local/`.
+### 1. Run the poller
 
-The poller also serves a LAN dashboard at `http://<poller-host>:8787/?token=<api_token>` with stats, a sortable model table, health and a Settings view that edits `config.yaml` and applies it live (see [`poller/README.md`](poller/README.md#dashboard)). It can also run in Docker ([`poller/README.md`](poller/README.md#docker)).
+Pick one. Both read the same `config.yaml`.
 
-`config.yaml`, `poller/data/` (cookies and stats), `extension/LOAD_ME.txt`, and `platformio_override.ini` are gitignored. Do not add them.
+**Docker (compose)**
 
-## What is tracked
+```bash
+cd poller
+mkdir -p docker-data
+cp config.example.yaml docker-data/config.yaml   # set your handle and api_token
+MM_UID=$(id -u) MM_GID=$(id -g) docker compose up -d --build
+```
 
-- Downloads, prints, boosts, likes, collects, comments, followers, points (points and the 30-day reach report need a valid cookie)
-- Today (since midnight), yesterday, 7 and 30 days, per-model daily history, and best hours and weekdays
-- Creator stats from MakerWorld's own per-model analytics: downloads per view, prints per download, engagement per 100 downloads, momentum (rising and stalled models), launch curves against your typical launch, points and followers per model, long-tail share and unanswered comments (color panels and the dashboard)
-- Event banners and alerts when counts change
-- Poller health (cookie ok / expired, data stale, per-source fetch status, MakerWorld request budget) on the panels and the dashboard
-- Optional notifications per event type (downloads, prints, boosts, likes, collects, comments, followers, points, poller health), with per-channel event selection, quiet hours and a "while you were away" digest
+**Python (pip, optionally as a systemd service)**
 
-## Limitations
+```bash
+cd poller
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp config.example.yaml config.yaml                 # set your handle and api_token
+python -m makermonitor
+```
 
-- MakerWorld has **no official creator API**. Endpoints are unofficial and can break when the site redeploys.
-- Cookies expire. If you stop visiting MakerWorld, the poller will eventually get `AUTH` until you browse again.
-- Cloudflare `cf_clearance` is often **IP-bound** — run the poller on an always-on **Linux host on your home LAN** (same public IP as your browser), not a remote VPS. See [`poller/README.md`](poller/README.md) for systemd.
-- Updates are poll-interval based (default 10 minutes), not instant push from MakerWorld.
-- All MakerWorld traffic goes through one rate limiter (one request at a time, at least ~3 s apart, about 120 requests an hour, with backoff on errors). Creator stats are fetched a few models at a time in the background, so they take a few hours to fill in after the first start.
-- The e-paper panel is on hold: it gets the TODAY / 30 days / top models / best times / comments / account pages, but not the creator stats.
-- Per-model event names depend on what the poller can scrape; if only lifetime totals are available, events are generic (`+3 downloads`).
+[`poller/README.md`](poller/README.md) has the systemd unit, the Docker details and everything else.
 
+### 2. Open the dashboard
+
+Visit `http://<poller-host>:8787/?token=<api_token>` once. Your browser remembers it after that.
+
+### 3. Install the browser extension
+
+Load [`extension/`](extension/) as an unpacked extension in Chrome, Edge or Brave, set the poller URL (`http://<poller-host>:8787`) and the same `api_token`, then visit MakerWorld. Steps in [`extension/README.md`](extension/README.md).
+
+### 4. Optional: notifications
+
+Add channels under `notifications:` in `config.yaml` (or in the dashboard's Settings tab) and send a test:
+
+```bash
+.venv/bin/python -m makermonitor --test-notify
+```
+
+[`poller/NOTIFICATIONS.md`](poller/NOTIFICATIONS.md) covers every service and option.
+
+### 5. Optional: a panel
+
+Flash a color panel with PlatformIO:
+
+```bash
+cd firmware-color
+rm -f sdkconfig.defaults
+pio run -e crowpanel_70 -t upload      # or crowpanel_50, crowpanel_43, ws316
+```
+
+Join it to your Wi-Fi on the screen. Until the poller knows about it, the panel shows a **Connect the poller** page with the line to add to `config.yaml` (`color_panel_host: "makermonitor.local"`). Build notes, controls and the full feature list are in [`firmware-color/README.md`](firmware-color/README.md); the e-ink panel is in [`firmware-eink/README.md`](firmware-eink/README.md).
+
+## Configuration
+
+Everything lives in `poller/config.yaml`; start from the commented [`config.example.yaml`](poller/config.example.yaml). The essentials are your MakerWorld `handle` and an `api_token` you make up. Panel addresses, the poll interval (10 minutes by default) and notification channels are all optional.
+
+Most of it can also be changed from the dashboard's **Settings** tab, which checks your changes before saving, keeps a backup of the previous file and applies them right away. Secrets can come from environment variables (`"${DISCORD_WEBHOOK}"`).
+
+Panel settings (brightness, quiet hours, which events to show, the poll interval) are set on the panel itself or in its web console.
+
+## Privacy and being polite to MakerWorld
+
+- Your MakerWorld cookie only travels from your browser to the poller on your own network. Panels, the dashboard and notification services never see it.
+- Notifications carry stats, model names and comment text, and only go to the services you set up.
+- MakerWorld has no official creator API, so the poller is careful: one request at a time, a few seconds apart, about 120 an hour at most, with backoff when MakerWorld pushes back. The creator analytics fill in slowly in the background over a few hours.
+- `config.yaml`, `poller/data/` (cookie and history) and private build settings are git-ignored.
+
+## Screenshots
+
+From the 7" color panel (captured with `tools/capture_screens.sh`; the full set is in [`docs/screens/`](docs/screens/)):
+
+| | | |
+|---|---|---|
+| ![Creator: Convert](docs/screens/creator-convert.png) | ![Creator: Followers](docs/screens/creator-followers.png) | ![Best times](docs/screens/best.png) |
+| Creator: Convert | Creator: Followers | Best times |
+| ![Top models](docs/screens/models.png) | ![Settings](docs/screens/settings.png) | ![Status](docs/screens/status.png) |
+| Top models | Settings | Status |
+
+## What's in the repo
+
+| Path | What it is |
+|---|---|
+| [`poller/`](poller/) | The Python poller: MakerWorld fetching, the dashboard and Settings tab, notifications, panel pushes. See also [`NOTIFICATIONS.md`](poller/NOTIFICATIONS.md) |
+| [`extension/`](extension/) | The browser extension that hands your MakerWorld cookie to the poller |
+| [`firmware-color/`](firmware-color/) | Firmware for the color panels (CrowPanel 7" / 5" / 4.3", Waveshare 3.16") |
+| [`firmware-eink/`](firmware-eink/) | Firmware for the CrowPanel 2.13" e-paper panel (on hold) |
+| [`tools/`](tools/) | `capture_screens.sh`, which screenshots every page of a running color panel |
+| [`docs/`](docs/) | [`architecture.md`](docs/architecture.md) (how the pieces fit, request limits, updates) and the screenshots |
+
+## FAQ and troubleshooting
+
+**Do I need a panel?**
+No. The poller with the dashboard, notifications, or both is a complete setup.
+
+**The dashboard says unauthorized.**
+Open it once with `?token=<api_token>` from your `config.yaml`; the browser keeps a cookie for 180 days.
+
+**Points and creator stats are missing.**
+Those need the MakerWorld cookie. Check the extension's popup, then visit MakerWorld so it can send a fresh one. The dashboard's Health view and the panel's Status page show the cookie's state.
+
+**Where should the poller run?**
+On an always-on machine on your home network (a Linux box, a Raspberry Pi, a NAS with Docker). MakerWorld's Cloudflare check is often tied to your home IP, so a remote server tends to fail.
+
+**The color panel says "waiting for poller".**
+Set `color_panel_host` in `config.yaml` to the name or address on the panel's **Connect the poller** page (or its Status page) and restart the poller. `.local` names keep working when your router hands out a new address.
+
+**How often does it update?**
+Every 10 minutes by default. The panel's Settings or the dashboard can change that, and a panel's Poll now button asks for one right away.
+
+**Something stopped working after MakerWorld changed its site.**
+The data comes from MakerWorld's own (unofficial) web endpoints, which can change without notice. The Health view shows which source is failing.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT, see [LICENSE](LICENSE).
