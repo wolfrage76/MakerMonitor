@@ -378,6 +378,8 @@ static bool pageSnap(int slot, int idx) {
   cacheIdx[slot] = idx;
   cacheOk[slot] = lv_snapshot_take_to_buf(screens[idx], LV_IMG_CF_TRUE_COLOR, &dsc, display_page_buf(slot),
                                           (uint32_t)W * H * sizeof(lv_color_t)) == LV_RES_OK;
+  // Software-dimmed boards: the neighbour must be as dark as the screen.
+  if (cacheOk[slot]) display_dim_pixels(display_page_buf(slot), (size_t)W * H);
   return cacheOk[slot];
 }
 
@@ -3522,6 +3524,11 @@ static void applyBrightness() {
     goScreen(SC_TODAY, 0);
   }
   dimmed = level < bright;
+  static int lastLevel = -1;
+  if (level != lastLevel) {
+    lastLevel = level;
+    markPagesDirty();  // snapshots taken at the old level (software dimming)
+  }
   display_set_brightness(level);
 }
 

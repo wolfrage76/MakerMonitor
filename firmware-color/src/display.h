@@ -4,6 +4,10 @@
 // Sets up the panel and registers a landscape LVGL display (size per board).
 void display_init();
 void display_set_brightness(uint8_t pct);
+// Boards whose backlight is only on/off (LCD_CH422G) dim in software: pixels
+// are darkened as they are written. Page snapshots for slides go through the
+// same table. No-op elsewhere.
+void display_dim_pixels(uint16_t* px, size_t n);
 // Stops the RGB scan and frees the panel. Flash writes (OTA) disable the
 // cache, and this panel's DMA reads its framebuffer from octal PSRAM, which
 // panics while the cache is off. The screen stays dark until reboot.

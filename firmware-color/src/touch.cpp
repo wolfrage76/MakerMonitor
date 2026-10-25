@@ -24,6 +24,8 @@ static void mapPoint(int rx, int ry, lv_indev_data_t* d) {
 #if TOUCH_GT911
 #include <Wire.h>
 
+#include "ch422g.h"
+
 static uint8_t gtAddr = 0;
 
 static bool i2cProbe(uint8_t addr) {
@@ -56,6 +58,7 @@ static void gtWrite(uint16_t reg, uint8_t val) {
   Wire.endTransmission();
 }
 
+#ifdef TOUCH_PCA9557
 // Board v3 keeps the GT911 in reset via the PCA9557 (same sequence as
 // Elecrow's demo and the Digital Swatch firmware).
 static void releaseViaPca9557() {
@@ -72,6 +75,7 @@ static void releaseViaPca9557() {
   i2cWriteReg(pca, 0x03, 0x02);
   delay(50);
 }
+#endif
 
 static bool findGt911() {
   for (uint8_t a : {0x5D, 0x14}) {
@@ -104,10 +108,23 @@ static void readCb(lv_indev_drv_t*, lv_indev_data_t* d) {
 
 static bool hwInit() {
   Wire.begin(TOUCH_SDA, TOUCH_SCL, 400000);
+#if LCD_CH422G
+  // Reset through the expander with INT low: the GT911 comes up at 0x5D.
+  pinMode(TOUCH_INT, OUTPUT);
+  digitalWrite(TOUCH_INT, LOW);
+  ch422g_write(CH422G_TOUCH_RST, false);
+  delay(10);
+  ch422g_write(CH422G_TOUCH_RST, true);
+  delay(10);
+  pinMode(TOUCH_INT, INPUT);
+  delay(60);
+  findGt911();
+#else
   if (!findGt911()) {
     releaseViaPca9557();
     findGt911();
   }
+#endif
   Serial.printf("GT911 %s (0x%02X)\n", gtAddr ? "found" : "not found", gtAddr);
   return gtAddr != 0;
 }

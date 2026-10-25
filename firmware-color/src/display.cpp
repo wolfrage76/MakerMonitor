@@ -10,6 +10,10 @@
 #include <esp_lcd_panel_rgb.h>
 
 #include "board.h"
+#include "ch422g.h"
+#if LCD_CH422G
+#include <Wire.h>
+#endif
 
 static esp_lcd_panel_handle_t panel = nullptr;
 static bool displaySuspended = false;
@@ -123,7 +127,30 @@ static void st7701Init() {
 
 static bool composing = false;
 
+// ---- software dimming (on/off backlights) ------------------------------------
+// A lookup table per 5- and 6-bit channel, scaled from 100% down to a floor
+// of 25%: below that colours run together (same floor as SpoolmanScale).
+static bool dimOn = false;
+static uint8_t dimLut5[32], dimLut6[64];
+
+static void dimBuild(int pct) {
+  dimOn = pct < 100;
+  if (!dimOn) return;
+  float k = 0.25f + 0.75f * pct / 100.0f;
+  for (int i = 0; i < 32; i++) dimLut5[i] = (uint8_t)(i * k + 0.5f);
+  for (int i = 0; i < 64; i++) dimLut6[i] = (uint8_t)(i * k + 0.5f);
+}
+
+void display_dim_pixels(uint16_t* px, size_t n) {
+  if (!dimOn) return;
+  for (size_t i = 0; i < n; i++) {
+    uint16_t c = px[i];
+    px[i] = (dimLut5[c >> 11] << 11) | (dimLut6[(c >> 5) & 0x3F] << 5) | dimLut5[c & 0x1F];
+  }
+}
+
 static void flushCb(lv_disp_drv_t* drv, const lv_area_t* a, lv_color_t* px) {
+  if (dimOn) display_dim_pixels((uint16_t*)px, (size_t)(a->x2 - a->x1 + 1) * (a->y2 - a->y1 + 1));
   if (panel && !displaySuspended && !composing)
     esp_lcd_panel_draw_bitmap(panel, a->x1, a->y1, a->x2 + 1, a->y2 + 1, px);
   lv_disp_flush_ready(drv);
@@ -198,12 +225,37 @@ void display_compose(const uint16_t* nb, int dx, const lv_area_t* keep, int nkee
 void display_compose_end() { composing = false; }
 
 void display_set_brightness(uint8_t pct) {
+#if LCD_CH422G
+  // The expander can only switch the backlight on or off; levels in between
+  // darken the picture instead, and the whole screen is drawn again.
+  static int last = -1;
+  if ((pct > 0) != (last > 0) || last < 0) ch422g_write(CH422G_BACKLIGHT, pct > 0);
+  if (pct > 0 && pct != last) {
+    bool was = dimOn;
+    dimBuild(pct);
+    if ((dimOn || was) && lv_disp_get_default()) {
+      lv_obj_invalidate(lv_scr_act());
+      lv_obj_invalidate(lv_layer_top());
+    }
+  }
+  last = pct;
+#else
   uint32_t duty = (uint32_t)pct * 255 / 100;
   ledcWrite(LCD_PIN_BL, LCD_BL_ACTIVE_HIGH ? duty : 255 - duty);
+#endif
 }
 
 void display_init() {
+#if LCD_CH422G
+  // Everything held low (panel and touch in reset, backlight off), then the
+  // LCD out of reset before the RGB driver starts.
+  Wire.begin(TOUCH_SDA, TOUCH_SCL, 400000);
+  if (!ch422g_begin(0x00)) Serial.println("CH422G does not answer");
+  ch422g_write(CH422G_LCD_RST, true);
+  delay(20);
+#else
   ledcAttach(LCD_PIN_BL, 20000, 8);
+#endif
   display_set_brightness(0);
 
 #ifdef LCD_PIN_PANEL_EN

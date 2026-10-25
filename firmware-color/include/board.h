@@ -12,6 +12,8 @@
 #include "boards/crowpanel_50.h"
 #elif defined(BOARD_CROWPANEL_70)
 #include "boards/crowpanel_70.h"
+#elif defined(BOARD_WAVESHARE_70)
+#include "boards/waveshare_70.h"
 #else
 #include "boards/ws316.h"
 #endif
@@ -40,6 +42,9 @@
 #endif
 #ifndef LCD_ST7701
 #define LCD_ST7701 0
+#endif
+#ifndef LCD_CH422G
+#define LCD_CH422G 0
 #endif
 #ifndef BAT_ADC_PIN
 #define BAT_ADC_PIN -1
