@@ -1,0 +1,16 @@
+# docker compose up -d   (from this folder; see README "Docker")
+services:
+  poller:
+    build: .
+    image: makermonitor-poller
+    container_name: makermonitor-poller
+    restart: unless-stopped
+    # Host networking: the panels fetch from the poller's LAN address, and
+    # .local panel names resolve through the host.
+    network_mode: host
+    # Run as your user so ./docker-data stays editable (MM_UID=$(id -u) MM_GID=$(id -g)).
+    user: "${MM_UID:-1000}:${MM_GID:-1000}"
+    environment:
+      TZ: "${TZ:-America/New_York}"   # "today", daily stats and quiet hours use this time zone
+    volumes:
+      - ./docker-data:/config         # config.yaml + data/ (cookie, history, logs)

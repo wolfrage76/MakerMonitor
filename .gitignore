@@ -2,6 +2,7 @@
 .env
 poller/config.yaml
 poller/data/
+poller/docker-data/
 *.bak
 *.bak-*
 extension/LOAD_ME.txt
