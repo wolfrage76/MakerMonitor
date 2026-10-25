@@ -4798,6 +4798,7 @@ static bool dragDecided = false, dragging = false;
 static lv_point_t dragStart;
 static int dragDx = 0;
 static uint32_t pressT = 0;  // when the finger went down
+static uint32_t moveT = 0;   // when it had moved far enough to count as a drag
 // Recent (time, x) samples: the release speed is measured over the last
 // ~100 ms, which catches quick flicks even when frames are slow.
 static uint32_t sampT[6];
@@ -4821,6 +4822,7 @@ static void dragMove(const lv_point_t& p) {
     int slot = dx < 0 ? 1 : 0, nb = dx < 0 ? (cur + 1) % NCAR : (cur + NCAR - 1) % NCAR;
     if (!pageSnap(slot, nb)) return;
     slideBusy = dragging = swiped = true;
+    moveT = now;
     touchActivity();
     if (bannerUp) bannerClear();
     display_compose_begin();
@@ -4840,15 +4842,24 @@ static void dragMove(const lv_point_t& p) {
 }
 
 // Goes to the neighbor when the drag passed 80 px (1/10 of the width on
-// narrower panels), was a quick swipe (30+ px in under 350 ms), or was fast
+// narrower panels), was a quick swipe (25+ px in under 400 ms), or was fast
 // that way (>= 0.3 px/ms, 25+ px). Speed is the larger of the average over
-// the whole gesture and the peak over the last ~50 ms of samples; the speed
-// right at lift-off alone reads far too low. Otherwise it snaps back.
-static void dragRelease() {
+// the movement and the peak over the last ~50 ms of samples; the speed
+// right at lift-off alone reads far too low. Time counts from when the finger
+// started moving, not from when it touched down: the pause before a short
+// flick made it miss (the Waveshare 7" showed 330-410 ms from touch-down for
+// 30-60 px flicks, and 27-29 px moves in ~330 ms). Otherwise it snaps back.
+static void dragRelease(const lv_point_t* last) {
   if (!dragging) return;
+  // While a slide is composed, touch is only read once per frame (~50 ms),
+  // so the last position may not have been seen as a move yet.
+  if (last) {
+    int dx = constrain(last->x - dragStart.x, -W, W);
+    if ((dx < 0) == (dragDx < 0) && abs(dx) > abs(dragDx)) dragDx = dx;
+  }
   dragging = false;
   int dir = dragDx < 0 ? 1 : -1, slot = dragDx < 0 ? 1 : 0;
-  uint32_t now = millis(), dur = now - pressT;
+  uint32_t now = millis(), dur = now - moveT;
   float avg = dur ? dragDx / (float)dur : 0, peak = 0;
   for (int i = 1; i < sampN; i++) {
     if (sampT[0] - sampT[i - 1] > 50) break;
@@ -4859,10 +4870,11 @@ static void dragRelease() {
   float vel = fabsf(avg) >= fabsf(peak) ? avg : peak;
   int adx = abs(dragDx);
   bool far = adx >= min(80, W / 10);
-  bool quick = adx >= 30 && dur < 350;
+  bool quick = adx >= 25 && dur < 400;
   bool flick = adx >= 25 && fabsf(vel) >= 0.3f && (vel < 0) == (dragDx < 0);
   bool commit = dragDx != 0 && (far || quick || flick);
-  swipeLog("swipe dx %d %lums avg %.2f peak %.2f: %s\n", dragDx, (unsigned long)dur, avg, peak,
+  swipeLog("swipe dx %d %lums (touch %lums) avg %.2f peak %.2f: %s\n", dragDx, (unsigned long)dur,
+           (unsigned long)(now - pressT), avg, peak,
            commit ? (far ? "commit" : quick ? "commit (quick)" : "commit (flick)") : "snap back");
   if (commit) {
     runSlide(slot, dragDx, -dir * W, 200);
@@ -4934,9 +4946,12 @@ static void touchEvent(lv_event_t* e) {
       return;
     }
     case LV_EVENT_RELEASED:
-    case LV_EVENT_PRESS_LOST:
-      dragRelease();
+    case LV_EVENT_PRESS_LOST: {
+      lv_point_t p;
+      lv_indev_get_point(lv_indev_get_act(), &p);
+      dragRelease(&p);
       return;
+    }
     case LV_EVENT_GESTURE: {
       lv_dir_t d = lv_indev_get_gesture_dir(lv_indev_get_act());
       // Horizontal moves are finger-follow drags on compositor boards.

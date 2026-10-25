@@ -87,8 +87,27 @@ static bool findGt911() {
   return false;
 }
 
+#ifndef DEBUG_SWIPE
+#define DEBUG_SWIPE 0
+#endif
+
 static void readCb(lv_indev_drv_t*, lv_indev_data_t* d) {
   static lv_indev_data_t last = {};
+#if DEBUG_SWIPE
+  static uint32_t lastLog = 0;
+  static int lastState = -1;
+  struct Logger {
+    lv_indev_data_t* d;
+    ~Logger() {
+      if ((int)d->state != lastState) {
+        Serial.printf("touch %s %d,%d at %lu (+%lu)\n", d->state == LV_INDEV_STATE_PR ? "down" : "up", d->point.x,
+                      d->point.y, (unsigned long)millis(), (unsigned long)(millis() - lastLog));
+        lastState = d->state;
+        lastLog = millis();
+      }
+    }
+  } logger{d};
+#endif
   d->point = last.point;
   d->state = LV_INDEV_STATE_REL;
   uint8_t status;
