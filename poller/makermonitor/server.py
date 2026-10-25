@@ -397,6 +397,12 @@ class AppContext:
             snap = await client.fetch_snapshot(prev)
             if not snap.account_name:
                 snap.account_name = settings.handle
+            # The profile-page fallback (used when the design API fails, e.g. a
+            # MakerWorld 502) has no per-model data and totals that don't match
+            # the per-model sums. Accepting it after full data made every
+            # count jump and sent bogus events; keep the last full snapshot.
+            if prev.models and not snap.models:
+                raise RuntimeError(f"partial data ({snap.source}): keeping the last full snapshot")
             store.status.auth_ok = bool(cookie)
             store.status.last_poll_ok = True
             store.status.last_error = ""
