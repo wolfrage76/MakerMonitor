@@ -21,7 +21,7 @@ It does **not** scrape stats or talk to the CrowPanel. That is the poller’s jo
 - Every 30 minutes → re-check / push if hash changed
 - Popup shows poller health (cookie age, last poll, panel reachability)
 
-The poller's LAN dashboard (stats, creator stats and health) is at the same Poller URL: open `<Poller URL>/?token=<api_token>` once and the browser remembers it.
+The poller's LAN dashboard (stats, creator stats, followers, health and a Settings tab) is at the same Poller URL: open `<Poller URL>/?token=<api_token>` once and the browser remembers it.
 
 ## Privacy
 

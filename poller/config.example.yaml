@@ -8,8 +8,9 @@ panel_host: "192.168.1.50"
 panel_port: 80
 
 # Optional color panels (Waveshare 3.16", CrowPanel 4.3/5/7"). The IP and the
-# .local name are on the Status screen; the .local name (makermonitor-xxxxx.local,
-# or the hostname set in the panel's Settings) survives DHCP changes.
+# .local name are on the Status screen and under Settings > Network; the .local
+# name (makermonitor-xxxxx.local, or the hostname set in the panel's web
+# console) survives DHCP changes.
 # Several: separate with commas, e.g. "192.168.1.50, makermonitor-e3b7d.local"
 # Leave empty to disable. Its Settings menu can change the poll interval.
 color_panel_host: ""

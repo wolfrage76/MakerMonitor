@@ -20,7 +20,7 @@ Chrome extension  ──cookie update──►  Python poller (always on)
 | Path | Role |
 |------|------|
 | [`firmware-eink/`](firmware-eink/) | CrowPanel e-paper: WiFiManager + HTTP API + e-paper UI |
-| [`firmware-color/`](firmware-color/) | Color panels (Waveshare 3.16" with knob, Elecrow CrowPanel 4.3/5/7" with touch): today's stats, 7/30-day trends, top models with per-model detail, best times, creator stats, live banners, on-screen Wi-Fi setup, web console |
+| [`firmware-color/`](firmware-color/) | Color panels (Waveshare 3.16" with knob, Elecrow CrowPanel 4.3/5/7" with touch): today's stats, 7/30-day trends, top models with per-model detail, best times, creator stats and followers, live banners, quiet hours, on-screen Wi-Fi setup, web console, screen-on firmware updates (7"), screenshot and page-switch API for testing |
 | [`poller/`](poller/) | Background agent: cookie store, MakerWorld fetch, panel push, notifications ([`NOTIFICATIONS.md`](poller/NOTIFICATIONS.md)) |
 | [`extension/`](extension/) | MV3 cookie courier + status popup |
 
@@ -30,7 +30,7 @@ Chrome extension  ──cookie update──►  Python poller (always on)
 2. **Run the poller** — see [`poller/README.md`](poller/README.md). Copy `config.example.yaml` to `config.yaml`, then set your `@handle`, panel address, and `api_token`. Panels are optional: the poller can run with notifications only.
 3. **Load the extension** — see [`extension/README.md`](extension/README.md). Visit MakerWorld once so the cookie is delivered.
 4. Optional: add notification channels under `notifications:` and test them with `.venv/bin/python -m makermonitor --test-notify` (see [`poller/NOTIFICATIONS.md`](poller/NOTIFICATIONS.md)).
-5. The e-paper panel leaves `WAITING SYNC` after the first successful poll. A color panel fills in on its Today screen. Its web console is `http://<panel-ip>/`.
+5. The e-paper panel leaves `WAITING SYNC` after the first successful poll. A color panel fills in on its Today screen (until then it shows a **Connect the poller** page with the `color_panel_host` line to set). Its web console is `http://<panel-ip>/` or `http://<name>.local/`.
 
 The poller also serves a LAN dashboard at `http://<poller-host>:8787/?token=<api_token>` with stats, a sortable model table, health and a Settings view that edits `config.yaml` and applies it live (see [`poller/README.md`](poller/README.md#dashboard)). It can also run in Docker ([`poller/README.md`](poller/README.md#docker)).
 

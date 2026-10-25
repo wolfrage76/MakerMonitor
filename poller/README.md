@@ -44,7 +44,9 @@ The state also carries:
 
 The e-paper panel gets some of the same data as pages: TODAY, LAST 30 DAYS, TOP MODELS (each with a 7/30-day page), BEST TIMES, COMMENTS, ACCOUNT, and a "data stale" status when health says so. E-paper work is on hold, so it has no creator stats.
 
-Color panels are best addressed by their `.local` name (e.g. `color_panel_host: "makermonitor-8e7a8.local"`), which survives DHCP changes.
+Color panels are best addressed by their `.local` name (e.g. `color_panel_host: "makermonitor.local"`, or the default `makermonitor-xxxxx.local`), which survives DHCP changes.
+
+If a poll fails before the first successful one since the poller started (network not up yet after a reboot, cookie not refreshed yet), it retries after 15, 30, 60 and 120 s, then falls back to the normal interval. Retries go through the same request limiter. The panel also shows time in 12-hour format; the poller sends it plain timestamps and its UTC offset.
 
 ## Creator stats
 

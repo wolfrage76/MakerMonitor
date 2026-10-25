@@ -35,7 +35,11 @@ Everything the poller sends to MakerWorld goes through one limiter (`poller/make
 
 ## Firmware updates (color panels)
 
-An update (ArduinoOTA, web console upload or GitHub release) first draws an "Updating firmware... Do not unplug" screen, stops the speaker, then switches the RGB panel off: octal PSRAM and flash share the cache, and the panel DMA would fault during flash writes. The screen stays dark until the panel restarts. If the display is off with no update running for 20 s (an upload that stalled), the panel restarts itself; the reason is logged at the next boot. A 30 s loop watchdog reboots a hung panel.
+An update (ArduinoOTA, web console upload or GitHub release) stops the speaker first. On the 7" CrowPanel the firmware runs from PSRAM (`SPIRAM_XIP_FROM_PSRAM`), so flash writes leave the cache on and the display keeps running: a full-screen "Updating firmware" page shows a percentage and progress bar, redrawn every 5%, with the pixel clock halved meanwhile so flash traffic doesn't starve the PSRAM scan-out (otherwise lines shift). The other color boards still switch the RGB panel off before the first flash write (octal PSRAM and flash share the cache, and their panel DMA would fault) and stay dark until they restart. Every path ends in one wrapped `esp_ota_set_boot_partition`: the panel goes dark only for that final switch, and a failed switch restarts it on the old firmware. If the update screen (or a dark screen) is left with no update running for 20 s, the panel restarts itself; the reason is logged at the next boot. A 30 s loop watchdog reboots a hung panel.
+
+## Testing the color panel
+
+`POST /v2/ui/show` switches the panel to any page, Creator tab or Settings picker, `GET /screenshot.png` returns what it shows, and `tools/capture_screens.sh` walks them all into `docs/screens/`. `GET /diagnostics` has firmware, uptime, reset reason, install time, RAM and whether XIP is active.
 
 ## Trust boundaries
 
