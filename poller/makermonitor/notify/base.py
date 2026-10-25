@@ -124,7 +124,8 @@ class Channel:
             if self.quiet_digest:
                 mine = held + mine
                 start = self.quiet[0] if self.quiet else 0
-                heading = f"While you were away (since {start // 60:02d}:{start % 60:02d})"
+                h = start // 60
+                heading = f"While you were away (since {h % 12 or 12}:{start % 60:02d} {'AM' if h < 12 else 'PM'})"
         out, self.held = self.held + mine, []
         for t, n in self.min_count.items():
             if sum(e.count for e in out if e.type == t) < n:

@@ -55,7 +55,7 @@ notifications:
 | `events` | all | Event types this channel gets. A list, or a comma-separated string |
 | `exclude` | none | Event types to leave out |
 | `quiet_hours` | off | `"HH:MM-HH:MM"` (can cross midnight). No messages during this window except `urgent` types |
-| `quiet_digest` | `true` | When quiet hours end: `true` sends one "🌙 While you were away (since 23:00)" message with everything held; `always` also sends "No new activity overnight" after a quiet night; `false` drops what happened during quiet hours |
+| `quiet_digest` | `true` | When quiet hours end: `true` sends one "🌙 While you were away (since 11:00 PM)" message with everything held; `always` also sends "No new activity overnight" after a quiet night; `false` drops what happened during quiet hours |
 | `urgent` | `[health]` | Types that are sent even during quiet hours |
 | `min_count` | none | `{type: n}`: hold a grouped type until it adds up to `n`, e.g. `{download: 5}` |
 | `name` | the type | Label used in the log (useful with two channels of the same type) |
