@@ -20,6 +20,7 @@ struct DayRow {
 };
 
 struct TopRow {
+  char id[16];     // MakerWorld design id (for the model detail page)
   char name[64];
   int v[NSTAT];
   int score;
@@ -39,12 +40,66 @@ struct CommentRow {
   char when[12];
 };
 
+// Follower count and gains; series: gains per day, oldest first, ending today.
+struct Followers {
+  bool has;
+  int total, today, d7, d30, n;
+  int16_t series[30];
+};
+
 struct Month {
   bool has;
   long impressions, views, ydayImpressions, ydayViews;
   int followers, likes, saves, downloads, prints, boosts;
   float points, pointsModels, pointsProfiles;
   char start[12], end[12];
+};
+
+// Poller health: last good fetch per source and the cookie state.
+enum HealthSrc { H_MODELS, H_REACH, H_POINTS, NHSRC };
+struct Health {
+  bool has;
+  bool stale;          // models older than 3x the poll interval
+  bool expired;        // cookie rejected by MakerWorld
+  uint32_t since;      // last good models fetch (UTC)
+  uint32_t srcT[NHSRC];
+  uint8_t srcFails[NHSRC];
+};
+
+// Best times over the last 30 days, per metric (downloads, prints, boosts).
+static const int NBEST = 3;
+struct Insights {
+  bool has;            // at least 7 days collected
+  uint8_t days;
+  uint16_t hour[NBEST][24];
+  uint16_t wday[NBEST][7];  // Mon = 0
+  int8_t bestHour[NBEST], bestDay[NBEST];
+};
+
+// Creator stats (poller "creator" block): top-4 lists plus account numbers.
+enum CList { CL_CONV, CL_ENG, CL_RISE, CL_STALL, CL_PTS, CL_FOL, CL_UNANS, NCLIST };
+struct CRow {
+  char id[16];
+  char name[61];
+  float a, b;      // list-specific values (see parse_state)
+};
+struct Creator {
+  bool has;
+  int have, of;    // models with MakerWorld analytics so far / all
+  int n[NCLIST];
+  CRow rows[NCLIST][4];
+  int unans;
+  int tail[3][2];  // today, 7d, 30d: downloads from models older / newer than 30 days
+  float dpv7, dpv30, ppd, e100, pts7, pts30, pa7;  // -1 = no data
+  float acct7;     // account points gained over the last 7 days (balance change)
+  int fol7, fol30;
+  int8_t ptTrend;  // 1 up, 0 flat, -1 down
+  bool hasLaunch;
+  char lname[61];
+  int lday, lpct, lpast;  // lpct -1 = no earlier launches
+  int lcur[7];
+  float lmed[7];
+  int nmed;
 };
 
 struct State {
@@ -56,6 +111,7 @@ struct State {
   float todayPoints;
   bool hasYday;
   int yday[NSTAT];
+  float ydayPoints;
   uint32_t since;
   bool midnight;   // baseline came from before midnight (full day)
   int total[NSTAT];
@@ -69,6 +125,7 @@ struct State {
   int nfeed;
   FeedRow feed[8];
   Month month;
+  Followers fol;
   int ncomments;
   CommentRow comments[9];
   char auth[10];
@@ -77,6 +134,10 @@ struct State {
   uint32_t lastPoll;
   bool pollOk;
   int pollSec;
+  Health health;
+  Insights insights;
+  char poller[48];   // http://host:port, for lazy fetches (model detail)
+  Creator creator;
 };
 
 struct Event {

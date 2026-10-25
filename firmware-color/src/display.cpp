@@ -12,6 +12,7 @@
 #include "board.h"
 
 static esp_lcd_panel_handle_t panel = nullptr;
+static bool displaySuspended = false;
 static lv_disp_draw_buf_t drawBuf;
 static lv_disp_drv_t dispDrv;
 // LVGL draw buffers (internal RAM, two of them): 40 lines of 320 px.
@@ -120,10 +121,81 @@ static void st7701Init() {
 
 // ---- RGB panel + LVGL ------------------------------------------------------
 
+static bool composing = false;
+
 static void flushCb(lv_disp_drv_t* drv, const lv_area_t* a, lv_color_t* px) {
-  esp_lcd_panel_draw_bitmap(panel, a->x1, a->y1, a->x2 + 1, a->y2 + 1, px);
+  if (panel && !displaySuspended && !composing)
+    esp_lcd_panel_draw_bitmap(panel, a->x1, a->y1, a->x2 + 1, a->y2 + 1, px);
   lv_disp_flush_ready(drv);
 }
+
+void display_suspend() {
+  if (displaySuspended) return;
+  displaySuspended = true;
+  display_set_brightness(0);
+  if (!panel) return;
+  esp_lcd_panel_handle_t dying = panel;
+  panel = nullptr;
+  esp_lcd_panel_del(dying);
+}
+
+bool display_is_suspended() { return displaySuspended; }
+
+void deviceLogf(const char* fmt, ...);
+
+void display_update_mode(bool on) {
+  if (!panel) return;
+  uint32_t hz = on ? LCD_PCLK_HZ / 2 : LCD_PCLK_HZ;
+  esp_err_t err = esp_lcd_rgb_panel_set_pclk(panel, hz);  // applied at the next VSYNC
+  deviceLogf("Pixel clock %lu Hz for %s: %s", (unsigned long)hz, on ? "update" : "normal", esp_err_to_name(err));
+}
+
+// ---- page-slide compositor -------------------------------------------------
+
+static uint16_t* fb = nullptr;       // the panel's framebuffer
+static uint16_t* capture = nullptr;  // what was on screen when a slide began
+static uint16_t* pages[2] = {nullptr, nullptr};
+
+static uint16_t* fbAny = nullptr;  // framebuffer on every panel, rotated or not
+
+const uint16_t* display_framebuffer() { return panel && !displaySuspended ? fbAny : nullptr; }
+
+bool display_can_compose() { return fb && capture && pages[0] && pages[1] && panel && !displaySuspended; }
+
+uint16_t* display_page_buf(int slot) { return pages[slot]; }
+
+void display_compose_begin() {
+  composing = true;
+  memcpy(capture, fb, LCD_NATIVE_W * LCD_NATIVE_H * 2);
+}
+
+void display_compose(const uint16_t* nb, int dx, const lv_area_t* keep, int nkeep) {
+  if (!display_can_compose()) return;
+  const int W = LCD_NATIVE_W, H = LCD_NATIVE_H;
+  dx = constrain(dx, -W, W);
+  for (int y = 0; y < H; y++) {
+    uint16_t* d = fb + y * W;
+    const uint16_t* c = capture + y * W;
+    const uint16_t* n = nb + y * W;
+    if (dx <= 0) {  // next page comes in from the right
+      memcpy(d, c - dx, (W + dx) * 2);
+      if (dx) memcpy(d + W + dx, n, -dx * 2);
+    } else {        // previous page comes in from the left
+      memcpy(d, n + W - dx, dx * 2);
+      memcpy(d + dx, c, (W - dx) * 2);
+    }
+  }
+  for (int i = 0; i < nkeep; i++) {
+    const lv_area_t& k = keep[i];
+    int x1 = max<int>(0, k.x1), x2 = min<int>(W - 1, k.x2);
+    for (int y = max<int>(0, k.y1); y <= min<int>(H - 1, k.y2) && x2 >= x1; y++)
+      memcpy(fb + y * W + x1, capture + y * W + x1, (x2 - x1 + 1) * 2);
+  }
+  // The RGB DMA reads PSRAM directly; push the CPU cache out.
+  esp_cache_msync(fb, W * H * 2, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+}
+
+void display_compose_end() { composing = false; }
 
 void display_set_brightness(uint8_t pct) {
   uint32_t duty = (uint32_t)pct * 255 / 100;
@@ -166,9 +238,25 @@ void display_init() {
   const int pins[16] = LCD_DATA_PINS;
   for (int i = 0; i < 16; i++) cfg.data_gpio_nums[i] = pins[i];
   cfg.flags.fb_in_psram = 1;
+  // Bounce mode: drop each framebuffer line from the cache once copied, so
+  // scan-out doesn't evict LVGL's working set (everything that writes the
+  // framebuffer writes its cache back first).
+  cfg.flags.bb_invalidate_cache = LCD_BOUNCE_LINES > 0;
   ESP_ERROR_CHECK(esp_lcd_new_rgb_panel(&cfg, &panel));
   ESP_ERROR_CHECK(esp_lcd_panel_reset(panel));
   ESP_ERROR_CHECK(esp_lcd_panel_init(panel));
+
+  // Unrotated panels: LVGL and framebuffer coordinates match, so slides can
+  // be composed directly (3 extra full frames, all in PSRAM).
+  void* fbp = nullptr;
+  if (esp_lcd_rgb_panel_get_frame_buffer(panel, 1, &fbp) == ESP_OK) fbAny = (uint16_t*)fbp;
+  if (LCD_ROTATION == LV_DISP_ROT_NONE && fbAny) {
+    fb = (uint16_t*)fbp;
+    const size_t sz = LCD_NATIVE_W * LCD_NATIVE_H * 2;
+    capture = (uint16_t*)heap_caps_malloc(sz, MALLOC_CAP_SPIRAM);
+    pages[0] = (uint16_t*)heap_caps_malloc(sz, MALLOC_CAP_SPIRAM);
+    pages[1] = (uint16_t*)heap_caps_malloc(sz, MALLOC_CAP_SPIRAM);
+  }
 
   lv_init();
   auto* b1 = (lv_color_t*)heap_caps_malloc(BUF_PX * sizeof(lv_color_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);

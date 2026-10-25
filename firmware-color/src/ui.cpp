@@ -6,6 +6,8 @@
 #include "ui.h"
 
 #include <Arduino.h>
+#include <ArduinoJson.h>
+#include <esp_heap_caps.h>
 #include <lvgl.h>
 #include <math.h>
 #include <time.h>
@@ -70,11 +72,11 @@ static void layout() {
     // so text and targets land at a similar physical size on both.
     F12 = &lv_font_montserrat_12; F14 = &lv_font_montserrat_16; F16 = &lv_font_montserrat_20;
     F20 = &lv_font_montserrat_22; F22 = &lv_font_montserrat_26; F26 = &lv_font_montserrat_26;
-    F32 = &lv_font_montserrat_32; F40 = &lv_font_montserrat_40; F48 = &lv_font_montserrat_48;
+    F32 = &lv_font_montserrat_32; F40 = &lv_font_montserrat_40; F48 = &lv_font_montserrat_40;
   } else {
     F12 = &lv_font_montserrat_12; F14 = &lv_font_montserrat_14; F16 = &lv_font_montserrat_16;
     F20 = &lv_font_montserrat_20; F22 = &lv_font_montserrat_22; F26 = &lv_font_montserrat_26;
-    F32 = &lv_font_montserrat_32; F40 = &lv_font_montserrat_40; F48 = &lv_font_montserrat_48;
+    F32 = &lv_font_montserrat_32; F40 = &lv_font_montserrat_40; F48 = &lv_font_montserrat_40;
   }
 }
 
@@ -209,11 +211,34 @@ static uint32_t nowUtc() {
   return 0;
 }
 
+// Local time uses the poller host's UTC offset (sent with every state push;
+// UTC until the first one arrives).
 static uint32_t toLocal(uint32_t utc) { return utc + st.tz; }
+
+// 12-hour clock everywhere: "9:05 PM", "12:00 AM".
+static void fmt12(char* out, size_t cap, int hour, int min) {
+  snprintf(out, cap, "%d:%02d %s", hour % 12 ? hour % 12 : 12, min, hour < 12 ? "AM" : "PM");
+}
+
+// Hour-only labels: "9 PM".
+static void fmtHour12(char* out, size_t cap, int hour) {
+  snprintf(out, cap, "%d %s", hour % 12 ? hour % 12 : 12, hour % 24 < 12 ? "AM" : "PM");
+}
 
 static void fmtHM(char* out, size_t cap, uint32_t utc) {
   uint32_t l = toLocal(utc);
-  snprintf(out, cap, "%02lu:%02lu", (unsigned long)(l / 3600 % 24), (unsigned long)(l / 60 % 60));
+  fmt12(out, cap, l / 3600 % 24, l / 60 % 60);
+}
+
+// "Fri 11:17 PM" in the panel's local time.
+static void fmtWeekHM(char* out, size_t cap, uint32_t utc) {
+  time_t lt = toLocal(utc);
+  struct tm tmv;
+  gmtime_r(&lt, &tmv);
+  static const char* const WD[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+  char t[12];
+  fmt12(t, sizeof(t), tmv.tm_hour, tmv.tm_min);
+  snprintf(out, cap, "%s %s", WD[tmv.tm_wday], t);
 }
 
 static void fmtAgo(char* out, size_t cap, long sec) {
@@ -222,6 +247,21 @@ static void fmtAgo(char* out, size_t cap, long sec) {
   else if (sec < 3600) snprintf(out, cap, "%ldm", sec / 60);
   else if (sec < 86400) snprintf(out, cap, "%ldh %ldm", sec / 3600, sec / 60 % 60);
   else snprintf(out, cap, "%ldd %ldh", sec / 86400, sec / 3600 % 24);
+}
+
+// How many local midnights have passed since this payload was polled.
+// 0 means its "today" figures are still today.
+static int payloadLagDays() {
+  uint32_t n = nowUtc();
+  if (!st.valid || !st.t || !n) return 0;
+  int lag = (int)(toLocal(n) / 86400) - (int)(toLocal(st.t) / 86400);
+  return lag > 0 ? lag : 0;
+}
+
+static bool eventIsToday(uint32_t t) {
+  uint32_t n = nowUtc();
+  if (!t || !n) return payloadLagDays() == 0;
+  return toLocal(t) / 86400 == toLocal(n) / 86400;
 }
 
 static int minuteOfDay() {
@@ -243,7 +283,7 @@ static void fmtIsoDate(char* out, size_t cap, const char* iso) {
 }
 
 // ---- screens: shared header + dots ------------------------------------------
-enum { SC_TODAY, SC_FEED, SC_TOP, SC_TREND, SC_POINTS, SC_REACH, SC_COMMENTS, SC_STATUS, NSCREEN };
+enum { SC_TODAY, SC_FEED, SC_TOP, SC_TREND, SC_POINTS, SC_REACH, SC_COMMENTS, SC_BEST, SC_CREATOR, SC_STATUS, NSCREEN };
 static lv_obj_t* screens[NSCREEN];
 static lv_obj_t* menuRoot;
 static lv_obj_t* aboutRoot;
@@ -253,9 +293,12 @@ static lv_obj_t* updRoot;
 // segment.
 static const int NCAR = SC_STATUS;
 static lv_obj_t* dots[NCAR];
+static lv_obj_t* verLbl = nullptr;  // firmware version, bottom right beside the pager
+static lv_obj_t* syncHit = nullptr; // sync dot, bottom left
 // Hamburger button (top right) and its dropdown.
 static const int HB_W = 40;
 static int cur = SC_TODAY;
+static int topSel = -1;  // knob select mode on Top: -1 off, 0-2 chips, 3+ rows
 static bool menuOpen = false, statusOpen = false, aboutOpen = false, updOpen = false;
 
 struct Header {
@@ -301,20 +344,117 @@ static void updateDots() {
     lv_obj_set_style_bg_color(dots[i], C(i == cur ? C_ACCENT : C_DIM), 0);
     show(dots[i], !menuOpen && !statusOpen && !aboutOpen && !updOpen);
   }
+  bool footer = !menuOpen && !statusOpen && !aboutOpen && !updOpen;
+  if (verLbl) show(verLbl, footer);
+  if (syncHit) show(syncHit, footer);
 }
 
 static void commitScreen(int idx) {
+  topSel = -1;  // leaving or re-entering a page ends the knob's Top select mode
   for (int i = 0; i < NSCREEN; i++) show(screens[i], i == idx);
   lv_obj_set_x(screens[idx], 0);
   cur = idx;
   updateDots();
 }
 
-static void goScreen(int idx, int dir) {
-  if (menuOpen || statusOpen || aboutOpen || updOpen) return;
-  (void)dir;
-  idx = (idx % NCAR + NCAR) % NCAR;
+// ---- page slides --------------------------------------------------------------
+// On unrotated panels a page change is composed straight into the framebuffer
+// (display_compose): the visible frame is captured and the neighbor comes from
+// a pre-rendered snapshot in PSRAM, so a slide never re-renders widgets per
+// frame (a full LVGL redraw of Today takes ~200 ms here). Snapshots of the
+// previous and next page are refreshed in idle time after data changes.
+static bool slideBusy = false;
+static int cacheIdx[2] = {-1, -1};  // page in each snapshot buffer: 0 prev, 1 next
+static bool cacheOk[2] = {false, false};
+static lv_obj_t* slideKeep[4];      // overlays that stay put (hamburger, segments, version, sync dot)
+
+static void markPagesDirty() { cacheOk[0] = cacheOk[1] = false; }
+
+static bool pageSnap(int slot, int idx) {
+  if (!display_can_compose()) return false;
+  if (cacheOk[slot] && cacheIdx[slot] == idx) return true;
+  lv_obj_set_x(screens[idx], 0);
+  lv_img_dsc_t dsc;
+  cacheIdx[slot] = idx;
+  cacheOk[slot] = lv_snapshot_take_to_buf(screens[idx], LV_IMG_CF_TRUE_COLOR, &dsc, display_page_buf(slot),
+                                          (uint32_t)W * H * sizeof(lv_color_t)) == LV_RES_OK;
+  return cacheOk[slot];
+}
+
+static void composeAt(int slot, int dx) {
+  lv_area_t keep[4];
+  int n = 0;
+  for (lv_obj_t* o : slideKeep)
+    if (o && !lv_obj_has_flag(o, LV_OBJ_FLAG_HIDDEN)) lv_obj_get_coords(o, &keep[n++]);
+  display_compose(display_page_buf(slot), dx, keep, n);
+}
+
+// Ease-in-out from one offset to another, composing as fast as memory allows.
+void deviceLogf(const char* fmt, ...);  // main.cpp: serial + web console log
+
+// Swipe tuning lines go to Serial only, and only with -DDEBUG_SWIPE=1.
+#ifndef DEBUG_SWIPE
+#define DEBUG_SWIPE 0
+#endif
+#define swipeLog(...)                         \
+  do {                                        \
+    if (DEBUG_SWIPE) Serial.printf(__VA_ARGS__); \
+  } while (0)
+
+static void runSlide(int slot, int fromDx, int toDx, uint32_t ms) {
+  uint32_t t0 = millis();
+  int frames = 0;
+  for (;;) {
+    float p = min(1.0f, (millis() - t0) / (float)ms);
+    float e = p < 0.5f ? 2 * p * p : 1 - (-2 * p + 2) * (-2 * p + 2) / 2;
+    composeAt(slot, fromDx + (int)((toDx - fromDx) * e));
+    frames++;
+    if (p >= 1) break;
+  }
+  uint32_t took = millis() - t0;
+  deviceLogf("slide %d frames in %lu ms (%.0f fps)", frames, (unsigned long)took, took ? frames * 1000.0f / took : 0);
+}
+
+// Hand the screen back to LVGL; it re-renders the same pixels (plus the
+// updated segments) without a visible change.
+static void finishSlide(int idx) {
   commitScreen(idx);
+  display_compose_end();
+  lv_obj_invalidate(lv_scr_act());
+  lv_obj_invalidate(lv_layer_top());
+  markPagesDirty();  // the neighbors moved
+  slideBusy = false;
+}
+
+// Rotated panels (ws316): a short LVGL slide of the incoming page.
+static void slideIn(lv_obj_t* o, int dir) {
+  lv_anim_t a;
+  lv_anim_init(&a);
+  lv_anim_set_var(&a, o);
+  lv_anim_set_values(&a, dir * 60, 0);
+  lv_anim_set_time(&a, 160);
+  lv_anim_set_exec_cb(&a, (lv_anim_exec_xcb_t)lv_obj_set_x);
+  lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+  lv_anim_start(&a);
+}
+
+static void goScreen(int idx, int dir) {
+  if (menuOpen || statusOpen || aboutOpen || updOpen || slideBusy) return;
+  idx = (idx % NCAR + NCAR) % NCAR;
+  if (idx != cur && dir && display_can_compose()) {
+    int slot = dir > 0 ? 1 : 0;  // dir > 0: the new page comes in from the right
+    slideBusy = true;
+    if (pageSnap(slot, idx)) {
+      display_compose_begin();
+      runSlide(slot, 0, -dir * W, 240);
+      finishSlide(idx);
+      return;
+    }
+    slideBusy = false;
+  }
+  bool slide = idx != cur && dir;
+  commitScreen(idx);
+  if (slide && !display_can_compose()) slideIn(screens[idx], dir);
 }
 
 // ---- 1. Today ---------------------------------------------------------------
@@ -338,7 +478,8 @@ struct Tile {
 };
 static Tile tiles[NSTAT];
 static Header todayHdr;
-static lv_obj_t *ptsChip, *syncDot, *syncLbl, *clockLbl;
+static lv_obj_t *ptsChip, *replyChip, *syncDot, *syncLbl, *clockLbl;
+static void openCreatorReply(lv_event_t*);  // Creator page, Reply view
 static int TILE_W, TILE_STEP, BAR_BOTTOM, BAR_MAX, BAR_W, BAR_GAP, BAR_X;
 
 // On tall panels the chart stays short and the room under the tiles is a
@@ -350,16 +491,52 @@ struct ActUi {
 static ActUi actUi[ACT_MAX];
 static int actRows = 0;  // rows that fit in the card
 static lv_obj_t* actEmpty;
+static lv_obj_t* folLbl = nullptr;  // followers, Recent activity card
+
+static void openStatus(bool open);
+#if INPUT_TOUCH
+static void syncDotCb(lv_event_t*) { openStatus(true); }
+#endif
 
 static void buildToday() {
   lv_obj_t* s = screens[SC_TODAY] = newScreen();
   todayHdr = header(s, "TODAY", "waiting for poller");
   ptsChip = label(todayHdr.right, F14, C_WARN, 0, 0, "");
   chipStyle(ptsChip, C_CHIP, C_WARN);
-  lv_obj_t* sync = row(todayHdr.right, 6);
-  syncDot = box(sync, 0, 0, 8, 8, C_IDLE, LV_RADIUS_CIRCLE);
-  syncLbl = label(sync, F14, C_MUTED, 0, 0, "no data");
-  clockLbl = label(todayHdr.right, F16, C_TXT, 0, 0, "--:--");
+  // Tap: the Points page, sliding like a swipe. 48 px tall target.
+  tappable(ptsChip, [](lv_event_t*) { goScreen(SC_POINTS, SC_POINTS > cur ? 1 : -1); }, 0);
+  lv_obj_set_ext_click_area(ptsChip, max(6, (48 - lineH(F14) - 6) / 2));
+  // Unanswered comments (creator stats); tap for the list.
+  replyChip = label(todayHdr.right, F14, C_ACCENT, 0, 0, "");
+  chipStyle(replyChip, C_CHIP, C_ACCENT);
+  tappable(replyChip, openCreatorReply, 0);
+  show(replyChip, false);
+  // Sync state is just the dot (green ok / amber cookie / red error), in the
+  // footer at the bottom left on every page; tapping it opens Status. The text
+  // label is kept hidden for the knob-free layout code.
+  lv_obj_t* sync = syncHit = row(lv_layer_top(), 6);
+  syncDot = box(sync, 0, 0, 10, 10, C_IDLE, LV_RADIUS_CIRCLE);
+  syncLbl = label(sync, F14, C_MUTED, 0, 0, "");
+  show(syncLbl, false);
+  lv_obj_align(sync, LV_ALIGN_BOTTOM_LEFT, PAD + 4, -(H - BOT - 10) / 2);
+  slideKeep[3] = sync;
+#if INPUT_TOUCH
+  lv_obj_add_flag(sync, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_set_ext_click_area(sync, 19);  // 48 x 48 px target around the dot
+  lv_obj_add_event_cb(sync, syncDotCb, LV_EVENT_CLICKED, nullptr);
+#endif
+  // Clock centred on the full width, independent of the left and right items.
+  clockLbl = label(s, F16, C_TXT, 0, 0, "--:--");
+  lv_obj_update_layout(s);
+  lv_obj_align(clockLbl, LV_ALIGN_TOP_MID, 0,
+               lv_obj_get_y(todayHdr.right) + (lv_obj_get_height(todayHdr.right) - lineH(F16)) / 2);
+  // Keep the subtitle left of the clock ("waiting for poller - host" is long).
+  const int clockHalf = lv_txt_get_width("12:00 PM", 8, F16, 0, LV_TEXT_FLAG_NONE) / 2 + 14;
+  lv_obj_update_layout(s);
+  lv_area_t subA;
+  lv_obj_get_coords(todayHdr.sub, &subA);
+  lv_label_set_long_mode(todayHdr.sub, LV_LABEL_LONG_DOT);
+  lv_obj_set_style_max_width(todayHdr.sub, max(40, W / 2 - clockHalf - subA.x1), 0);
 
   const int gap = COMPACT ? 6 : 9, in = COMPACT ? 8 : 12;
   TILE_STEP = (CW + gap) / NSTAT;
@@ -462,6 +639,10 @@ static void buildToday() {
   lv_obj_t* c = card(s, PAD, y0, CW, h);
   lv_obj_t* title = label(c, F12, C_ACCENT, 14, 8, "RECENT ACTIVITY");
   lv_obj_set_style_text_letter_space(title, 2, 0);
+  // Followers, top right of the card: total and today's gain.
+  folLbl = label(c, F14, C_MUTED, 0, 0, "");
+  lv_label_set_recolor(folLbl, true);
+  lv_obj_align(folLbl, LV_ALIGN_TOP_RIGHT, -14, 6);
   const int rowsY = 8 + lineH(F12) + 6, rowH = lineH(F16) + 6;
   const int perCol = max(1, (h - rowsY - 6) / rowH), colW = (CW - 28 - 24) / 2;
   actRows = min(ACT_MAX, 2 * perCol);
@@ -496,13 +677,24 @@ static void fmtShortAgo(char* out, size_t cap, long sec) {
 
 // The poller sends a fresh feed with each state, newest first, before the
 // banners for that poll. Also re-run every 30 s for the relative times.
+static void setTextIfChanged(lv_obj_t* l, const char* txt);
 static void refreshActivity() {
+  markPagesDirty();
   if (!TALL) return;
+  if (st.fol.has) {
+    char f[80];
+    snprintf(f, sizeof(f), "Followers  #E6EDF3 %d#   #%06lX %+d today#", st.fol.total,
+             (unsigned long)(st.fol.today > 0 ? C_OK : st.fol.today < 0 ? C_ERR : C_MUTED), st.fol.today);
+    setTextIfChanged(folLbl, f);
+  } else {
+    setTextIfChanged(folLbl, "");
+  }
   char a[24];
   uint32_t now = nowUtc();
   int shown = 0;
   for (int i = 0; i < st.nfeed && shown < actRows; i++) {
     const FeedRow& r = st.feed[i];
+    if (!eventIsToday(r.t)) continue;
     ActUi& f = actUi[shown++];
     show(f.row, true);
     setIcon(f.img, r.kind, false);
@@ -523,13 +715,25 @@ static void refreshToday() {
   char a[32], b[48];
   int hourNow = -1;
   uint32_t n = nowUtc();
+  int lag = payloadLagDays();
   if (n) hourNow = toLocal(n) / 3600 % 24;
   for (int k = 0; k < NSTAT; k++) {
     Tile& t = tiles[k];
-    fmtSigned(a, sizeof(a), st.today[k]);
-    lv_label_set_text(t.today, st.today[k] == 0 ? "0" : a);
-    if (st.hasYday) {
-      fmtSigned(a, sizeof(a), st.yday[k]);
+    int todayV = lag ? 0 : st.today[k];
+    bool hasY = false;
+    int ydayV = 0;
+    if (lag == 0 && st.hasYday) {
+      hasY = true;
+      ydayV = st.yday[k];
+    } else if (lag == 1) {
+      // The payload's "today" closed when the date changed.
+      hasY = true;
+      ydayV = st.today[k];
+    }
+    fmtSigned(a, sizeof(a), todayV);
+    lv_label_set_text(t.today, todayV == 0 ? "0" : a);
+    if (hasY) {
+      fmtSigned(a, sizeof(a), ydayV);
       snprintf(b, sizeof(b), COMPACT ? "%s yday" : "today  /  %s yday", a);
     } else {
       snprintf(b, sizeof(b), "today");
@@ -549,7 +753,9 @@ static void refreshToday() {
     if (COMPACT) lv_label_set_text(t.total, a);
     else lv_label_set_text_fmt(t.total, "%s total", a);
     int bucket[NBAR_MAX] = {};
-    for (int h = 0; h < 24; h++) bucket[h / BAR_HOURS] += st.hours[k][h];
+    if (!lag) {
+      for (int h = 0; h < 24; h++) bucket[h / BAR_HOURS] += st.hours[k][h];
+    }
     int mx = 1;
     for (int b = 0; b < NBAR; b++) mx = max(mx, bucket[b]);
     const int foot = max(5, BAR_W / 5);
@@ -581,9 +787,12 @@ static void refreshToday() {
       }
     }
   }
-  snprintf(a, sizeof(a), COMPACT ? "%+.1f pts" : "%+.1f pts today", st.todayPoints);
+  snprintf(a, sizeof(a), COMPACT ? "%+.1f pts" : "%+.1f pts today", lag ? 0.0f : st.todayPoints);
   lv_label_set_text(ptsChip, a);
   show(ptsChip, st.valid && st.cookieAge >= 0);
+  snprintf(a, sizeof(a), COMPACT ? "%d to reply" : "%d to reply", st.creator.unans);
+  lv_label_set_text(replyChip, a);
+  show(replyChip, st.valid && st.creator.has && st.creator.unans > 0);
   refreshActivity();
 }
 static void setTextIfChanged(lv_obj_t* l, const char* txt) {
@@ -600,6 +809,11 @@ static void refreshTodayHeader() {
     setTextIfChanged(todayHdr.sub, "Wi-Fi setup: join " BOARD_AP);
   } else if (!st.valid) {
     snprintf(a, sizeof(a), "waiting for poller  -  %s.local", g_net.host[0] ? g_net.host : "offline");
+    // No Recent activity card on shorter panels: followers go in the subtitle.
+    if (!TALL && st.fol.has) {
+      size_t o = strlen(a);
+      snprintf(a + o, sizeof(a) - o, "  -  %d followers (%+d)", st.fol.total, st.fol.today);
+    }
     setTextIfChanged(todayHdr.sub, a);
   } else {
     time_t lt = toLocal(n ? n : st.t);
@@ -608,7 +822,7 @@ static void refreshTodayHeader() {
     static const char* const WD[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
     if (COMPACT) {
       snprintf(a, sizeof(a), "%s %s %d", WD[tmv.tm_wday], MONTHS[tmv.tm_mon], tmv.tm_mday);
-    } else if (st.midnight) {
+    } else if (st.midnight || payloadLagDays()) {
       snprintf(a, sizeof(a), "%s %s %d  -  since midnight", WD[tmv.tm_wday], MONTHS[tmv.tm_mon], tmv.tm_mday);
     } else {
       fmtHM(b, sizeof(b), st.since);
@@ -619,6 +833,8 @@ static void refreshTodayHeader() {
   uint32_t dot = C_IDLE;
   if (st.valid) {
     dot = !strcmp(st.auth, "ok") ? C_OK : !strcmp(st.auth, "needed") ? C_WARN : C_ERR;
+    if (st.health.has && st.health.expired) dot = C_ERR;
+    else if (st.health.has && st.health.stale) dot = C_WARN;
     // Bucket seconds to <1m so the header doesn't redraw every second and
     // contend with PSRAM scanout.
     long sec = n && st.lastPoll ? (long)(n - st.lastPoll) : -1;
@@ -692,9 +908,12 @@ static void buildFeed() {
 static void refreshFeed() {
   char a[48], b[16];
   int shown = 0, todayCount = 0;
-  for (int i = 0; i < st.nfeed; i++) todayCount += st.feed[i].n;
+  for (int i = 0; i < st.nfeed; i++) {
+    if (eventIsToday(st.feed[i].t)) todayCount += st.feed[i].n;
+  }
   for (int i = 0; i < st.nfeed && shown < feedCap; i++) {
     const FeedRow& r = st.feed[i];
+    if (!eventIsToday(r.t)) continue;
     if (feedFilter >= 0 && r.kind != feedFilter) continue;
     FeedUi& f = feedUi[shown++];
     show(f.card, true);
@@ -734,9 +953,15 @@ static void topChipCb(lv_event_t* e) {
   refreshTop();
 }
 
+#if INPUT_TOUCH
+static void topRowCb(lv_event_t* e);  // opens the model detail page (touch section)
+#endif
+static void modelPage(const TopRow* r);
+
 static void buildTop() {
   lv_obj_t* s = screens[SC_TOP] = newScreen();
-  topHdr = header(s, "TOP MODELS", COMPACT ? "" : "ranked by activity");
+  topHdr = header(s, "TOP MODELS", COMPACT ? "" : INPUT_TOUCH ? "tap a model for detail" : "ranked by activity");
+  lv_obj_add_flag(s, LV_OBJ_FLAG_EVENT_BUBBLE);  // row taps/drags reach the screen handler
   lv_obj_set_style_pad_column(topHdr.right, 6, 0);
   const char* names[3] = {"Today", "7 days", "Lifetime"};
   for (int i = 0; i < 3; i++) {
@@ -761,6 +986,13 @@ static void buildTop() {
   for (int i = 0; i < 4; i++) {
     TopUi& t = topUi[i];
     t.card = card(s, PAD, TOP + i * (rowH + gap), CW, rowH);
+#if INPUT_TOUCH
+    // Tap a row for that model's 7/30-day detail. Events bubble up so a drag
+    // that starts on a row still pages.
+    lv_obj_add_flag(t.card, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_EVENT_BUBBLE);
+    lv_obj_set_style_border_color(t.card, C(C_ACCENT), LV_STATE_PRESSED);
+    lv_obj_add_event_cb(t.card, topRowCb, LV_EVENT_SHORT_CLICKED, (void*)(intptr_t)i);
+#endif
     t.rank = label(t.card, F22, C_IDLE, COMPACT ? 10 : 16, (rowH - lineH(F22)) / 2, "");
     lv_label_set_text_fmt(t.rank, "%d", i + 1);
     t.name = label(t.card, nf, C_TXT, nameX, nameY, "");
@@ -780,7 +1012,8 @@ static void buildTop() {
 
 static void refreshTop() {
   for (int i = 0; i < 3; i++) chipStyle(topChips[i], i == topMode ? C_TXT : C_CHIP, i == topMode ? C_BG : C_MUTED);
-  int n = st.ntop[topMode];
+  // Top "Today" is the open day in the payload. After midnight that list is yesterday.
+  int n = (topMode == 0 && payloadLagDays()) ? 0 : st.ntop[topMode];
   int mx = n ? max(1, st.top[topMode][0].score) : 1;
   char a[16];
   for (int i = 0; i < 4; i++) {
@@ -799,6 +1032,13 @@ static void refreshTop() {
     }
   }
   show(topEmpty, n == 0);
+  // Knob select mode: cyan outline on the chosen chip or model row.
+  for (int i = 0; i < 3; i++) {
+    lv_obj_set_style_border_width(topChips[i], 1, 0);
+    lv_obj_set_style_border_color(topChips[i], C(topSel == i ? C_ACCENT : C_EDGE), 0);
+  }
+  for (int i = 0; i < 4; i++)
+    lv_obj_set_style_border_color(topUi[i].card, C(topSel == 3 + i ? C_ACCENT : C_EDGE), 0);
 }
 
 // ---- 4. 7-day trend ---------------------------------------------------------
@@ -925,7 +1165,7 @@ static void refreshTrend() {
     if (!has) continue;
     int v = st.days[di].v[k];
     int h = 8 + v * (TR_BARMAX - 8) / mx;
-    bool today = di == n - 1;
+    bool today = di == n - 1 && payloadLagDays() == 0;
     lv_obj_set_height(c.bar, h);
     lv_obj_set_y(c.bar, TR_BOTTOM - h);
     lv_obj_set_style_bg_color(c.bar, today ? lv_color_mix(C(COL[k]), C(C_CARD), 110) : C(COL[k]), 0);
@@ -956,6 +1196,8 @@ static void buildPoints() {
     label(c1, F12, C_MUTED, mx, TH / 2 + 22 + lineH(F32) + 2, "followers  /  models");
   }
   ptToday = label(c1, TALL ? F20 : F16, C_OK, mx, TH - lineH(TALL ? F20 : F16) - (TALL ? 28 : 22), "");
+  lv_label_set_long_mode(ptToday, LV_LABEL_LONG_DOT);
+  lv_obj_set_width(ptToday, w1 - 2 * mx);
   const int mw = CW - w1 - 10;
   PT_SPLIT_W = mw - 2 * mx;
   ptMonthCard = card(s, PAD + w1 + 10, TOP, mw, TH);
@@ -1011,9 +1253,9 @@ static void buildPoints() {
 }
 
 static void refreshPoints() {
-  char a[48], b[16], c[16];
+  char a[64], b[16], c[16];
   lv_label_set_text_fmt(ptBalance, "%.2f", st.totalPoints);
-  snprintf(a, sizeof(a), "%+.1f today", st.todayPoints);
+  snprintf(a, sizeof(a), "%+.1f today", payloadLagDays() ? 0.0f : st.todayPoints);
   lv_label_set_text(ptToday, a);
   if (TALL) lv_label_set_text_fmt(ptFollow, "%d  /  %d", st.followers, st.models);
   const Month& m = st.month;
@@ -1195,32 +1437,611 @@ static void refreshComments() {
 }
 
 // ---- 8. Status --------------------------------------------------------------
+// ---- 8. Best times ------------------------------------------------------------
+// When activity happens, from the poller's last 30 days: 24 hour-of-day bars
+// and a weekday row, best ones highlighted. Chips (or swipe up/down) pick the
+// metric. Shows "collecting data" until a week of history exists.
+static const int BEST_KIND[NBEST] = {S_DOWNLOADS, S_PRINTS, S_BOOSTS};
+static const char* const BEST_NAME[NBEST] = {"Downloads", "Prints", "Boosts"};
+static const char* const WDAY[7] = {"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"};
+static Header bestHdr;
+static int bestMetric = 0;
+static lv_obj_t *bestChips[NBEST], *bestHourCard, *bestDayCard, *bestEmpty, *bestNote;
+static lv_obj_t *bestBars[24], *bestDayBox[7], *bestDayVal[7];
+static int BEST_BOTTOM, BEST_MAX;
+
+static void refreshBest();
+static void bestChipCb(lv_event_t* e) {
+  bestMetric = tapIdx(e);
+  refreshBest();
+}
+
+static void buildBest() {
+  lv_obj_t* s = screens[SC_BEST] = newScreen();
+  bestHdr = header(s, "BEST TIMES", COMPACT ? "" : "last 30 days");
+  lv_obj_set_style_pad_column(bestHdr.right, 6, 0);
+  for (int i = 0; i < NBEST; i++) {
+    bestChips[i] = label(bestHdr.right, F14, C_MUTED, 0, 0, BEST_NAME[i]);
+    tappable(bestChips[i], bestChipCb, i);
+  }
+  const int gap = COMPACT ? 6 : 10, dayH = COMPACT ? 56 : (TALL ? 96 : 72), hourH = TH - dayH - gap;
+  bestHourCard = card(s, PAD, TOP, CW, hourH);
+  lv_obj_t* t = label(bestHourCard, F12, C_SUB, 14, 10, "BY HOUR OF DAY");
+  lv_obj_set_style_text_letter_space(t, 1, 0);
+  bestNote = label(bestHourCard, F14, C_ACCENT, 0, 0, "");
+  lv_obj_align(bestNote, LV_ALIGN_TOP_RIGHT, -14, 8);
+  const int inner = CW - 28, step = inner / 24, bw = max(3, step - 3);
+  BEST_BOTTOM = hourH - lineH(F12) - 12;
+  BEST_MAX = BEST_BOTTOM - (10 + lineH(F12) + 12);
+  for (int h = 0; h < 24; h++) {
+    int x = 14 + h * step;
+    bestBars[h] = box(bestHourCard, x, BEST_BOTTOM - 3, bw, 3, C_TRACK, 2);
+    if (h % 6 == 0) label(bestHourCard, F12, C_MUTED, x, BEST_BOTTOM + 4, h == 0 ? "12 AM" : h == 6 ? "6 AM" : h == 12 ? "12 PM" : "6 PM");
+  }
+  bestDayCard = card(s, PAD, TOP + hourH + gap, CW, dayH);
+  const int cw = (CW - 28 - 6 * 6) / 7;
+  for (int i = 0; i < 7; i++) {
+    lv_obj_t* b = bestDayBox[i] = box(bestDayCard, 14 + i * (cw + 6), 8, cw, dayH - 16, C_CHIP, 4);
+    lv_obj_set_style_border_width(b, 1, 0);
+    lv_obj_set_style_border_color(b, C(C_EDGE), 0);
+    lv_obj_t* n = label(b, F12, C_SUB, 0, 0, WDAY[i]);
+    lv_obj_align(n, LV_ALIGN_TOP_MID, 0, COMPACT ? 4 : 8);
+    bestDayVal[i] = label(b, TALL ? F26 : F20, C_TXT, 0, 0, "-");
+    lv_obj_align(bestDayVal[i], LV_ALIGN_BOTTOM_MID, 0, COMPACT ? -4 : -8);
+  }
+  bestEmpty = label(s, F20, C_MUTED, 0, 0, "");
+  lv_obj_align(bestEmpty, LV_ALIGN_CENTER, 0, 10);
+}
+
+static void refreshBest() {
+  const Insights& in = st.insights;
+  for (int i = 0; i < NBEST; i++)
+    chipStyle(bestChips[i], i == bestMetric ? COL[BEST_KIND[i]] : C_CHIP, i == bestMetric ? C_BG : C_MUTED);
+  bool has = st.valid && in.has;
+  show(bestHourCard, has);
+  show(bestDayCard, has);
+  show(bestEmpty, !has);
+  if (!has) {
+    char a[64];
+    snprintf(a, sizeof(a), st.valid ? "Collecting data (%d of 7 days)" : "Waiting for the poller", in.days);
+    lv_label_set_text(bestEmpty, a);
+    return;
+  }
+  const int m = bestMetric, col = COL[BEST_KIND[m]];
+  int mx = 1, mw = 1;
+  for (int h = 0; h < 24; h++) mx = max(mx, (int)in.hour[m][h]);
+  for (int i = 0; i < 7; i++) mw = max(mw, (int)in.wday[m][i]);
+  for (int h = 0; h < 24; h++) {
+    int v = in.hour[m][h], hh = v ? 4 + v * (BEST_MAX - 4) / mx : 3;
+    lv_obj_set_height(bestBars[h], hh);
+    lv_obj_set_y(bestBars[h], BEST_BOTTOM - hh);
+    lv_obj_set_style_bg_color(bestBars[h], C(!v ? C_TRACK : h == in.bestHour[m] ? C_ACCENT : col), 0);
+  }
+  for (int i = 0; i < 7; i++) {
+    char a[12];
+    fmtInt(a, sizeof(a), in.wday[m][i]);
+    lv_label_set_text(bestDayVal[i], a);
+    bool best = i == in.bestDay[m];
+    lv_obj_set_style_border_color(bestDayBox[i], C(best ? C_ACCENT : C_EDGE), 0);
+    lv_obj_set_style_text_color(bestDayVal[i], C(best ? C_ACCENT : C_TXT), 0);
+  }
+  char a[64];
+  int bh = in.bestHour[m];
+  char hb[8];
+  if (bh >= 0) fmtHour12(hb, sizeof(hb), bh);
+  if (bh >= 0) snprintf(a, sizeof(a), "best %s  -  %s", hb, in.bestDay[m] >= 0 ? WDAY[in.bestDay[m]] : "-");
+  else snprintf(a, sizeof(a), "no activity yet");
+  lv_label_set_text(bestNote, a);
+}
+
+
+// ---- 9. Creator --------------------------------------------------------------
+// The poller's creator stats in five views (header chips, a tap / vertical
+// swipe / knob press steps through them): conversion and engagement leaders,
+// momentum (rising and stalled), the latest launch against the typical one
+// plus the long-tail share, points and followers per model, and unanswered
+// comments. A row of summary tiles, then two cards side by side.
+enum { CV_CONV, CV_TREND, CV_LAUNCH, CV_EARN, CV_FOL, CV_REPLY, NCVIEW };
+static const char* const CV_NAME[NCVIEW] = {"Convert", "Trend", "Launch", "Earn", "Followers", "Reply"};
+static const int CR_ROWS = 4;
+static const int CR_TILES = 4;
+struct CrCard {
+  lv_obj_t *card, *title, *name[CR_ROWS], *val[CR_ROWS], *rule[CR_ROWS], *empty;
+  int w;
+};
+struct CrTile {
+  lv_obj_t *box, *val, *lbl;
+};
+static Header crHdr;
+static int crView = 0;
+static lv_obj_t *crSeg[NCVIEW], *crNote, *crChart, *crTail;
+static lv_obj_t *crCur[7], *crMed[7], *crTailLbl[3], *crTailFill[3];
+static lv_obj_t *crFolChart, *crFolBar[30], *crFolZero;
+static int CR_FOL_MID, CR_FOL_HALF;
+static CrCard crCards[2];
+static CrTile crTiles[CR_TILES];
+static int crTileN = 0, crTileY, crTileH, crCardW, crCardX1, crCardH;
+static int CR_CH_BOTTOM, CR_CH_MAX, CR_TAIL_W;
+
+static void refreshCreator();
+static int crCardList[2] = {-1, -1};  // which CL_* list each card shows (-1: none)
+static const char* crTileDef[CR_TILES];
+
+// A list row opens that model's detail page.
+static void crRowCb(lv_event_t* e) {
+  int k = tapIdx(e), card = k / CR_ROWS, row = k % CR_ROWS, list = crCardList[card];
+  if (list < 0 || row >= st.creator.n[list]) return;
+  const CRow& r = st.creator.rows[list][row];
+  static TopRow t;
+  memset(&t, 0, sizeof(t));
+  strlcpy(t.id, r.id, sizeof(t.id));
+  strlcpy(t.name, r.name, sizeof(t.name));
+  modelPage(&t);
+}
+
+// A tile says what its number means.
+static void crTileCb(lv_event_t* e) {
+  int i = tapIdx(e);
+  if (i < CR_TILES && crTileDef[i]) ui_toast(crTileDef[i]);
+}
+
+static void crChipCb(lv_event_t* e) {
+  crView = tapIdx(e);
+  refreshCreator();
+}
+
+// Rows spread over the whole card, hairlines between them. Names keep at
+// least 55% of the width; values sit right-aligned in the rest.
+static void crMakeCard(CrCard& c, lv_obj_t* s, int x, int y, int w, int h) {
+  c.card = card(s, x, y, w, h);
+  c.w = w;
+  const lv_font_t* rf = TALL ? F16 : F14;
+  const int px = COMPACT ? 10 : 16;
+  c.title = label(c.card, F12, C_SUB, px, COMPACT ? 8 : 12, "");
+  lv_obj_set_style_text_letter_space(c.title, 1, 0);
+  dotLabel(c.title, w - 2 * px);
+  const int y0 = (COMPACT ? 8 : 12) + lineH(F12) + (COMPACT ? 4 : 8);
+  const int step = (h - y0 - 4) / CR_ROWS;
+  for (int i = 0; i < CR_ROWS; i++) {
+    int ry = y0 + i * step + (step - lineH(rf)) / 2;
+    if (i) c.rule[i] = box(c.card, px, y0 + i * step, w - 2 * px, 1, C_EDGE);
+    else c.rule[i] = nullptr;
+    c.name[i] = label(c.card, rf, C_TXT, px, ry, "");
+    c.val[i] = label(c.card, rf, C_ACCENT, 0, ry, "");
+    lv_obj_set_style_text_align(c.val[i], LV_TEXT_ALIGN_RIGHT, 0);
+    // The name is the tap target for the whole row (48 px tall).
+    tappable(c.name[i], crRowCb, (&c == &crCards[0] ? 0 : CR_ROWS) + i);
+    lv_obj_set_ext_click_area(c.name[i], max(4, (48 - lineH(rf)) / 2));
+  }
+  c.empty = label(c.card, F14, C_MUTED, 0, 0, "");
+  lv_obj_align(c.empty, LV_ALIGN_CENTER, 0, y0 / 2);
+}
+
+static int crEmptyDy() { return ((COMPACT ? 8 : 12) + lineH(F12) + (COMPACT ? 4 : 8)) / 2; }
+
+// Card width can change (Reply uses one full-width card).
+static void crCardWidth(CrCard& c, int w) {
+  c.w = w;
+  lv_obj_set_width(c.card, w);
+  const int px = COMPACT ? 10 : 16;
+  lv_obj_set_width(c.title, w - 2 * px);
+  for (int i = 0; i < CR_ROWS; i++) {
+    if (c.rule[i]) lv_obj_set_width(c.rule[i], w - 2 * px);
+    dotLabel(c.name[i], (w - 2 * px) * 58 / 100);
+    lv_obj_set_width(c.val[i], (w - 2 * px) * 40 / 100);
+    lv_obj_set_x(c.val[i], w - px - 2 - (w - 2 * px) * 40 / 100);
+  }
+  lv_obj_align(c.empty, LV_ALIGN_CENTER, 0, crEmptyDy());
+}
+
+static void crMakeTile(CrTile& t, lv_obj_t* s) {
+  t.box = card(s, PAD, crTileY, 100, crTileH);
+  tappable(t.box, crTileCb, &t - crTiles);
+  t.val = label(t.box, COMPACT ? F20 : F26, C_TXT, 0, 0, "");
+  t.lbl = label(t.box, F12, C_MUTED, 0, 0, "");
+}
+
+// n equal tiles across the content width. Values are short ("1.7%", "+12")
+// and get the full tile, so they never truncate; labels cut with "...".
+static void crSetTiles(int n, const char* const* vals, const char* const* lbls, const uint32_t* cols) {
+  const int gap = COMPACT ? 6 : 12, w = (CW - (n - 1) * gap) / n;
+  const int vh = lineH(COMPACT ? F20 : F26), lh = lineH(F12), top = (crTileH - vh - lh - 2) / 2;
+  for (int i = 0; i < CR_TILES; i++) {
+    CrTile& t = crTiles[i];
+    show(t.box, i < n);
+    if (i >= n) continue;
+    if (n != crTileN) {
+      lv_obj_set_pos(t.box, PAD + i * (w + gap), crTileY);
+      lv_obj_set_width(t.box, w);
+      dotLabel(t.lbl, w - 12);
+    }
+    setTextIfChanged(t.val, vals[i]);
+    setTextIfChanged(t.lbl, lbls[i]);
+    lv_obj_set_style_text_color(t.val, C(cols ? cols[i] : C_TXT), 0);
+    lv_obj_align(t.val, LV_ALIGN_TOP_MID, 0, top);
+    lv_obj_set_style_text_align(t.lbl, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(t.lbl, LV_ALIGN_TOP_MID, 0, top + vh + 2);
+  }
+  crTileN = n;
+}
+
+static void buildCreator() {
+  lv_obj_t* s = screens[SC_CREATOR] = newScreen();
+  crHdr = header(s, "CREATOR", "");
+  // Segmented control: in the header on wide panels, its own row on compact.
+  lv_obj_t* seg = lv_obj_create(COMPACT ? s : crHdr.right);
+  lv_obj_remove_style_all(seg);
+  lv_obj_clear_flag(seg, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_set_flex_flow(seg, LV_FLEX_FLOW_ROW);
+  lv_obj_set_style_pad_all(seg, 3, 0);
+  lv_obj_set_style_pad_column(seg, 2, 0);
+  lv_obj_set_style_bg_color(seg, C(C_CHIP), 0);
+  lv_obj_set_style_bg_opa(seg, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_width(seg, 1, 0);
+  lv_obj_set_style_border_color(seg, C(C_EDGE), 0);
+  lv_obj_set_style_radius(seg, 6, 0);
+  if (COMPACT) {
+    lv_obj_set_pos(seg, PAD, TOP);
+    lv_obj_set_size(seg, CW, LV_SIZE_CONTENT);
+  } else {
+    lv_obj_set_size(seg, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    // Taller than the header text: lift it clear of the header rule.
+    lv_obj_align(crHdr.right, LV_ALIGN_TOP_RIGHT, -PAD - HB_W - 24, TALL ? 8 : 6);
+  }
+  for (int i = 0; i < NCVIEW; i++) {
+    lv_obj_t* l = crSeg[i] = label(seg, F14, C_MUTED, 0, 0, CV_NAME[i]);
+    lv_obj_set_style_radius(l, 4, 0);
+    lv_obj_set_style_pad_hor(l, COMPACT ? 4 : 12, 0);
+    lv_obj_set_style_pad_ver(l, TALL ? 6 : 4, 0);
+    lv_obj_set_style_bg_color(l, C(C_ACCENT), 0);
+    lv_obj_set_style_text_align(l, LV_TEXT_ALIGN_CENTER, 0);
+    if (COMPACT) lv_obj_set_flex_grow(l, 1);
+    tappable(l, crChipCb, i);
+    lv_obj_set_style_border_width(l, 0, LV_STATE_PRESSED);
+  }
+  lv_obj_update_layout(seg);
+
+  const int gap = COMPACT ? 6 : 12;
+  crTileY = COMPACT ? TOP + lv_obj_get_height(seg) + gap : TOP;
+  crTileH = (COMPACT ? 8 : 16) + lineH(COMPACT ? F20 : F26) + 2 + lineH(F12);
+  for (int i = 0; i < CR_TILES; i++) crMakeTile(crTiles[i], s);
+  // Analytics coverage / what the view compares, muted along the bottom.
+  crNote = label(s, F12, C_MUTED, 0, 0, "");
+  dotLabel(crNote, CW / 2 - 90 - 24);  // between the footer's sync dot and the pager dots
+  lv_obj_align(crNote, LV_ALIGN_BOTTOM_LEFT, PAD + 28, -(H - BOT - lineH(F12)) / 2);
+
+  const int y = crTileY + crTileH + gap, h = BOT - y;
+  crCardW = (CW - gap) / 2;
+  crCardX1 = PAD + crCardW + gap;
+  crCardH = h;
+  crMakeCard(crCards[0], s, PAD, y, crCardW, h);
+  crMakeCard(crCards[1], s, crCardX1, y, crCardW, h);
+  crCardWidth(crCards[0], crCardW);
+  crCardWidth(crCards[1], crCardW);
+  const int cw = crCardW, ch = h;
+
+  // Launch chart in the first card: this launch (accent) and the median one.
+  crChart = lv_obj_create(crCards[0].card);
+  lv_obj_remove_style_all(crChart);
+  lv_obj_clear_flag(crChart, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+  const int top = (COMPACT ? 8 : 12) + lineH(F12) + 8;
+  lv_obj_set_pos(crChart, 14, top);
+  lv_obj_set_size(crChart, cw - 28, ch - top - 8);
+  const int inner = cw - 28, step = inner / 7, bw = max(3, (step - 10) / 2);
+  CR_CH_BOTTOM = ch - top - 8 - lineH(F12) - 4;
+  CR_CH_MAX = CR_CH_BOTTOM - 8 - lineH(F12);  // room for the legend
+  for (int i = 0; i < 7; i++) {
+    int x = i * step + 2;
+    crCur[i] = box(crChart, x, CR_CH_BOTTOM - 3, bw, 3, C_ACCENT, 2);
+    crMed[i] = box(crChart, x + bw + 2, CR_CH_BOTTOM - 3, bw, 3, C_MUTED, 2);
+    char d[8];
+    snprintf(d, sizeof(d), COMPACT ? "%d" : "day %d", i + 1);
+    label(crChart, F12, C_MUTED, x, CR_CH_BOTTOM + 3, d);
+  }
+  // Legend, top right of the chart.
+  lv_obj_t* lg = row(crChart, 6);
+  box(lg, 0, 0, 8, 8, C_ACCENT, 2);
+  label(lg, F12, C_MUTED, 0, 0, "this launch");
+  box(lg, 0, 0, 8, 8, C_MUTED, 2);
+  label(lg, F12, C_MUTED, 0, 0, "median");
+  lv_obj_align(lg, LV_ALIGN_TOP_RIGHT, 0, 0);
+
+  // Followers gained per day over 30 days in the first card; a lost
+  // follower is a short red bar under the zero line.
+  crFolChart = lv_obj_create(crCards[0].card);
+  lv_obj_remove_style_all(crFolChart);
+  lv_obj_clear_flag(crFolChart, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_set_pos(crFolChart, 14, top);
+  lv_obj_set_size(crFolChart, cw - 28, ch - top - 8);
+  {
+    const int fh = ch - top - 8 - lineH(F12) - 6, fstep = (cw - 28) / 30, fbw = max(2, fstep - 2);
+    CR_FOL_HALF = fh / 5;                // room under the line for losses
+    CR_FOL_MID = fh - CR_FOL_HALF;       // zero line
+    crFolZero = box(crFolChart, 0, CR_FOL_MID, fstep * 30, 1, C_EDGE);
+    for (int i = 0; i < 30; i++) crFolBar[i] = box(crFolChart, i * fstep + 1, CR_FOL_MID - 2, fbw, 2, C_ACCENT, 1);
+    lv_obj_t* a0 = label(crFolChart, F12, C_MUTED, 0, fh + 4, "30 days ago");
+    (void)a0;
+    lv_obj_t* a1 = label(crFolChart, F12, C_MUTED, 0, 0, "today");
+    lv_obj_align(a1, LV_ALIGN_TOP_RIGHT, 0, fh + 4);
+  }
+
+  // Long tail in the second card: three bars (older models' share).
+  crTail = lv_obj_create(crCards[1].card);
+  lv_obj_remove_style_all(crTail);
+  lv_obj_clear_flag(crTail, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_set_pos(crTail, 14, top);
+  lv_obj_set_size(crTail, cw - 28, ch - top - 8);
+  CR_TAIL_W = cw - 28;
+  const int th = (ch - top - 8) / 3;
+  for (int i = 0; i < 3; i++) {
+    crTailLbl[i] = label(crTail, COMPACT ? F12 : F14, C_TXT, 0, i * th, "");
+    dotLabel(crTailLbl[i], CR_TAIL_W);
+    int by = i * th + lineH(COMPACT ? F12 : F14) + 4, bh = COMPACT ? 6 : 10;
+    box(crTail, 0, by, CR_TAIL_W, bh, C_TRACK, 3);
+    crTailFill[i] = box(crTail, 0, by, 2, bh, COL[S_COLLECTS], 3);
+  }
+}
+
+static void crPct(char* a, size_t cap, float v) {
+  if (v < 0) snprintf(a, cap, "-");
+  else snprintf(a, cap, v < 0.1f ? "%.1f%%" : "%.0f%%", v * 100);
+}
+
+static void crRowsShow(CrCard& c, bool on) {
+  if (!on) crCardList[&c == &crCards[0] ? 0 : 1] = -1;
+  for (int i = 0; i < CR_ROWS; i++) {
+    show(c.name[i], on);
+    show(c.val[i], on);
+    if (c.rule[i]) show(c.rule[i], on);
+  }
+  if (!on) show(c.empty, false);
+}
+
+static void crList(CrCard& c, const char* title, int list) {
+  const Creator& cr = st.creator;
+  crCardList[&c == &crCards[0] ? 0 : 1] = list;
+  lv_label_set_text(c.title, title);
+  int n = cr.has ? min(cr.n[list], CR_ROWS) : 0;
+  for (int i = 0; i < CR_ROWS; i++) {
+    bool on = i < n;
+    show(c.name[i], on);
+    show(c.val[i], on);
+    if (c.rule[i]) show(c.rule[i], on);
+    if (!on) continue;
+    const CRow& r = cr.rows[list][i];
+    lv_label_set_text(c.name[i], r.name);
+    char a[32], p[12];
+    switch (list) {
+      case CL_CONV: crPct(p, sizeof(p), r.a); snprintf(a, sizeof(a), "%s  %d dl", p, (int)r.b); break;
+      case CL_ENG: snprintf(a, sizeof(a), "%.0f", r.a); break;
+      case CL_RISE: snprintf(a, sizeof(a), "x%.1f  %d dl", r.a, (int)r.b); break;
+      case CL_STALL: snprintf(a, sizeof(a), "was %.1f/day", r.a); break;
+      case CL_PTS: snprintf(a, sizeof(a), "%.0f  /  %.0f", r.a, r.b); break;
+      case CL_FOL: snprintf(a, sizeof(a), "+%d  /  +%d", (int)r.a, (int)r.b); break;
+      default: snprintf(a, sizeof(a), "%d", (int)r.a); break;
+    }
+    lv_label_set_text(c.val[i], a);
+  }
+  show(c.empty, !n);
+  lv_label_set_text(c.empty, !st.valid ? "Waiting for the poller"
+                             : !cr.has ? "Needs a poller with creator stats"
+                             : cr.have ? "Nothing here yet" : "Collecting data...");
+}
+
+static void refreshCreator() {
+  const Creator& cr = st.creator;
+  for (int i = 0; i < NCVIEW; i++) {
+    bool on = i == crView;
+    lv_obj_set_style_bg_opa(crSeg[i], on ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
+    lv_obj_set_style_text_color(crSeg[i], C(on ? C_BG : C_MUTED), 0);
+  }
+  setTextIfChanged(crHdr.sub, "");
+  // Reply has one list, so it gets the full width.
+  bool one = crView == CV_REPLY;
+  show(crCards[1].card, !one);
+  if ((crCards[0].w == crCardW) == one) crCardWidth(crCards[0], one ? CW : crCardW);
+  show(crChart, crView == CV_LAUNCH);
+  show(crTail, crView == CV_LAUNCH);
+  show(crFolChart, crView == CV_FOL);
+
+  char t[4][24], note[96];
+  const char* v[4] = {t[0], t[1], t[2], t[3]};
+  const char* l[4] = {"", "", "", ""};
+  uint32_t col[4] = {C_TXT, C_TXT, C_TXT, C_TXT};
+  int n = 4;
+  note[0] = 0;
+  if (cr.has && cr.of && cr.have < cr.of) snprintf(note, sizeof(note), "Analytics for %d of %d models", cr.have, cr.of);
+  if (!st.valid || !cr.has) {
+    for (int i = 0; i < 4; i++) snprintf(t[i], sizeof(t[i]), "-");
+    l[0] = "DL per view 7d"; l[1] = "DL per view 30d"; l[2] = "Prints per DL"; l[3] = "Engagement";
+    crSetTiles(4, v, l, nullptr);
+    show(crFolChart, false);
+    show(crChart, false);
+    show(crTail, false);
+    crList(crCards[0], "DOWNLOADS PER VIEW (30 DAYS)", CL_CONV);
+    crList(crCards[1], "ENGAGEMENT PER 100 DOWNLOADS", CL_ENG);
+    setTextIfChanged(crNote, note);
+    return;
+  }
+
+  switch (crView) {
+    case CV_CONV:
+      crPct(t[0], sizeof(t[0]), cr.dpv7);
+      crPct(t[1], sizeof(t[1]), cr.dpv30);
+      crPct(t[2], sizeof(t[2]), cr.ppd);
+      if (cr.e100 < 0) snprintf(t[3], sizeof(t[3]), "-");
+      else snprintf(t[3], sizeof(t[3]), "%.0f", cr.e100);
+      l[0] = "DL per view 7d"; l[1] = "DL per view 30d"; l[2] = "Prints per DL"; l[3] = "Engagement / 100 DL";
+      col[0] = C_ACCENT;
+      crList(crCards[0], "DOWNLOADS PER VIEW (30 DAYS)", CL_CONV);
+      crList(crCards[1], "LIKES + COLLECTS + COMMENTS / 100 DL", CL_ENG);
+      break;
+    case CV_TREND:
+      n = 3;
+      snprintf(t[0], sizeof(t[0]), "%d", cr.n[CL_RISE]);
+      snprintf(t[1], sizeof(t[1]), "%d", cr.n[CL_STALL]);
+      if (cr.n[CL_RISE]) snprintf(t[2], sizeof(t[2]), "x%.1f", cr.rows[CL_RISE][0].a);
+      else snprintf(t[2], sizeof(t[2]), "-");
+      l[0] = "Rising"; l[1] = "Stalled"; l[2] = "Biggest jump";
+      col[0] = cr.n[CL_RISE] ? C_OK : C_TXT;
+      col[1] = cr.n[CL_STALL] ? C_WARN : C_TXT;
+      crList(crCards[0], "RISING  (YESTERDAY VS 7-DAY AVERAGE)", CL_RISE);
+      crList(crCards[1], "STALLED  (WAS DOWNLOADING, NOW QUIET)", CL_STALL);
+      break;
+    case CV_LAUNCH: {
+      crRowsShow(crCards[0], false);
+      crRowsShow(crCards[1], false);
+      bool has = cr.hasLaunch && cr.lday > 0;
+      char ttl[64];
+      snprintf(ttl, sizeof(ttl), has ? "LATEST LAUNCH: %s" : "LATEST LAUNCH VS MEDIAN", cr.lname);
+      lv_label_set_text(crCards[0].title, ttl);
+      lv_label_set_text(crCards[1].title, "LONG TAIL: MODELS OVER 30 DAYS OLD");
+      if (has) {
+        snprintf(t[0], sizeof(t[0]), "%d of 7", cr.lday);
+        snprintf(t[1], sizeof(t[1]), "%d", cr.lcur[cr.lday - 1]);
+        if (cr.lpct >= 0) snprintf(t[2], sizeof(t[2]), "%d%%", cr.lpct);
+        else snprintf(t[2], sizeof(t[2]), "-");
+      } else {
+        for (int i = 0; i < 3; i++) snprintf(t[i], sizeof(t[i]), "-");
+      }
+      static char ahead[32];
+      snprintf(ahead, sizeof(ahead), cr.lpast ? "Ahead of %d launches" : "Ahead of launches", cr.lpast);
+      int old30 = cr.tail[2][0], sum30 = old30 + cr.tail[2][1];
+      snprintf(t[3], sizeof(t[3]), "%d%%", sum30 ? 100 * old30 / sum30 : 0);
+      l[0] = "Launch day"; l[1] = "Downloads"; l[2] = ahead; l[3] = "Long tail 30d";
+      col[2] = has && cr.lpct >= 50 ? C_OK : C_TXT;
+      float mx = 1;
+      for (int i = 0; i < 7; i++) mx = max(mx, max((float)cr.lcur[i], cr.lmed[i]));
+      for (int i = 0; i < 7; i++) {
+        int v2 = cr.hasLaunch ? cr.lcur[i] : -1;
+        int hc = v2 > 0 ? 4 + (int)(v2 * (CR_CH_MAX - 4) / mx) : 3;
+        int hm = cr.hasLaunch && cr.nmed ? 4 + (int)(cr.lmed[i] * (CR_CH_MAX - 4) / mx) : 3;
+        lv_obj_set_height(crCur[i], hc);
+        lv_obj_set_y(crCur[i], CR_CH_BOTTOM - hc);
+        lv_obj_set_style_bg_color(crCur[i], C(v2 >= 0 ? C_ACCENT : C_TRACK), 0);
+        lv_obj_set_height(crMed[i], hm);
+        lv_obj_set_y(crMed[i], CR_CH_BOTTOM - hm);
+      }
+      static const char* const TL[3] = {"Today", "7 days", "30 days"};
+      for (int i = 0; i < 3; i++) {
+        int old = cr.tail[i][0], sum = old + cr.tail[i][1], pc = sum ? 100 * old / sum : 0;
+        char s2[64];
+        snprintf(s2, sizeof(s2), "%s: %d%%  (%d of %d downloads)", TL[i], pc, old, sum);
+        lv_label_set_text(crTailLbl[i], s2);
+        lv_obj_set_width(crTailFill[i], max(2, CR_TAIL_W * pc / 100));
+      }
+      break;
+    }
+    case CV_EARN: {
+      // Same unit everywhere (points over 7 / 30 days). Account = the whole
+      // balance change (models, profile, spending dips); Models = what
+      // MakerWorld attributes to models, only for those with analytics so far.
+      snprintf(t[0], sizeof(t[0]), "%.0f %s", cr.acct7, cr.ptTrend > 0 ? LV_SYMBOL_UP : cr.ptTrend < 0 ? LV_SYMBOL_DOWN : "");
+      if (st.month.has) snprintf(t[1], sizeof(t[1]), "%.0f", st.month.points);
+      else snprintf(t[1], sizeof(t[1]), "-");
+      snprintf(t[2], sizeof(t[2]), "%.0f", cr.pts7 < 0 ? 0 : cr.pts7);
+      snprintf(t[3], sizeof(t[3]), "%.0f", cr.pts30 < 0 ? 0 : cr.pts30);
+      static char m7[32], m30[32];
+      bool part = cr.of && cr.have < cr.of;
+      snprintf(m7, sizeof(m7), part ? "Models 7d (%d of %d)" : "Models 7d", cr.have, cr.of);
+      snprintf(m30, sizeof(m30), part ? "Models 30d (%d of %d)" : "Models 30d", cr.have, cr.of);
+      l[0] = "Account 7d"; l[1] = "Account 30d"; l[2] = m7; l[3] = m30;
+      col[0] = cr.ptTrend > 0 ? C_OK : cr.ptTrend < 0 ? C_ERR : C_TXT;
+      crList(crCards[0], "POINTS PER MODEL  7D / 30D", CL_PTS);
+      crList(crCards[1], "FOLLOWERS FROM  7D / 30D", CL_FOL);
+      break;
+    }
+    case CV_FOL: {
+      const Followers& f = st.fol;
+      crRowsShow(crCards[0], false);
+      lv_label_set_text(crCards[0].title, "FOLLOWERS GAINED PER DAY (30 DAYS)");
+      snprintf(t[0], sizeof(t[0]), "%d", st.followers);
+      snprintf(t[1], sizeof(t[1]), "%+d", f.has ? f.today : 0);
+      snprintf(t[2], sizeof(t[2]), "%+d", f.has ? f.d7 : 0);
+      snprintf(t[3], sizeof(t[3]), "%+d", f.has ? f.d30 : st.month.followers);
+      l[0] = "Followers"; l[1] = "Today"; l[2] = "7 days"; l[3] = "30 days";
+      for (int i = 1; i < 4; i++) col[i] = t[i][0] == '+' && strcmp(t[i], "+0") ? C_OK : t[i][0] == '-' ? C_ERR : C_TXT;
+      int mx = 1, fstep = lv_obj_get_width(crFolChart) / 30;
+      for (int i = 0; i < f.n; i++) mx = max(mx, (int)f.series[i]);
+      for (int i = 0; i < 30; i++) {
+        int j = i - (30 - f.n), v = f.has && j >= 0 ? f.series[j] : 0;
+        int h = v > 0 ? max(3, v * (CR_FOL_MID - 4) / mx) : v < 0 ? min(CR_FOL_HALF, 3 + (-v) * 3) : 2;
+        lv_obj_set_height(crFolBar[i], h);
+        lv_obj_set_y(crFolBar[i], v >= 0 ? CR_FOL_MID - h : CR_FOL_MID + 1);
+        lv_obj_set_x(crFolBar[i], i * fstep + 1);
+        lv_obj_set_style_bg_color(crFolBar[i], C(v > 0 ? (i == 29 ? C_OK : C_ACCENT) : v < 0 ? C_ERR : C_TRACK), 0);
+      }
+      crList(crCards[1], "FROM MODELS  7D / 30D", CL_FOL);
+      break;
+    }
+    default:
+      n = 2;
+      snprintf(t[0], sizeof(t[0]), "%d", cr.unans);
+      snprintf(t[1], sizeof(t[1]), "%d", st.commentCount);
+      l[0] = "Unanswered"; l[1] = "Comments, all time";
+      col[0] = cr.unans ? C_WARN : C_OK;
+      crList(crCards[0], "MOST UNANSWERED", CL_UNANS);
+      break;
+  }
+  static const char* const DEF[NCVIEW][CR_TILES] = {
+      {"Downloads per view, last 7 days", "Downloads per view, last 30 days", "Prints per download, lifetime",
+       "Likes + collects + comments per 100 downloads, 30 days"},
+      {"Models with more downloads yesterday than their 7-day average", "Models that were downloading and went quiet",
+       "Largest yesterday vs 7-day average ratio", nullptr},
+      {"Days since the latest model was published (of 7)", "Downloads of the latest model so far",
+       "Share of earlier launches it is ahead of at this day", "Downloads from models over 30 days old, last 30 days"},
+      {"Account points gained in 7 days: models, profile and spending", "Account points in 30 days (MakerWorld report)",
+       "Points MakerWorld credits to models, 7 days (models with analytics)", "Points credited to models, 30 days"},
+      {"Followers now", "Followers gained today", "Followers gained in 7 days", "Followers gained in 30 days"},
+      {"Comments from others you haven't replied to", "Comments on all your models", nullptr, nullptr}};
+  for (int i = 0; i < CR_TILES; i++) crTileDef[i] = DEF[crView][i];
+  crSetTiles(n, v, l, col);
+  setTextIfChanged(crNote, note);
+}
+
+static void openCreatorReply(lv_event_t*) {
+  crView = CV_REPLY;
+  refreshCreator();
+  markPagesDirty();
+  goScreen(SC_CREATOR, SC_CREATOR > cur ? 1 : -1);
+}
+
 enum { ST_POLLER, ST_COOKIE, ST_NEXT, ST_BASE, ST_NET, ST_DEVICE, NSTATUS };
 struct StatusCell {
   lv_obj_t *dot, *value, *sub;
 };
 static StatusCell cells[NSTATUS];
 
-static void makeStatusCell(lv_obj_t* parent, int i, int x, int y, int w, int h, const char* name, bool wide) {
+static void makeStatusCell(lv_obj_t* parent, int i, int x, int y, int w, int h, const char* name) {
   lv_obj_t* c = card(parent, x, y, w, h);
-  const lv_font_t* nameF = COMPACT ? F12 : (TALL ? F14 : F12);
-  const lv_font_t* valF = wide ? (TALL ? F32 : F22) : (COMPACT ? F20 : (TALL ? F22 : F20));
-  const lv_font_t* subF = COMPACT ? F12 : (TALL ? F14 : F12);
-  const int pad = COMPACT ? 8 : 16;
-  const int nameY = COMPACT ? 6 : (TALL ? 18 : 12);
-  const int dot = COMPACT ? 7 : 10;
-  cells[i].dot = box(c, pad, nameY + (lineH(nameF) - dot) / 2, dot, dot, C_IDLE, LV_RADIUS_CIRCLE);
-  lv_obj_t* l = label(c, nameF, C_SUB, pad + dot + 8, nameY, name);
+  const lv_font_t* nameF = F12;
+  const lv_font_t* valF = h >= 64 ? F20 : F16;
+  const lv_font_t* subF = F12;
+  const int pad = COMPACT ? 6 : 12;
+  const int nameW = COMPACT ? 96 : (TALL ? 150 : 128);
+  const bool two = h >= lineH(valF) + lineH(subF) + pad * 2 + 2;
+  cells[i].dot = box(c, pad, pad + (lineH(nameF) - 8) / 2, 8, 8, C_IDLE, LV_RADIUS_CIRCLE);
+  lv_obj_t* l = label(c, nameF, C_SUB, pad + 14, pad, name);
   lv_obj_set_style_text_letter_space(l, 1, 0);
-  const int subH = lineH(subF);
-  const int subY = h - subH - (COMPACT ? 6 : (TALL ? 18 : 12));
-  int valY = nameY + lineH(nameF) + 4;
-  int room = subY - valY;
-  if (room > lineH(valF)) valY += (room - lineH(valF)) / 2;
-  cells[i].value = label(c, valF, C_TXT, pad, valY, "-");
-  dotLabel(cells[i].value, w - 2 * pad);
-  cells[i].sub = label(c, subF, C_MUTED, pad, subY, "");
-  dotLabel(cells[i].sub, w - 2 * pad);
+  lv_label_set_long_mode(l, LV_LABEL_LONG_CLIP);
+  lv_obj_set_width(l, nameW - 14);
+  const int textX = pad + nameW;
+  const int textW = w - textX - pad;
+  if (two) {
+    cells[i].value = label(c, valF, C_TXT, textX, pad, "-");
+    lv_label_set_long_mode(cells[i].value, LV_LABEL_LONG_CLIP);
+    lv_obj_set_width(cells[i].value, textW);
+    cells[i].sub = label(c, subF, C_MUTED, textX, h - pad - lineH(subF), "");
+    lv_label_set_long_mode(cells[i].sub, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(cells[i].sub, textW);
+  } else {
+    int vy = (h - lineH(valF)) / 2;
+    cells[i].value = label(c, valF, C_TXT, textX, vy, "-");
+    lv_label_set_long_mode(cells[i].value, LV_LABEL_LONG_CLIP);
+    lv_obj_set_width(cells[i].value, textW);
+    cells[i].sub = label(c, subF, C_MUTED, 0, 0, "");
+    show(cells[i].sub, false);
+  }
 }
 
 static void statusBtnCb(lv_event_t* e);  // defined with openStatus()
@@ -1249,25 +2070,14 @@ static void buildStatus() {
 #else
   hint(h, COMPACT ? "press: poll / hold: back" : "press: poll now  -  hold: back");
 #endif
-  const char* names[NSTATUS] = {"POLLER", "COOKIE", "NEXT POLL", "DAY BASELINE", "NETWORK", "DEVICE"};
-  if (COMPACT) {
-    const int gap = 6, cols = 2, rows = 3;
-    const int w = (CW - (cols - 1) * gap) / cols;
-    const int h = (TH - (rows - 1) * gap) / rows;
-    for (int i = 0; i < NSTATUS; i++)
-      makeStatusCell(s, i, PAD + (i % cols) * (w + gap), TOP + (i / cols) * (h + gap), w, h, names[i], i >= ST_NET);
-    return;
-  }
-  // Four status metrics on top. Network and Device span two columns so the
-  // IP address and hostname are not clipped.
-  const int gap = TALL ? 12 : 8;
-  const int colW = (CW - 3 * gap) / 4;
-  const int rowH = (TH - gap) / 2;
-  const int span = colW * 2 + gap;
-  for (int i = 0; i < 4; i++)
-    makeStatusCell(s, i, PAD + i * (colW + gap), TOP, colW, rowH, names[i], false);
-  makeStatusCell(s, ST_NET, PAD, TOP + rowH + gap, span, rowH, names[ST_NET], true);
-  makeStatusCell(s, ST_DEVICE, PAD + span + gap, TOP + rowH + gap, span, rowH, names[ST_DEVICE], true);
+  const char* names[NSTATUS] = {"POLLER", "COOKIE", "NEXT POLL", "DAY BASE", "NETWORK", "DEVICE"};
+  // One full-width row each, so an address or hostname is not squeezed into a
+  // quarter of the screen. Short panels keep a single line; taller ones add
+  // the detail underneath.
+  const int gap = COMPACT ? 4 : 6;
+  const int rowH = (TH - (NSTATUS - 1) * gap) / NSTATUS;
+  for (int i = 0; i < NSTATUS; i++)
+    makeStatusCell(s, i, PAD, TOP + i * (rowH + gap), CW, rowH, names[i]);
 }
 
 static void setCell(int i, uint32_t dot, const char* value, const char* sub) {
@@ -1288,6 +2098,17 @@ static void refreshStatus() {
     bool ok = !strcmp(st.auth, "ok");
     fmtAgo(b, sizeof(b), n && st.lastPoll ? (long)(n - st.lastPoll) : -1);
     snprintf(a, sizeof(a), "last poll %s ago", b);
+    if (st.health.has && n) {
+      // Last good fetch per MakerWorld source ("!" = failing now).
+      static const char* const SRC[NHSRC] = {"models", "reach", "points"};
+      size_t o = 0;
+      for (int i = 0; i < NHSRC; i++) {
+        char g[16];
+        if (st.health.srcT[i]) fmtAgo(g, sizeof(g), (long)(n - st.health.srcT[i]));
+        else snprintf(g, sizeof(g), "never");
+        o += snprintf(a + o, sizeof(a) - o, "%s%s %s%s", i ? "  " : "", SRC[i], g, st.health.srcFails[i] ? "!" : "");
+      }
+    }
     setCell(ST_POLLER, st.pollOk ? (ok ? C_OK : C_WARN) : C_ERR,
             st.pollOk ? (ok ? "Synced" : "Public only") : "Error", st.pollOk ? a : st.msg);
     fmtAgo(a, sizeof(a), st.cookieAge);
@@ -1299,16 +2120,28 @@ static void refreshStatus() {
     else snprintf(a, sizeof(a), "in %ldm %02lds", left / 60, left % 60);
     snprintf(b, sizeof(b), "every %d min", pollSec / 60);
     setCell(ST_NEXT, C_IDLE, a, b);
-    fmtHM(a, sizeof(a), st.since);
-    setCell(ST_BASE, st.midnight ? C_OK : C_WARN, a, st.midnight ? "last poll before midnight" : "partial day (poller started)");
+    if (st.midnight || payloadLagDays()) {
+      // The sample may be 23:17 the night before. That is yesterday's clock,
+      // so the baseline shown for today is midnight.
+      char when[20];
+      if (st.since) fmtWeekHM(when, sizeof(when), st.since);
+      else when[0] = 0;
+      if (COMPACT) snprintf(b, sizeof(b), when[0] ? "midnight %s" : "midnight", when);
+      else snprintf(b, sizeof(b), when[0] ? "since midnight - sampled %s" : "since midnight", when);
+      setCell(ST_BASE, C_OK, "12:00 AM", b);
+    } else {
+      fmtHM(a, sizeof(a), st.since);
+      setCell(ST_BASE, C_WARN, a, "partial day (poller started)");
+    }
   }
   if (g_net.connected) {
-    snprintf(b, sizeof(b), "%s.local  -  %s  -  %d dBm", g_net.host, g_net.ssid, g_net.rssi);
+    snprintf(b, sizeof(b), "%s%s  -  %s  -  %d dBm", g_net.host, g_net.mdns ? ".local" : " (mDNS off)", g_net.ssid,
+             g_net.rssi);
     setCell(ST_NET, g_net.rssi > -70 ? C_OK : C_WARN, g_net.ip, b);
   } else if (g_net.portal) {
     setCell(ST_NET, C_ERR, "Setup", "join " BOARD_AP);
   } else {
-    snprintf(b, sizeof(b), "%s.local", g_net.host);
+    snprintf(b, sizeof(b), "%s%s", g_net.host, settings_mdns() ? ".local" : " (mDNS off)");
     setCell(ST_NET, C_ERR, "Offline", b);
   }
   fmtAgo(a, sizeof(a), millis() / 1000);
@@ -1335,61 +2168,691 @@ static void touchEvent(lv_event_t* e);
 static void menuTapCb(lv_event_t* e);
 #endif
 
+static void applyBrightness();
+
 // ---- settings menu ----------------------------------------------------------
-static const int NMENU = NSET + 1;  // + Exit
+// One scrolling list in sections, one setting per row: label left, value and
+// a chevron right. Option settings open a choice sheet, on/off settings are
+// switches, and Quiet from / until open an hours:minutes picker. Sheets are
+// built when opened and deleted when closed. Knob: turn moves the highlight,
+// press opens or flips, hold goes back.
+enum MenuKind : uint8_t { MK_HEAD, MK_CHOICE, MK_TOGGLE, MK_TIME, MK_ACTION, MK_INFO };
+enum { MA_WIFI, MA_UPDATE, MA_STATUS, MA_ABOUT, MA_RESET };
+enum { MI_ADDR, MI_HOST };
+struct MenuDef {
+  uint8_t kind;
+  int8_t id;          // SettingId, 0/1 for start/end, or MA_*
+  const char* label;  // nullptr: the setting's own label
+};
+static const MenuDef MENU[] = {
+  {MK_HEAD, 0, "DISPLAY"},
+  {MK_CHOICE, SET_BRIGHTNESS, nullptr},
+  {MK_CHOICE, SET_DIM, nullptr},
+  {MK_CHOICE, SET_AUTOCYCLE, nullptr},
+  {MK_CHOICE, SET_IDLE, nullptr},
+  {MK_HEAD, 0, "QUIET HOURS"},
+  {MK_TOGGLE, SET_QUIET, nullptr},
+  {MK_CHOICE, SET_NIGHT, "During quiet hours"},
+  {MK_TIME, 0, "Quiet from"},
+  {MK_TIME, 1, "Quiet until"},
+  {MK_HEAD, 0, "ALERTS"},
+  {MK_CHOICE, SET_NOTIFY, nullptr},
+  {MK_CHOICE, SET_BANNER, nullptr},
+#if AUDIO_I2S
+  {MK_TOGGLE, SET_SOUND, nullptr},
+  {MK_CHOICE, SET_VOLUME, nullptr},
+#endif
+  {MK_HEAD, 0, "NETWORK"},
+  {MK_ACTION, MA_WIFI, "Wi-Fi"},
+  {MK_INFO, MI_ADDR, "Address"},
+  {MK_INFO, MI_HOST, "Hostname"},
+  {MK_CHOICE, SET_POLL, nullptr},
+  {MK_HEAD, 0, "DEVICE"},
+  {MK_ACTION, MA_UPDATE, "Firmware"},
+  {MK_ACTION, MA_STATUS, "Status"},
+  {MK_ACTION, MA_ABOUT, "About"},
+  {MK_ACTION, MA_RESET, "Reset settings"},
+};
+
+// One-line explanation under a row's label (the two settings people ask about).
+static const char* menuHint(int i) {
+  if (MENU[i].kind != MK_CHOICE) return nullptr;
+  if (MENU[i].id == SET_NOTIFY) return "Banner and chime for these events";
+  if (MENU[i].id == SET_NIGHT) return "Once idle in quiet hours";
+  return nullptr;
+}
+static const int NMENU = sizeof(MENU) / sizeof(MENU[0]);
 struct MenuUi {
-  lv_obj_t *card, *value;
+  lv_obj_t *row, *label, *value, *chev, *track, *thumb, *hint;
 };
 static MenuUi menuUi[NMENU];
-static int menuSel = 0;
+static lv_obj_t* menuList;
+static bool menuWide = false;  // 800 px and up: two settings per line
+static int menuSel = 1;  // knob highlight; never a section header
+static int menuRowH, menuSwW, menuSwH;
+
+// Picker sheet over the list (nullptr when closed).
+static lv_obj_t* sheet = nullptr;
+static int sheetRow = -1;          // MENU row being edited
+static int sheetSel = 0;           // choice: highlighted option; time: 0 hour, 1 minute
+static lv_obj_t* sheetOpt[8];      // choice rows
+static lv_obj_t* tpHour = nullptr;
+static lv_obj_t* tpMin = nullptr;
+static lv_obj_t* tpAmPm = nullptr;
+static lv_obj_t *brSlider = nullptr, *brPct = nullptr;
+enum { SH_CHOICE, SH_TIME, SH_BRIGHT, SH_RESET };
+static int sheetMode = SH_CHOICE;
+
+static void menuTapCb(lv_event_t* e);
+static void menuBackCb(lv_event_t* e);
+static void menuHoldCb(lv_event_t* e);
+static void refreshMenu();
+
+static void uiHeap(const char* where) {
+  Serial.printf("heap @%s: internal free %u (largest %u)\n", where,
+                (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
+}
+
+// A bare container. Unlike box() it keeps scroll chaining, so a drag that
+// starts on a row still scrolls the list.
+static lv_obj_t* plainObj(lv_obj_t* parent) {
+  lv_obj_t* o = lv_obj_create(parent);
+  lv_obj_remove_style_all(o);
+  lv_obj_clear_flag(o, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+  return o;
+}
+
+// Long values (a Wi-Fi name, "Update available") always get a whole line.
+static bool menuFullRow(int i) {
+  return (MENU[i].kind == MK_ACTION && (MENU[i].id == MA_WIFI || MENU[i].id == MA_UPDATE)) || MENU[i].kind == MK_INFO;
+}
+
+static bool menuFocusable(int i) {
+  return MENU[i].kind != MK_HEAD && MENU[i].kind != MK_INFO && !lv_obj_has_flag(menuUi[i].row, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void fmtMinutes(char* out, size_t cap, int m) { fmt12(out, cap, m / 60, m % 60); }
 
 static void buildMenu() {
   menuRoot = newScreen();
   Header h = header(menuRoot, "SETTINGS", "");
+  // The hamburger is hidden here, so the back control takes the right edge.
+  lv_obj_align(h.right, LV_ALIGN_TOP_RIGHT, -PAD, COMPACT ? 4 : 8);
 #if INPUT_TOUCH
-  hint(h, "tap a setting to change it  -  hold: back");
+  headerBtn(h, LV_SYMBOL_LEFT "  Back", C_TXT, menuBackCb, 0);
 #else
-  hint(h, COMPACT ? "turn / press / hold: exit" : "turn: move  -  press: change  -  hold: exit");
+  hint(h, COMPACT ? "turn / press / hold: back" : "turn: move  -  press: change  -  hold: back");
 #endif
-  // Two columns on every panel: even 11 items (audio boards) keep 60 px
-  // rows on tall panels, and labels keep room next to their values.
-  const int cols = 2;
-  const int rows = (NMENU + cols - 1) / cols;
-  const int gap = COMPACT ? 6 : 8, colW = (CW - (cols - 1) * 12) / cols, rowH = (TH - (rows - 1) * gap) / rows;
+  menuRowH = max(48, TOUCH_PX + 12);
+  menuWide = W >= 800;
+  menuSwW = COMPACT ? 40 : 48;
+  menuSwH = COMPACT ? 22 : 26;
+  const int mx = COMPACT ? 12 : 16, radius = COMPACT ? 6 : 8;
+
+  menuList = lv_obj_create(menuRoot);
+  lv_obj_remove_style_all(menuList);
+  lv_obj_set_pos(menuList, 0, TOP - (COMPACT ? 4 : 6));
+  lv_obj_set_size(menuList, W, H - TOP + (COMPACT ? 4 : 6));
+  lv_obj_set_flex_flow(menuList, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_style_pad_hor(menuList, PAD, 0);
+  lv_obj_set_style_pad_bottom(menuList, COMPACT ? 16 : 24, 0);
+  lv_obj_set_scroll_dir(menuList, LV_DIR_VER);
+  lv_obj_set_scrollbar_mode(menuList, LV_SCROLLBAR_MODE_ACTIVE);
+  lv_obj_set_style_bg_color(menuList, C(C_MUTED), LV_PART_SCROLLBAR);
+  lv_obj_set_style_bg_opa(menuList, LV_OPA_70, LV_PART_SCROLLBAR);
+  lv_obj_set_style_width(menuList, 4, LV_PART_SCROLLBAR);
+  lv_obj_set_style_radius(menuList, 2, LV_PART_SCROLLBAR);
+  lv_obj_set_style_pad_right(menuList, 3, LV_PART_SCROLLBAR);
+
+  lv_obj_t* group = nullptr;
+  bool first = true;
   for (int i = 0; i < NMENU; i++) {
-    int col = i / rows, r = i % rows;
+    const MenuDef& d = MENU[i];
     MenuUi& m = menuUi[i];
-    m.card = card(menuRoot, PAD + col * (colW + 12), TOP + r * (rowH + gap), colW, rowH);
+    m = MenuUi{};
+    if (d.kind == MK_HEAD) {
+      // Section title above a flat grouped card (no gradient: it scrolls).
+      m.row = label(menuList, F12, C_MUTED, 0, 0, d.label);
+      lv_obj_set_style_text_letter_space(m.row, 2, 0);
+      lv_obj_set_style_pad_top(m.row, first ? (COMPACT ? 8 : 12) : (COMPACT ? 16 : 24), 0);
+      lv_obj_set_style_pad_bottom(m.row, 8, 0);
+      lv_obj_set_style_pad_left(m.row, mx, 0);
+      first = false;
+      group = plainObj(menuList);
+      lv_obj_set_size(group, lv_pct(100), LV_SIZE_CONTENT);
+      lv_obj_set_flex_flow(group, menuWide ? LV_FLEX_FLOW_ROW_WRAP : LV_FLEX_FLOW_COLUMN);
+      lv_obj_set_style_bg_color(group, C(C_CARD), 0);
+      lv_obj_set_style_bg_opa(group, LV_OPA_COVER, 0);
+      lv_obj_set_style_border_width(group, 1, 0);
+      lv_obj_set_style_border_color(group, C(C_EDGE), 0);
+      lv_obj_set_style_radius(group, radius, 0);
+      continue;
+    }
+    lv_obj_t* r = m.row = plainObj(group);
+    lv_obj_set_size(r, lv_pct(100), menuRowH);
+    lv_obj_set_style_radius(r, radius, 0);
+    lv_obj_set_style_border_side(r, LV_BORDER_SIDE_BOTTOM, 0);
+    lv_obj_set_style_border_color(r, C(C_EDGE), 0);
+    lv_obj_set_style_bg_color(r, C(C_RAISED), 0);
+    lv_obj_set_style_bg_opa(r, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_bg_opa(r, LV_OPA_COVER, LV_STATE_PRESSED);
 #if INPUT_TOUCH
-    lv_obj_add_flag(m.card, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_style_bg_color(m.card, C(C_RAISED), LV_STATE_PRESSED);
-    lv_obj_set_style_border_color(m.card, C(C_ACCENT), LV_STATE_PRESSED);
-    lv_obj_add_event_cb(m.card, menuTapCb, LV_EVENT_SHORT_CLICKED, (void*)(intptr_t)i);
+    if (d.kind != MK_INFO) {
+      lv_obj_add_flag(r, LV_OBJ_FLAG_CLICKABLE);
+      lv_obj_add_event_cb(r, menuTapCb, LV_EVENT_SHORT_CLICKED, (void*)(intptr_t)i);
+      lv_obj_add_event_cb(r, menuHoldCb, LV_EVENT_LONG_PRESSED, nullptr);
+    }
 #endif
-    lv_obj_set_style_border_width(m.card, 1, 0);
-    lv_obj_t* l = label(m.card, F16, C_TXT, 18, 0, i < NSET ? SETTINGS[i].label : "Exit");
-    dotLabel(l, colW - (COMPACT ? 112 : 136));
-    lv_obj_align(l, LV_ALIGN_LEFT_MID, COMPACT ? 10 : 18, 0);
-    m.value = label(m.card, F16, C_MUTED, 0, 0, "");
-    dotLabel(m.value, COMPACT ? 92 : 100);
-    lv_obj_set_style_text_align(m.value, LV_TEXT_ALIGN_RIGHT, 0);
-    lv_obj_align(m.value, LV_ALIGN_RIGHT_MID, COMPACT ? -10 : -18, 0);
+    m.label = label(r, F16, d.kind == MK_INFO ? C_SUB : (d.kind == MK_ACTION && d.id == MA_RESET ? C_ERR : C_TXT), 0, 0,
+                    d.label ? d.label : SETTINGS[d.id].label);
+    lv_obj_align(m.label, LV_ALIGN_LEFT_MID, mx, 0);
+    if (const char* h = menuHint(i)) {
+      // Taller row: the label moves up and the hint sits under it.
+      lv_obj_set_height(r, menuRowH + lineH(F12));
+      lv_obj_align(m.label, LV_ALIGN_LEFT_MID, mx, -lineH(F12) / 2 - 1);
+      m.hint = label(r, F12, C_MUTED, 0, 0, h);
+      lv_obj_align(m.hint, LV_ALIGN_LEFT_MID, mx, lineH(F16) / 2 + 1);
+    }
+    if (d.kind == MK_TOGGLE) {
+      m.track = box(r, 0, 0, menuSwW, menuSwH, C_DIM, LV_RADIUS_CIRCLE);
+      lv_obj_align(m.track, LV_ALIGN_RIGHT_MID, -mx, 0);
+      m.thumb = box(m.track, 3, 3, menuSwH - 6, menuSwH - 6, C_TXT, LV_RADIUS_CIRCLE);
+    } else {
+      m.chev = label(r, F14, C_MUTED, 0, 0, d.kind == MK_INFO ? "" : LV_SYMBOL_RIGHT);
+      lv_obj_align(m.chev, LV_ALIGN_RIGHT_MID, -mx, 0);
+      m.value = label(r, F16, C_SUB, 0, 0, "");
+      lv_label_set_long_mode(m.value, LV_LABEL_LONG_DOT);
+      const int chevW = d.kind == MK_INFO ? -10 : lv_txt_get_width(LV_SYMBOL_RIGHT, strlen(LV_SYMBOL_RIGHT), F14, 0, LV_TEXT_FLAG_NONE);
+      lv_obj_align(m.value, LV_ALIGN_RIGHT_MID, -(mx + chevW + 10), 0);
+      // Whatever the label leaves, so values like "Boosts, prints, comments" fit.
+      int lw = lv_txt_get_width(lv_label_get_text(m.label), strlen(lv_label_get_text(m.label)), F16, 0,
+                                LV_TEXT_FLAG_NONE);
+      const int rowW = menuWide && !menuFullRow(i) ? CW / 2 : CW;
+      lv_obj_set_style_max_width(m.value, max(60, rowW - 2 * mx - lw - chevW - 24), 0);
+    }
+  }
+}
+
+// Row widths and hairlines. Wide panels pair visible rows two to a line in
+// list order (a row left alone, or a long-value row, takes the whole line);
+// the left one of a pair gets a vertical hairline. No line under the last
+// line of a section card.
+static void menuLayout() {
+  for (int i = 0; i < NMENU; i++) {
+    if (MENU[i].kind == MK_HEAD) continue;
+    int j = i;  // this section: rows i..j-1
+    while (j < NMENU && MENU[j].kind != MK_HEAD) j++;
+    int line[NMENU], nlines = 0, pending = -1;
+    bool left[NMENU] = {};
+    for (int k = i; k < j; k++) {
+      if (lv_obj_has_flag(menuUi[k].row, LV_OBJ_FLAG_HIDDEN)) continue;
+      bool half = menuWide && !menuFullRow(k);
+      int hk = menuRowH + (menuHint(k) ? lineH(F12) : 0);
+      if (half && pending >= 0) {
+        left[pending] = true;
+        line[k] = line[pending];
+        lv_obj_set_width(menuUi[pending].row, lv_pct(50));
+        lv_obj_set_width(menuUi[k].row, lv_pct(50));
+        // Both halves of a line as tall as the taller one.
+        int hp = menuRowH + (menuHint(pending) ? lineH(F12) : 0), h = max(hk, hp);
+        lv_obj_set_height(menuUi[pending].row, h);
+        lv_obj_set_height(menuUi[k].row, h);
+        pending = -1;
+        continue;
+      }
+      line[k] = nlines++;
+      lv_obj_set_width(menuUi[k].row, lv_pct(100));
+      lv_obj_set_height(menuUi[k].row, hk);
+      pending = half ? k : -1;
+    }
+    for (int k = i; k < j; k++) {
+      if (lv_obj_has_flag(menuUi[k].row, LV_OBJ_FLAG_HIDDEN)) continue;
+      int side = (line[k] < nlines - 1 ? LV_BORDER_SIDE_BOTTOM : 0) | (left[k] ? LV_BORDER_SIDE_RIGHT : 0);
+      lv_obj_set_style_border_side(menuUi[k].row, (lv_border_side_t)side, 0);
+      lv_obj_set_style_border_width(menuUi[k].row, side ? 1 : 0, 0);
+    }
+    i = j - 1;
   }
 }
 
 static void refreshMenu() {
+  if (!menuList) return;
+  bool quietOn = setting_value(SET_QUIET);
+  char buf[40];
   for (int i = 0; i < NMENU; i++) {
-    bool sel = i == menuSel;
-    lv_obj_set_style_bg_color(menuUi[i].card, C(sel ? C_RAISED : C_CARD), 0);
-    lv_obj_set_style_border_color(menuUi[i].card, C(sel ? C_SEL : C_EDGE), 0);
-    lv_label_set_text(menuUi[i].value, i < NSET ? setting_name((SettingId)i) : "");
-    lv_obj_set_style_text_color(menuUi[i].value, C(sel ? C_SEL : C_MUTED), 0);
-    lv_obj_align(menuUi[i].value, LV_ALIGN_RIGHT_MID, COMPACT ? -10 : -18, 0);
+    const MenuDef& d = MENU[i];
+    MenuUi& m = menuUi[i];
+    if (d.kind == MK_HEAD) continue;
+    // The quiet window rows only matter while quiet hours are on.
+    if (d.kind == MK_TIME || (d.kind == MK_CHOICE && d.id == SET_NIGHT)) show(m.row, quietOn);
+    bool sel = !INPUT_TOUCH && i == menuSel;
+    lv_obj_set_style_bg_opa(m.row, sel ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
+    uint32_t base = d.kind == MK_INFO ? C_SUB : d.kind == MK_ACTION && d.id == MA_RESET ? C_ERR : C_TXT;
+    lv_obj_set_style_text_color(m.label, C(sel ? C_ACCENT : base), 0);
+    if (d.kind == MK_TOGGLE) {
+      bool on = setting_value((SettingId)d.id);
+      lv_obj_set_style_bg_color(m.track, C(on ? C_ACCENT : C_DIM), 0);
+      lv_obj_set_x(m.thumb, on ? menuSwW - menuSwH + 3 : 3);
+      continue;
+    }
+    const char* val = buf;
+    if (d.kind == MK_CHOICE) val = setting_name((SettingId)d.id);
+    else if (d.kind == MK_TIME) fmtMinutes(buf, sizeof(buf), d.id ? settings_quiet_end() : settings_quiet_start());
+    else if (d.kind == MK_INFO && d.id == MI_ADDR) val = g_net.connected ? g_net.ip : "Offline";
+    else if (d.kind == MK_INFO) {
+      snprintf(buf, sizeof(buf), g_net.mdns ? "%s.local" : "%s", g_net.host);
+      val = buf;
+    } else if (d.id == MA_WIFI) val = g_net.connected && g_net.ssid[0] ? g_net.ssid : "Not connected";
+    else if (d.id == MA_UPDATE) val = ota_update_available() ? "Update available" : "v" FW_VERSION;
+    else val = "";
+    lv_label_set_text(m.value, val);
+    lv_obj_set_style_text_color(m.value, C(d.id == MA_UPDATE && d.kind == MK_ACTION && ota_update_available()
+                                               ? C_OK : (sel ? C_ACCENT : C_SUB)), 0);
   }
+  menuLayout();
+}
+
+// ---- picker sheets ----
+static void sheetClose() {
+  if (!sheet) return;
+  bool preview = sheetMode == SH_BRIGHT;
+  lv_obj_del(sheet);
+  sheet = nullptr;
+  tpHour = tpMin = tpAmPm = brSlider = brPct = nullptr;
+  if (preview) applyBrightness();  // cancelled preview: back to the saved level
+  sheetRow = -1;
+  uiHeap("sheet closed");
+}
+
+// Dimmed backdrop (a tap on it cancels) and a centered card.
+static lv_obj_t* sheetCard(int w, const char* title) {
+  sheet = plainObj(menuRoot);
+  lv_obj_set_size(sheet, W, H);
+  lv_obj_set_style_bg_color(sheet, lv_color_black(), 0);
+  lv_obj_set_style_bg_opa(sheet, LV_OPA_60, 0);
+  lv_obj_add_flag(sheet, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(sheet, [](lv_event_t* e) {
+    if (lv_event_get_target(e) == sheet) sheetClose();
+  }, LV_EVENT_SHORT_CLICKED, nullptr);
+  lv_obj_t* c = plainObj(sheet);
+  lv_obj_add_flag(c, LV_OBJ_FLAG_CLICKABLE);  // taps inside don't cancel
+  lv_obj_set_width(c, w);
+  lv_obj_set_height(c, LV_SIZE_CONTENT);
+  lv_obj_set_style_max_height(c, H - (COMPACT ? 16 : 48), 0);
+  lv_obj_set_flex_flow(c, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_style_pad_all(c, COMPACT ? 12 : 24, 0);
+  lv_obj_set_style_pad_row(c, COMPACT ? 4 : 8, 0);
+  lv_obj_set_style_bg_color(c, C(C_CARD), 0);
+  lv_obj_set_style_bg_opa(c, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_width(c, 1, 0);
+  lv_obj_set_style_border_color(c, C(C_EDGE), 0);
+  lv_obj_set_style_radius(c, COMPACT ? 8 : 12, 0);
+  lv_obj_center(c);
+  lv_obj_t* t = label(c, F20, C_TXT, 0, 0, title);
+  lv_obj_set_style_pad_bottom(t, COMPACT ? 4 : 8, 0);
+  return c;
+}
+
+static void choiceRefresh() {
+  SettingId id = (SettingId)MENU[sheetRow].id;
+  for (int j = 0; j < SETTINGS[id].count; j++) {
+    bool cur = j == setting_index(id), hl = !INPUT_TOUCH && j == sheetSel;
+    lv_obj_set_style_bg_opa(sheetOpt[j], hl ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
+    lv_obj_t* l = lv_obj_get_child(sheetOpt[j], 0);
+    lv_obj_t* chk = lv_obj_get_child(sheetOpt[j], 1);
+    lv_obj_set_style_text_color(l, C(cur || hl ? C_ACCENT : C_TXT), 0);
+    show(chk, cur);
+  }
+  if (!INPUT_TOUCH) lv_obj_scroll_to_view(sheetOpt[sheetSel], LV_ANIM_ON);
+}
+
+static void applySetting(SettingId id) {
+  if (id == SET_BRIGHTNESS) applyBrightness();
+  if (id == SET_POLL) ui_toast("Poller picks this up within 15 s");
+#if AUDIO_I2S
+  if (id == SET_VOLUME || id == SET_SOUND) sound_test();
+#endif
+  refreshMenu();
+  refreshStatus();
+}
+
+static void choicePick(int j) {
+  SettingId id = (SettingId)MENU[sheetRow].id;
+  setting_set_value(id, SETTINGS[id].values[j]);
+  sheetClose();
+  applySetting(id);
+}
+
+static void choiceTapCb(lv_event_t* e) {
+  lastInput = millis();
+  choicePick(tapIdx(e));
+}
+
+static void openChoice(int row) {
+  SettingId id = (SettingId)MENU[row].id;
+  sheetRow = row;
+  sheetMode = SH_CHOICE;
+  sheetSel = setting_index(id);
+  lv_obj_t* c = sheetCard(min(CW, COMPACT ? 360 : 480), MENU[row].label ? MENU[row].label : SETTINGS[id].label);
+  lv_obj_t* list = plainObj(c);
+  lv_obj_add_flag(list, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_scroll_dir(list, LV_DIR_VER);
+  // Fits the screen; longer lists scroll (5 options on a 272 px panel).
+  const int room = H - (COMPACT ? 16 : 48) - 2 * (COMPACT ? 12 : 24) - lineH(F20) - 16 - (INPUT_TOUCH ? 0 : lineH(F12) + 8);
+  lv_obj_set_size(list, lv_pct(100), min((int)SETTINGS[id].count * menuRowH, room));
+  lv_obj_set_flex_flow(list, LV_FLEX_FLOW_COLUMN);
+  for (int j = 0; j < SETTINGS[id].count && j < 8; j++) {
+    lv_obj_t* r = sheetOpt[j] = plainObj(list);
+    lv_obj_clear_flag(r, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_size(r, lv_pct(100), menuRowH);
+    lv_obj_set_style_radius(r, 6, 0);
+    lv_obj_set_style_bg_color(r, C(C_RAISED), 0);
+    lv_obj_set_style_bg_opa(r, LV_OPA_COVER, LV_STATE_PRESSED);
+#if INPUT_TOUCH
+    lv_obj_add_flag(r, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(r, choiceTapCb, LV_EVENT_SHORT_CLICKED, (void*)(intptr_t)j);
+#endif
+    lv_obj_t* l = label(r, F16, C_TXT, 0, 0, SETTINGS[id].names[j]);
+    lv_obj_align(l, LV_ALIGN_LEFT_MID, 12, 0);
+    lv_obj_t* chk = label(r, F16, C_ACCENT, 0, 0, LV_SYMBOL_OK);
+    lv_obj_align(chk, LV_ALIGN_RIGHT_MID, -12, 0);
+  }
+  if (!INPUT_TOUCH) label(c, F12, C_MUTED, 0, 0, "turn: choose  -  press: set  -  hold: cancel");
+  choiceRefresh();
+  uiHeap("choice sheet");
+}
+
+static void timeRefresh() {
+  lv_obj_t* r[3] = {tpHour, tpMin, tpAmPm};
+  for (int k = 0; k < 3; k++) {
+    bool hl = !INPUT_TOUCH && k == sheetSel;
+    lv_obj_set_style_border_color(r[k], C(hl ? C_ACCENT : C_EDGE), 0);
+    lv_obj_set_style_border_width(r[k], hl ? 2 : 1, 0);
+  }
+}
+
+static void timeSave() {
+  // Hour roller: 12, 1, ... 11 (index = hour % 12); AM/PM adds 12.
+  int m = ((int)lv_roller_get_selected(tpAmPm) * 12 + (int)lv_roller_get_selected(tpHour)) * 60 +
+          (int)lv_roller_get_selected(tpMin) * 15;
+  if (MENU[sheetRow].id) settings_set_quiet(settings_quiet_start(), m);
+  else settings_set_quiet(m, settings_quiet_end());
+  sheetClose();
+  refreshMenu();
+  applyBrightness();  // the screen may be inside (or outside) the new window now
+}
+
+static void timeBtnCb(lv_event_t* e) {
+  lastInput = millis();
+  if (tapIdx(e)) timeSave();
+  else sheetClose();
+}
+
+static lv_obj_t* tpRoller(lv_obj_t* parent, const char* opts, int sel) {
+  lv_obj_t* r = lv_roller_create(parent);
+  // Normal mode: an infinite roller's 7 copies make the label taller than
+  // LVGL's text-hint limit and the selected row then draws the wrong line
+  // (22 showed as 10). The knob wraps around in sheetInput() instead.
+  lv_roller_set_options(r, opts, LV_ROLLER_MODE_NORMAL);
+  lv_roller_set_visible_row_count(r, 3);
+  lv_obj_set_width(r, COMPACT ? 72 : 112);
+  lv_obj_set_style_text_font(r, F32, 0);
+  lv_obj_set_style_text_font(r, F32, LV_PART_SELECTED);
+  lv_obj_set_style_text_align(r, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_text_color(r, C(C_MUTED), 0);
+  lv_obj_set_style_bg_color(r, C(C_CARD2), 0);
+  lv_obj_set_style_border_color(r, C(C_EDGE), 0);
+  lv_obj_set_style_radius(r, 8, 0);
+  lv_obj_set_style_text_color(r, C(C_TXT), LV_PART_SELECTED);
+  lv_obj_set_style_bg_color(r, C(C_RAISED), LV_PART_SELECTED);
+  lv_obj_set_style_bg_opa(r, LV_OPA_COVER, LV_PART_SELECTED);
+  lv_roller_set_selected(r, sel, LV_ANIM_OFF);
+  return r;
+}
+
+static void openTime(int row) {
+  static const char HOURS[] = "12\n1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11";
+  sheetRow = row;
+  sheetMode = SH_TIME;
+  sheetSel = 0;
+  int m = MENU[row].id ? settings_quiet_end() : settings_quiet_start();
+  lv_obj_t* c = sheetCard(min(CW, COMPACT ? 340 : 480), MENU[row].label);
+  lv_obj_t* r = plainObj(c);
+  lv_obj_set_size(r, lv_pct(100), LV_SIZE_CONTENT);
+  lv_obj_set_flex_flow(r, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(r, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_column(r, COMPACT ? 8 : 12, 0);
+  tpHour = tpRoller(r, HOURS, m / 60 % 12);
+  label(r, F32, C_TXT, 0, 0, ":");
+  tpMin = tpRoller(r, "00\n15\n30\n45", (m % 60) / 15);
+  tpAmPm = tpRoller(r, "AM\nPM", m / 60 >= 12);
+  if (INPUT_TOUCH) {
+    lv_obj_t* b = plainObj(c);
+    lv_obj_set_size(b, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(b, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(b, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(b, 12, 0);
+    lv_obj_set_style_pad_top(b, COMPACT ? 8 : 16, 0);
+    for (int k = 0; k < 2; k++) {
+      uint32_t fg = k ? C_ACCENT : C_TXT;
+      lv_obj_t* btn = label(b, F16, fg, 0, 0, k ? "Save" : "Cancel");
+      chipStyle(btn, C_CHIP, fg);
+      lv_obj_set_style_min_height(btn, 48, 0);
+      lv_obj_set_style_pad_hor(btn, 22, 0);
+      lv_obj_set_style_pad_ver(btn, 14, 0);
+      lv_obj_set_style_radius(btn, 8, 0);
+      lv_obj_set_style_bg_color(btn, C(C_RAISED), LV_STATE_PRESSED);
+      lv_obj_set_style_border_color(btn, C(fg), LV_STATE_PRESSED);
+      lv_obj_add_flag(btn, LV_OBJ_FLAG_CLICKABLE);
+      lv_obj_add_event_cb(btn, timeBtnCb, LV_EVENT_CLICKED, (void*)(intptr_t)k);
+    }
+  } else {
+    label(c, F12, C_MUTED, 0, 0, "turn: change  -  press: next field, then save  -  hold: cancel");
+  }
+  timeRefresh();
+  uiHeap("time picker");
+}
+
+// Brightness: a slider that previews on the panel as it moves; Done saves,
+// a tap outside (or hold) puts the old level back.
+static void brShow(int idx) {
+  char b[8];
+  snprintf(b, sizeof(b), "%d%%", SETTINGS[SET_BRIGHTNESS].values[idx]);
+  lv_label_set_text(brPct, b);
+  display_set_brightness(SETTINGS[SET_BRIGHTNESS].values[idx]);
+}
+
+static void brSave() {
+  int idx = lv_slider_get_value(brSlider);
+  setting_set_value(SET_BRIGHTNESS, SETTINGS[SET_BRIGHTNESS].values[idx]);
+  sheetMode = SH_CHOICE;  // saved: closing must not undo the preview
+  sheetClose();
+  applySetting(SET_BRIGHTNESS);
+}
+
+static void sheetButtons(lv_obj_t* c, const char* no, const char* yes, uint32_t yesCol, lv_event_cb_t cb) {
+  lv_obj_t* b = plainObj(c);
+  lv_obj_set_size(b, lv_pct(100), LV_SIZE_CONTENT);
+  lv_obj_set_flex_flow(b, LV_FLEX_FLOW_ROW);
+  lv_obj_set_flex_align(b, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+  lv_obj_set_style_pad_column(b, 12, 0);
+  lv_obj_set_style_pad_top(b, COMPACT ? 8 : 16, 0);
+  for (int k = 0; k < 2; k++) {
+    if (!k && !no) continue;
+    uint32_t fg = k ? yesCol : C_TXT;
+    lv_obj_t* btn = label(b, F16, fg, 0, 0, k ? yes : no);
+    chipStyle(btn, C_CHIP, fg);
+    lv_obj_set_style_min_height(btn, 48, 0);
+    lv_obj_set_style_pad_hor(btn, 22, 0);
+    lv_obj_set_style_pad_ver(btn, 14, 0);
+    lv_obj_set_style_radius(btn, 8, 0);
+    lv_obj_set_style_bg_color(btn, C(C_RAISED), LV_STATE_PRESSED);
+    lv_obj_set_style_border_color(btn, C(fg), LV_STATE_PRESSED);
+    lv_obj_add_flag(btn, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(btn, cb, LV_EVENT_CLICKED, (void*)(intptr_t)k);
+  }
+}
+
+static void openBrightness(int row) {
+  sheetRow = row;
+  sheetMode = SH_BRIGHT;
+  lv_obj_t* c = sheetCard(min(CW, COMPACT ? 360 : 480), "Brightness");
+  brPct = label(c, F32, C_ACCENT, 0, 0, "");
+  lv_obj_set_width(brPct, lv_pct(100));
+  lv_obj_set_style_text_align(brPct, LV_TEXT_ALIGN_CENTER, 0);
+  brSlider = lv_slider_create(c);
+  lv_slider_set_range(brSlider, 0, SETTINGS[SET_BRIGHTNESS].count - 1);
+  lv_slider_set_value(brSlider, setting_index(SET_BRIGHTNESS), LV_ANIM_OFF);
+  lv_obj_set_width(brSlider, lv_pct(90));
+  lv_obj_set_height(brSlider, 10);
+  lv_obj_set_style_bg_color(brSlider, C(C_TRACK), LV_PART_MAIN);
+  lv_obj_set_style_bg_color(brSlider, C(C_ACCENT), LV_PART_INDICATOR);
+  lv_obj_set_style_bg_color(brSlider, C(C_TXT), LV_PART_KNOB);
+  lv_obj_set_style_pad_all(brSlider, 10, LV_PART_KNOB);  // ~30 px knob, 48 px with the click area
+  lv_obj_set_ext_click_area(brSlider, 20);
+  lv_obj_add_event_cb(brSlider, [](lv_event_t*) {
+    lastInput = millis();
+    brShow(lv_slider_get_value(brSlider));
+  }, LV_EVENT_VALUE_CHANGED, nullptr);
+  if (INPUT_TOUCH) {
+    sheetButtons(c, nullptr, "Done", C_ACCENT, [](lv_event_t*) { brSave(); });
+  } else {
+    label(c, F12, C_MUTED, 0, 0, "turn: adjust  -  press: save  -  hold: cancel");
+  }
+  brShow(setting_index(SET_BRIGHTNESS));
+  uiHeap("brightness sheet");
+}
+
+static void resetBtnCb(lv_event_t* e) {
+  lastInput = millis();
+  bool yes = tapIdx(e);
+  sheetClose();
+  if (!yes) return;
+  settings_reset_defaults();
+  applyBrightness();
+  refreshMenu();
+  refreshStatus();
+  ui_toast("Settings reset to defaults");
+}
+
+static void openReset(int row) {
+  sheetRow = row;
+  sheetMode = SH_RESET;
+  lv_obj_t* c = sheetCard(min(CW, COMPACT ? 360 : 480), "Reset settings?");
+  lv_obj_t* l = label(c, F14, C_SUB, 0, 0,
+                      "Display, quiet hours, alerts and polling go back to their defaults. "
+                      "Wi-Fi, hostname, password and update preferences stay.");
+  lv_obj_set_width(l, lv_pct(100));
+  lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
+  if (INPUT_TOUCH) sheetButtons(c, "Cancel", "Reset", C_ERR, resetBtnCb);
+  else label(c, F12, C_MUTED, 0, 0, "press: reset  -  hold: cancel");
+}
+
+// Knob input while a sheet is up.
+static void sheetInput(const KnobInput& in) {
+  if (in.longPress) {
+    sheetClose();
+    return;
+  }
+  if (sheetMode == SH_BRIGHT) {
+    if (in.steps) {
+      int n = SETTINGS[SET_BRIGHTNESS].count, v = constrain((int)lv_slider_get_value(brSlider) + in.steps, 0, n - 1);
+      lv_slider_set_value(brSlider, v, LV_ANIM_ON);
+      brShow(v);
+    }
+    if (in.click) brSave();
+    return;
+  }
+  if (sheetMode == SH_RESET) {
+    if (in.click) {
+      sheetClose();
+      settings_reset_defaults();
+      applyBrightness();
+      refreshMenu();
+      ui_toast("Settings reset to defaults");
+    }
+    return;
+  }
+  if (sheetMode == SH_TIME) {
+    if (in.steps) {
+      lv_obj_t* r = sheetSel == 0 ? tpHour : sheetSel == 1 ? tpMin : tpAmPm;
+      int n = sheetSel == 0 ? 12 : sheetSel == 1 ? 4 : 2;
+      lv_roller_set_selected(r, ((int)lv_roller_get_selected(r) + in.steps % n + n) % n, LV_ANIM_ON);
+    }
+    if (in.click) {
+      if (sheetSel < 2) {
+        sheetSel++;
+        timeRefresh();
+      } else {
+        timeSave();
+      }
+    }
+    return;
+  }
+  int n = SETTINGS[MENU[sheetRow].id].count;
+  if (in.steps) {
+    sheetSel = ((sheetSel + in.steps) % n + n) % n;
+    choiceRefresh();
+  }
+  if (in.click) choicePick(sheetSel);
+}
+
+static void openMenu(bool open);
+static void openAbout(bool open);
+static void openUpdate(bool open);
+static void openStatus(bool open);
+
+static void menuActivate(int i) {
+  const MenuDef& d = MENU[i];
+  switch (d.kind) {
+    case MK_CHOICE:
+      if (d.id == SET_BRIGHTNESS) openBrightness(i);
+      else openChoice(i);
+      break;
+    case MK_TIME:
+      openTime(i);
+      break;
+    case MK_TOGGLE:
+      setting_next((SettingId)d.id);
+      applySetting((SettingId)d.id);
+      break;
+    case MK_ACTION:
+      if (d.id == MA_WIFI) {
+        openMenu(false);
+        wifi_start_setup();
+      } else if (d.id == MA_UPDATE) {
+        openUpdate(true);
+      } else if (d.id == MA_STATUS) {
+        openMenu(false);
+        openStatus(true);
+      } else if (d.id == MA_RESET) {
+        openReset(i);
+      } else {
+        openAbout(true);
+      }
+      break;
+  }
+}
+
+static void menuMove(int steps) {
+  int dir = steps > 0 ? 1 : -1;
+  for (int k = abs(steps); k > 0; k--) {
+    int j = menuSel;
+    do j = (j + dir + NMENU) % NMENU;
+    while (!menuFocusable(j));
+    menuSel = j;
+  }
+  refreshMenu();
+  // Bring a section's title into view along with its first row.
+  int target = menuSel > 0 && MENU[menuSel - 1].kind == MK_HEAD ? menuSel - 1 : menuSel;
+  lv_obj_scroll_to_view_recursive(menuUi[target].row, LV_ANIM_ON);
+  if (target != menuSel) lv_obj_scroll_to_view_recursive(menuUi[menuSel].row, LV_ANIM_ON);
 }
 
 static void refreshStatus();
 static void hbUpdate();
+
 
 static void requestPoll() {
   poll_now_request();
@@ -1419,6 +2882,7 @@ static void statusBtnCb(lv_event_t* e) {
 }
 
 static void openMenu(bool open) {
+  sheetClose();
   menuOpen = open;
   if (open) {
     aboutOpen = false;
@@ -1430,10 +2894,9 @@ static void openMenu(bool open) {
   }
   show(menuRoot, open);
   for (int i = 0; i < NSCREEN; i++) show(screens[i], !open && i == cur);
-  if (open) {
-    menuSel = 0;
-    refreshMenu();
-  }
+  // Selection and scroll position stay as they were (back from a sheet, the
+  // Wi-Fi page or Status lands where you left off).
+  if (open) refreshMenu();
   updateDots();
   hbUpdate();
 }
@@ -1519,6 +2982,27 @@ static void refreshUpdateBadge() {
   bool avail = settings_auto_ota() && ota_update_available();
   if (hbBadge) show(hbBadge, avail);
   if (hbUpdLbl) lv_label_set_text(hbUpdLbl, avail ? "Firmware update  (NEW)" : "Firmware update");
+  // Footer version: muted normally; with a newer release, an accent chip that
+  // opens the update page. Failed or skipped checks never get here.
+  static int shown = -1;
+  if (verLbl && shown != (int)avail) {
+    shown = avail;
+    if (avail) {
+      char t[48];
+      snprintf(t, sizeof(t), "v" FW_VERSION "  " LV_SYMBOL_RIGHT "  v%s", ota_cached_latest_version());
+      lv_label_set_text(verLbl, t);
+      chipStyle(verLbl, C_CHIP, C_ACCENT);
+      lv_obj_set_style_border_color(verLbl, C(C_ACCENT), 0);
+      lv_obj_add_flag(verLbl, LV_OBJ_FLAG_CLICKABLE);
+    } else {
+      lv_label_set_text(verLbl, "v" FW_VERSION);
+      lv_obj_set_style_bg_opa(verLbl, LV_OPA_TRANSP, 0);
+      lv_obj_set_style_border_width(verLbl, 0, 0);
+      lv_obj_set_style_pad_all(verLbl, 0, 0);
+      lv_obj_set_style_text_color(verLbl, C(C_IDLE), 0);
+      lv_obj_clear_flag(verLbl, LV_OBJ_FLAG_CLICKABLE);
+    }
+  }
 }
 
 static void refreshUpdate() {
@@ -1598,6 +3082,7 @@ static void runGithubCheckUi() {
 }
 
 static void onGithubProgressUi(int pct) {
+  if (display_is_suspended()) return;
   if (updBar) {
     show(updBar, true);
     lv_bar_set_value(updBar, pct, LV_ANIM_OFF);
@@ -1632,6 +3117,9 @@ static void runGithubInstallUi() {
     setUpdStatus("Update complete! Rebooting...", C_OK);
     lv_refr_now(nullptr);
     delay(700);
+    ESP.restart();
+  } else if (display_is_suspended()) {
+    delay(300);
     ESP.restart();
   } else {
     if (updBar) show(updBar, false);
@@ -1834,6 +3322,7 @@ static void buildOverlay() {
 
   // Page dots; updateDots() widens the current one.
   lv_obj_t* dotRow = row(top, 6);
+  slideKeep[1] = dotRow;
   lv_obj_align(dotRow, LV_ALIGN_BOTTOM_MID, 0, COMPACT ? 3 : 3);
   lv_obj_set_style_pad_column(dotRow, 0, 0);
   for (int i = 0; i < NCAR; i++) {
@@ -1848,6 +3337,17 @@ static void buildOverlay() {
     tappable(hit, dotTapCb, i);
     dots[i] = box(hit, 0, 0, 10, 3, C_DIM, 1);
   }
+
+  // Firmware version, small and muted, on the pager's line at the far right.
+  verLbl = label(top, F12, C_IDLE, 0, 0, "v" FW_VERSION);
+  lv_obj_align(verLbl, LV_ALIGN_BOTTOM_RIGHT, -PAD, -(H - BOT - lineH(F12)) / 2);
+  lv_obj_set_ext_click_area(verLbl, 16);
+  lv_obj_add_event_cb(verLbl, [](lv_event_t*) {
+    lastInput = millis();
+    bannerClear();
+    openUpdate(true);
+  }, LV_EVENT_CLICKED, nullptr);
+  slideKeep[2] = verLbl;
 
   toastLbl = label(top, F14, C_TXT, 0, 0, "");
   chipStyle(toastLbl, C_RAISED, C_TXT);
@@ -1922,6 +3422,62 @@ static void bannerClear() {
   }
 }
 
+// Full-screen notice drawn right before the display is switched off for a
+// firmware update (the screen stays dark until the panel restarts).
+void ui_update_notice(const char* title, const char* sub) {
+  lv_obj_t* o = box(lv_layer_top(), 0, 0, W, H, C_BG);
+  lv_obj_t* t = label(o, F26, C_ACCENT, 0, 0, title);
+  lv_obj_align(t, LV_ALIGN_CENTER, 0, -lineH(F26) / 2 - 6);
+  lv_obj_t* l = label(o, F16, C_SUB, 0, 0, sub);
+  lv_obj_align(l, LV_ALIGN_CENTER, 0, lineH(F16) / 2 + 10);
+  lv_refr_now(NULL);
+}
+
+static lv_obj_t *updScr = nullptr, *updPctLbl, *updFill;
+static int updTrackW = 0;
+
+bool ui_updating() { return updScr != nullptr; }
+
+void ui_update_progress(int pct) {
+  if (!updScr) {
+    updScr = box(lv_layer_top(), 0, 0, W, H, C_BG);
+    lv_obj_add_flag(updScr, LV_OBJ_FLAG_CLICKABLE);  // nothing underneath reacts
+    lv_obj_t* t = label(updScr, F26, C_ACCENT, 0, 0, "Updating firmware");
+    lv_obj_align(t, LV_ALIGN_CENTER, 0, -lineH(F48) / 2 - lineH(F26) - 8);
+    updPctLbl = label(updScr, F48, C_TXT, 0, 0, "0%");
+    lv_obj_align(updPctLbl, LV_ALIGN_CENTER, 0, -lineH(F48) / 4);
+    updTrackW = min(CW, 480);
+    const int ty = H / 2 + lineH(F48) / 2;
+    box(updScr, (W - updTrackW) / 2, ty, updTrackW, 8, C_TRACK, 4);
+    updFill = box(updScr, (W - updTrackW) / 2, ty, 8, 8, C_ACCENT, 4);
+    lv_obj_t* sub = label(updScr, F16, C_SUB, 0, 0, "Do not unplug. The panel restarts when it's done.");
+    lv_obj_align(sub, LV_ALIGN_TOP_MID, 0, ty + 8 + (COMPACT ? 10 : 18));
+    show(toastLbl, false);
+  }
+  char b[16];
+  if (pct < 0) snprintf(b, sizeof(b), "...");
+  else snprintf(b, sizeof(b), "%d%%", min(pct, 100));
+  lv_label_set_text(updPctLbl, b);
+  lv_obj_align(updPctLbl, LV_ALIGN_CENTER, 0, -lineH(F48) / 4);
+  lv_obj_set_width(updFill, max(8, updTrackW * constrain(pct, 0, 100) / 100));
+  lv_refr_now(NULL);
+}
+
+static lv_obj_t* splashObj = nullptr;
+
+void ui_splash() {
+  layout();
+  lv_obj_set_style_bg_color(lv_scr_act(), C(C_BG), 0);
+  splashObj = box(lv_scr_act(), 0, 0, W, H, C_BG);
+  lv_obj_t* t = label(splashObj, F32, C_ACCENT, 0, 0, "MakerMonitor");
+  lv_obj_set_style_text_letter_space(t, 2, 0);
+  lv_obj_align(t, LV_ALIGN_CENTER, 0, -lineH(F32) / 2);
+  lv_obj_t* l = label(splashObj, F14, C_MUTED, 0, 0, "starting  -  v" FW_VERSION);
+  lv_obj_align(l, LV_ALIGN_CENTER, 0, lineH(F14) / 2 + 10);
+  lv_refr_now(NULL);
+  display_set_brightness(setting_value(SET_BRIGHTNESS));
+}
+
 void ui_toast(const char* msg) {
   lv_label_set_text(toastLbl, msg);
   show(toastLbl, true);
@@ -1941,13 +3497,16 @@ static void applyBrightness() {
   uint32_t now = millis();
   if (bannerUp) lastWake = now;
   int mod = minuteOfDay();
-  bool quiet = mod >= 0 && in_quiet_hours(mod) && now - lastInput > 30000;
   int dim = setting_value(SET_DIM), bright = setting_value(SET_BRIGHTNESS);
+  // Night mode: in Quiet hours, after the normal dim timeout (or 30 s), the
+  // screen goes off or very low. Any touch wakes it (and only wakes it).
+  uint32_t quietAfter = dim ? (uint32_t)dim * 1000 : 30000;
+  bool quiet = mod >= 0 && in_quiet_hours(mod) && now - lastInput > quietAfter && !bannerUp;
   uint32_t idle = now - max(lastInput, lastWake);
   bool idleDim = dim && !bannerUp && idle > (uint32_t)dim * 1000;
   int level = bright;
   if (idleDim) level = max(3, bright / 10);
-  if (quiet) level = min(level, 5);
+  if (quiet) level = setting_value(SET_NIGHT) ? min(level, 3) : 0;
   // Going dim (idle) also returns home, so waking always shows Today.
   if (idleDim && !dimmed) {
     hbOpen(false);
@@ -1971,6 +3530,7 @@ bool ui_wake() {
 
 // ---- public API -------------------------------------------------------------
 static void refreshAll() {
+  markPagesDirty();
   refreshToday();
   refreshTodayHeader();
   refreshFeed();
@@ -1979,7 +3539,623 @@ static void refreshAll() {
   refreshPoints();
   refreshReach();
   refreshComments();
+  refreshBest();
+  refreshCreator();
   refreshStatus();
+}
+
+static bool wifiOpen = false;
+
+
+
+// ---- Wi-Fi page -----------------------------------------------------------------
+// Settings > Change Wi-Fi, the "not connected" banner, or first boot. Scans in
+// station mode, lists networks by signal, and joins one with an on-screen
+// keyboard. Everything is built on open and deleted on close.
+static lv_obj_t *wpRoot = nullptr, *wpCur, *wpList, *wpStatus, *wpDlg = nullptr;
+static lv_obj_t *wpSsidTa, *wpPassTa, *wpKb, *wpShowLbl;
+static lv_obj_t* whLbl = nullptr;  // knob character wheel (knob boards)
+static lv_obj_t* apRoot = nullptr;  // "Set up from phone" screen
+static lv_obj_t* wifiBanner;
+static lv_timer_t* wpTimer = nullptr;
+static WifiAp wpAps[20];
+static int wpN = 0;
+static bool wpScanning = false;
+static uint32_t wpScanAt = 0;
+static int wpConnLast = 0;
+static char wpPick[33];
+static bool wpPickSaved = false, wpHidden = false;
+static int wpSel = 0;     // knob: highlighted list row
+static int wpKbSel = 0;   // knob: highlighted keyboard key
+
+static void wpRefreshCurrent() {
+  char a[96], saved[33];
+  if (g_net.connected) snprintf(a, sizeof(a), "Connected to %s  -  %s", g_net.ssid, g_net.ip);
+  else if (net_saved_ssid(saved, sizeof(saved))) snprintf(a, sizeof(a), "Not connected  -  saved network: %s", saved);
+  else snprintf(a, sizeof(a), "No network saved yet  -  choose one below");
+  lv_label_set_text(wpCur, a);
+}
+
+static lv_obj_t* wpButton(lv_obj_t* parent, const char* txt, uint32_t fg, lv_event_cb_t cb) {
+  lv_obj_t* b = label(parent, F14, fg, 0, 0, txt);
+  chipStyle(b, C_CHIP, fg);
+  lv_obj_set_style_pad_ver(b, 8, 0);
+  lv_obj_set_style_pad_hor(b, 16, 0);
+  lv_obj_set_style_bg_color(b, C(C_RAISED), LV_STATE_PRESSED);
+  lv_obj_set_style_border_color(b, C(fg), LV_STATE_PRESSED);
+  lv_obj_add_flag(b, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_set_ext_click_area(b, 8);
+  lv_obj_add_event_cb(b, cb, LV_EVENT_CLICKED, nullptr);
+  return b;
+}
+
+static void wpCloseDialog() {
+  if (wpDlg) lv_obj_del_async(wpDlg);
+  if (wpKb) lv_obj_del_async(wpKb);
+  if (whLbl) lv_obj_del_async(whLbl);
+  wpDlg = wpKb = whLbl = nullptr;
+}
+
+static void wpConnectNow() {
+  const char* ssid = wpHidden ? lv_textarea_get_text(wpSsidTa) : wpPick;
+  const char* pass = wpPassTa ? lv_textarea_get_text(wpPassTa) : "";
+  if (!ssid[0]) return;
+  char s[33], pw[65];
+  strlcpy(s, ssid, sizeof(s));
+  strlcpy(pw, pass, sizeof(pw));
+  wpCloseDialog();
+  // A saved network with the password left empty reuses the stored one.
+  net_connect(s, wpPickSaved && !pw[0] ? nullptr : pw);
+  wpConnLast = 1;
+}
+
+static void wpConnectCb(lv_event_t*) { wpConnectNow(); }
+static void wpCancelCb(lv_event_t*) { wpCloseDialog(); }
+static void wpKbCb(lv_event_t* e) {
+  if (lv_event_get_code(e) == LV_EVENT_READY) {
+    // "Other network": OK on the name moves on to the password.
+    if (wpHidden && lv_keyboard_get_textarea(wpKb) == wpSsidTa) {
+      lv_obj_clear_state(wpSsidTa, LV_STATE_FOCUSED);
+      lv_obj_add_state(wpPassTa, LV_STATE_FOCUSED);
+      lv_keyboard_set_textarea(wpKb, wpPassTa);
+      return;
+    }
+    wpConnectNow();
+  } else if (lv_event_get_code(e) == LV_EVENT_CANCEL) {
+    wpCloseDialog();
+  }
+}
+static void wpTaFocusCb(lv_event_t* e) {
+  if (wpKb) lv_keyboard_set_textarea(wpKb, lv_event_get_target(e));
+}
+static void wpShowCb(lv_event_t*) {
+  bool hidden = lv_textarea_get_password_mode(wpPassTa);
+  lv_textarea_set_password_mode(wpPassTa, !hidden);
+  lv_label_set_text(wpShowLbl, hidden ? "Hide" : "Show");
+}
+
+static lv_obj_t* wpTextarea(lv_obj_t* parent, int y, int w, const char* placeholder) {
+  lv_obj_t* ta = lv_textarea_create(parent);
+  lv_textarea_set_one_line(ta, true);
+  lv_textarea_set_placeholder_text(ta, placeholder);
+  lv_obj_set_pos(ta, 14, y);
+  lv_obj_set_width(ta, w);
+  lv_obj_set_style_text_font(ta, F16, 0);
+  lv_obj_set_style_bg_color(ta, C(C_CHIP), 0);
+  lv_obj_set_style_text_color(ta, C(C_TXT), 0);
+  lv_obj_set_style_border_color(ta, C(C_EDGE), 0);
+  lv_obj_set_style_border_color(ta, C(C_ACCENT), LV_STATE_FOCUSED);
+  lv_obj_set_style_radius(ta, 4, 0);
+  lv_obj_set_style_text_color(ta, C(C_MUTED), LV_PART_TEXTAREA_PLACEHOLDER);
+  lv_obj_set_style_bg_color(ta, C(C_ACCENT), LV_PART_CURSOR);
+  lv_obj_add_event_cb(ta, wpTaFocusCb, LV_EVENT_FOCUSED, nullptr);
+  return ta;
+}
+
+// ---- knob character wheel ----
+// Turn scrolls through one character group, press adds the highlighted
+// character. The slots before the characters: delete, next group, show/hide
+// and OK (connect, or "next" from the SSID field of "Other network").
+static const char* const WH_GROUPS[] = {"abcdefghijklmnopqrstuvwxyz", "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "0123456789",
+                                        " !@#$%^&*()-_=+[]{};:'\",.<>/?\\|`~"};
+static const char* const WH_GROUP_NAME[] = {"abc", "ABC", "123", "#+="};
+static const int WH_NGROUP = 4, WH_SLOTS = 4;  // DEL, group, show, OK
+static lv_obj_t* whTa = nullptr;
+static int whGroup = 0, whPos = WH_SLOTS;
+
+static lv_obj_t* first_field(bool hidden) { return hidden ? wpSsidTa : wpPassTa; }
+
+static int whCount() { return WH_SLOTS + (int)strlen(WH_GROUPS[whGroup]); }
+
+static void whItem(int i, char* out, size_t cap) {
+  if (i == 0) snprintf(out, cap, LV_SYMBOL_BACKSPACE);
+  else if (i == 1) snprintf(out, cap, "%s", WH_GROUP_NAME[(whGroup + 1) % WH_NGROUP]);
+  else if (i == 2) snprintf(out, cap, LV_SYMBOL_EYE_OPEN);
+  else if (i == 3) snprintf(out, cap, LV_SYMBOL_OK);
+  else snprintf(out, cap, "%c", WH_GROUPS[whGroup][i - WH_SLOTS] == ' ' ? '_' : WH_GROUPS[whGroup][i - WH_SLOTS]);
+}
+
+// Seven slots around the selection, selected one in cyan.
+static void whRender() {
+  char buf[200], it[8];
+  size_t o = 0;
+  int n = whCount();
+  for (int d = -3; d <= 3; d++) {
+    int i = ((whPos + d) % n + n) % n;
+    whItem(i, it, sizeof(it));
+    if (d == 0) o += snprintf(buf + o, sizeof(buf) - o, "#22D3EE [ %s ]#   ", it);
+    else o += snprintf(buf + o, sizeof(buf) - o, "%s   ", it);
+  }
+  lv_label_set_text(whLbl, buf);
+}
+
+static void wpWheelBuild(lv_obj_t* field) {
+  whTa = field;
+  whGroup = 0;
+  whPos = WH_SLOTS;
+  lv_obj_t* hint = label(wpDlg, F12, C_MUTED, 0, 0, "turn: choose  -  press: add  -  hold: cancel");
+  lv_obj_align(hint, LV_ALIGN_BOTTOM_LEFT, 14, -14);
+  whLbl = label(wpRoot, TALL ? F32 : F26, C_TXT, 0, 0, "");
+  lv_label_set_recolor(whLbl, true);
+  lv_obj_align(whLbl, LV_ALIGN_BOTTOM_MID, 0, -(H * 42 / 100) / 3);
+  whRender();
+}
+
+static void wpConnectNow();
+static void wpWheelKnob(const KnobInput& in) {
+  if (in.steps) {
+    int n = whCount();
+    whPos = ((whPos + in.steps) % n + n) % n;
+  }
+  if (in.click) {
+    if (whPos == 0) {
+      lv_textarea_del_char(whTa);
+    } else if (whPos == 1) {
+      whGroup = (whGroup + 1) % WH_NGROUP;
+      whPos = 1;
+    } else if (whPos == 2) {
+      lv_textarea_set_password_mode(wpPassTa, !lv_textarea_get_password_mode(wpPassTa));
+    } else if (whPos == 3) {
+      if (wpHidden && whTa == wpSsidTa) {  // name done, now the password
+        lv_obj_clear_state(wpSsidTa, LV_STATE_FOCUSED);
+        lv_obj_add_state(wpPassTa, LV_STATE_FOCUSED);
+        whTa = wpPassTa;
+      } else {
+        wpConnectNow();
+        return;
+      }
+    } else {
+      lv_textarea_add_char(whTa, WH_GROUPS[whGroup][whPos - WH_SLOTS]);
+    }
+  }
+  if (whLbl) whRender();
+}
+
+// ssid == nullptr: "Other network" (type the name too).
+static void wpOpenDialog(const char* ssid, bool saved) {
+  wpCloseDialog();
+  wpHidden = !ssid;
+  wpPickSaved = saved;
+  strlcpy(wpPick, ssid ? ssid : "", sizeof(wpPick));
+  const int kbH = H * 42 / 100, dw = min(CW, 620), dh = H - kbH - 16;
+  wpDlg = card(wpRoot, (W - dw) / 2, 8, dw, dh);
+  lv_obj_add_flag(wpDlg, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_set_style_border_color(wpDlg, C(C_ACCENT), 0);
+  char t[64];
+  snprintf(t, sizeof(t), ssid ? "Join %s" : "Other network", ssid ? ssid : "");
+  lv_obj_t* tl = label(wpDlg, F16, C_TXT, 14, 10, t);
+  dotLabel(tl, dw - 28);
+  int y = 10 + lineH(F16) + 8;
+  const int taW = dw - 28 - 80;
+  wpSsidTa = nullptr;
+  if (wpHidden) {
+    wpSsidTa = wpTextarea(wpDlg, y, dw - 28, "Network name (SSID)");
+    lv_textarea_set_max_length(wpSsidTa, 32);
+    y += lineH(F16) + 22;
+  }
+  wpPassTa = wpTextarea(wpDlg, y, taW, saved ? "Leave empty to use the saved password" : "Password");
+  lv_textarea_set_password_mode(wpPassTa, true);
+  lv_textarea_set_max_length(wpPassTa, 64);
+  lv_obj_t* showB = wpButton(wpDlg, INPUT_TOUCH ? "Show" : "Hide", C_SUB, wpShowCb);
+  wpShowLbl = showB;
+  lv_obj_set_pos(showB, 14 + taW + 8, y + 4);
+  show(showB, INPUT_TOUCH);
+  lv_obj_t* btns = row(wpDlg, 10);
+  lv_obj_align(btns, LV_ALIGN_BOTTOM_RIGHT, -14, -10);
+  wpButton(btns, "Cancel", C_TXT, wpCancelCb);
+  wpButton(btns, LV_SYMBOL_WIFI "  Connect", C_ACCENT, wpConnectCb);
+
+  if (!INPUT_TOUCH) {  // knob boards: character wheel instead of a keyboard
+    wpWheelBuild(first_field(wpHidden));
+    return;
+  }
+  wpKb = lv_keyboard_create(wpRoot);
+  lv_obj_set_size(wpKb, W, kbH);
+  lv_obj_align(wpKb, LV_ALIGN_BOTTOM_MID, 0, 0);
+  lv_obj_set_style_bg_color(wpKb, C(C_CARD), 0);
+  lv_obj_set_style_border_width(wpKb, 0, 0);
+  lv_obj_set_style_bg_color(wpKb, C(C_CHIP), LV_PART_ITEMS);
+  lv_obj_set_style_text_color(wpKb, C(C_TXT), LV_PART_ITEMS);
+  lv_obj_set_style_border_color(wpKb, C(C_EDGE), LV_PART_ITEMS);
+  lv_obj_set_style_border_width(wpKb, 1, LV_PART_ITEMS);
+  lv_obj_set_style_bg_color(wpKb, C(C_RAISED), LV_PART_ITEMS | LV_STATE_PRESSED);
+  lv_obj_add_event_cb(wpKb, wpKbCb, LV_EVENT_ALL, nullptr);
+  lv_obj_t* first = wpHidden ? wpSsidTa : wpPassTa;
+  lv_obj_add_state(first, LV_STATE_FOCUSED);
+  lv_keyboard_set_textarea(wpKb, first);
+  wpKbSel = 0;
+  if (!INPUT_TOUCH) lv_btnmatrix_set_selected_btn(wpKb, 0);
+}
+
+static void wpStartScan();
+static void apPage(bool open);
+
+// Row actions, shared by taps and the knob: i >= 0 a scanned network,
+// -1 "Other network", -2 "Rescan" (knob boards), -3 "Set up from phone".
+static void wpActivate(int i) {
+  if (i == -3) {
+    apPage(true);
+    return;
+  }
+  if (i == -2) {
+    wpStartScan();
+    return;
+  }
+  if (i < 0) {
+    wpOpenDialog(nullptr, false);
+    return;
+  }
+  char saved[33] = "";
+  net_saved_ssid(saved, sizeof(saved));
+  bool isSaved = !strcmp(saved, wpAps[i].ssid);
+  if (wpAps[i].open) {  // open network: nothing to type
+    strlcpy(wpPick, wpAps[i].ssid, sizeof(wpPick));
+    net_connect(wpPick, "");
+    wpConnLast = 1;
+    return;
+  }
+  wpOpenDialog(wpAps[i].ssid, isSaved);
+}
+
+static void wpRowCb(lv_event_t* e) { wpActivate((int)(intptr_t)lv_event_get_user_data(e)); }
+
+// Knob highlight: the selected row is raised.
+static void wpHighlight() {
+  uint32_t n = lv_obj_get_child_cnt(wpList);
+  if (!n) return;
+  wpSel = ((wpSel % (int)n) + n) % n;
+  for (uint32_t i = 0; i < n; i++) {
+    lv_obj_t* r = lv_obj_get_child(wpList, i);
+    lv_obj_set_style_bg_opa(r, (int)i == wpSel ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
+  }
+  lv_obj_scroll_to_view(lv_obj_get_child(wpList, wpSel), LV_ANIM_ON);
+}
+
+static void wpAddRow(int i, const char* ssid, int rssi, const char* tag) {
+  const int rowH = COMPACT ? 34 : 44;
+  lv_obj_t* r = lv_obj_create(wpList);
+  lv_obj_remove_style_all(r);
+  lv_obj_set_size(r, lv_pct(100), rowH);
+  lv_obj_clear_flag(r, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_style_radius(r, 4, 0);
+  lv_obj_set_style_bg_color(r, C(C_RAISED), 0);
+  lv_obj_set_style_bg_opa(r, LV_OPA_COVER, LV_STATE_PRESSED);
+  lv_obj_add_flag(r, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(r, wpRowCb, LV_EVENT_SHORT_CLICKED, (void*)(intptr_t)i);
+  int x = 10;
+  if (rssi) {  // four signal bars
+    int lit = rssi > -55 ? 4 : rssi > -65 ? 3 : rssi > -75 ? 2 : 1;
+    for (int b = 0; b < 4; b++) {
+      int bh = 5 + b * 4;
+      box(r, x + b * 6, (rowH + 18) / 2 - bh, 4, bh, b < lit ? C_ACCENT : C_DIM, 1);
+    }
+    x += 34;
+  }
+  lv_obj_t* l = label(r, F16, C_TXT, x, (rowH - lineH(F16)) / 2, ssid);
+  dotLabel(l, lv_obj_get_width(wpList) - x - 100);
+  if (tag) {
+    lv_obj_t* t = label(r, F12, C_MUTED, 0, 0, tag);
+    lv_obj_align(t, LV_ALIGN_RIGHT_MID, -12, 0);
+  }
+}
+
+static void wpFillList() {
+  lv_obj_clean(wpList);
+  char saved[33] = "";
+  net_saved_ssid(saved, sizeof(saved));
+  if (wpScanning && !wpN) {
+    lv_obj_t* l = label(wpList, F16, C_MUTED, 0, 0, "Scanning for networks...");
+    lv_obj_set_style_pad_all(l, 12, 0);
+  }
+  for (int i = 0; i < wpN; i++) {
+    bool cur = g_net.connected && !strcmp(g_net.ssid, wpAps[i].ssid);
+    const char* tag = cur ? "connected" : !strcmp(saved, wpAps[i].ssid) ? "saved" : wpAps[i].open ? "open" : "secured";
+    wpAddRow(i, wpAps[i].ssid, wpAps[i].rssi, tag);
+  }
+  if (!wpScanning || wpN) wpAddRow(-1, "Other network...", 0, "hidden SSID");
+  wpAddRow(-3, LV_SYMBOL_UPLOAD "  Set up from phone", 0, "QR code");
+  if (!INPUT_TOUCH) {
+    wpAddRow(-2, LV_SYMBOL_REFRESH "  Rescan networks", 0, nullptr);
+    wpHighlight();
+  }
+}
+
+// Knob boards: turn moves, press picks, hold goes back. In the password
+// dialog, turn walks the keyboard keys and press types the highlighted one.
+static void wpKnob(const KnobInput& in) {
+  if (apRoot) {
+    if (in.longPress) apPage(false);
+    return;
+  }
+  if (wpDlg && whLbl) {
+    if (in.longPress) wpCloseDialog();
+    else wpWheelKnob(in);
+    return;
+  }
+  if (wpDlg && wpKb) {
+    if (in.longPress) {
+      wpCloseDialog();
+      return;
+    }
+    uint16_t cnt = ((lv_btnmatrix_t*)wpKb)->btn_cnt;
+    if (in.steps && cnt) {
+      wpKbSel = ((wpKbSel + in.steps) % cnt + cnt) % cnt;
+      lv_btnmatrix_set_selected_btn(wpKb, wpKbSel);
+    }
+    if (in.click) {
+      lv_btnmatrix_set_selected_btn(wpKb, wpKbSel);
+      lv_event_send(wpKb, LV_EVENT_VALUE_CHANGED, nullptr);  // the keyboard handles the key
+      if (wpKb) {  // a mode key (abc/ABC/123) changes the layout size
+        cnt = ((lv_btnmatrix_t*)wpKb)->btn_cnt;
+        if (wpKbSel >= cnt) wpKbSel = 0;
+        lv_btnmatrix_set_selected_btn(wpKb, wpKbSel);
+      }
+    }
+    return;
+  }
+  if (in.longPress) {
+    ui_wifi_page(false);
+    return;
+  }
+  if (in.steps) {
+    wpSel += in.steps;
+    wpHighlight();
+  }
+  if (in.click) {
+    lv_obj_t* r = lv_obj_get_child(wpList, wpSel);
+    if (r) lv_event_send(r, LV_EVENT_SHORT_CLICKED, nullptr);
+  }
+}
+
+static void wpStartScan() {
+  wpScanning = true;
+  wpScanAt = millis();
+  wpN = 0;
+  net_scan(wpAps, 20);  // kicks off an async scan
+  wpFillList();
+}
+
+static void wpRescanCb(lv_event_t*) { wpStartScan(); }
+static void wpBackCb(lv_event_t*) { ui_wifi_page(false); }
+
+static void wpTick(lv_timer_t*) {
+  if (wpScanning) {
+    int n = net_scan(wpAps, 20);
+    if (n >= 0) {
+      wpN = n;
+      wpScanning = false;
+      wpFillList();
+    } else if (millis() - wpScanAt > 15000) {
+      wpScanning = false;
+      wpFillList();
+      lv_label_set_text(wpStatus, "Scan didn't finish - tap Rescan");
+    }
+  }
+  char msg[96];
+  int cs = net_connect_status(msg, sizeof(msg));
+  if (cs && cs != wpConnLast) {
+    lv_label_set_text(wpStatus, msg);
+    lv_obj_set_style_text_color(wpStatus, C(cs == 1 ? C_ACCENT : cs == 2 ? C_OK : C_ERR), 0);
+    if (cs != 1) {
+      wpRefreshCurrent();
+      wpFillList();
+    }
+    wpConnLast = cs;
+  }
+}
+
+// ---- "Set up from phone" ---------------------------------------------------------
+// Shows a Wi-Fi join QR for the panel's temporary hotspot (SSID and password
+// beside it). Once a phone joins, the QR switches to the setup page URL in
+// case the captive popup doesn't appear. Cancel (or hold) stops the hotspot.
+static lv_obj_t *apQr, *apCaption, *apState;
+static lv_timer_t* apTimer = nullptr;
+static bool apShowUrl = false;
+
+// WIFI: QR fields need \ ; , : " escaped with a backslash.
+static void qrEscape(const char* in, char* out, size_t cap) {
+  size_t o = 0;
+  for (; *in && o + 2 < cap; in++) {
+    if (strchr("\\;,:\"", *in)) out[o++] = '\\';
+    out[o++] = *in;
+  }
+  out[o] = 0;
+}
+
+static void apCancelCb(lv_event_t*) { apPage(false); }
+
+static void apTick(lv_timer_t*) {
+  bool joined = false;
+  int result = 0;
+  char msg[96];
+  int on = net_ap_status(&joined, &result, msg, sizeof(msg));
+  if (joined && !apShowUrl) {
+    apShowUrl = true;
+    const char* url = "http://192.168.4.1";
+    lv_qrcode_update(apQr, url, strlen(url));
+    lv_label_set_text(apCaption, "Phone connected.\nScan to open the setup page\n(or open http://192.168.4.1).");
+  }
+  if (result) {
+    lv_label_set_text(apState, msg);
+    lv_obj_set_style_text_color(apState, C(result == 2 ? C_OK : result == 3 ? C_ERR : C_ACCENT), 0);
+  }
+  if (!on) {  // hotspot finished (joined, timed out or failed to start)
+    apPage(false);
+    if (wpRoot) {
+      wpRefreshCurrent();
+      wpStartScan();
+    }
+  }
+}
+
+static void apPage(bool open) {
+  if (!open) {
+    if (apTimer) lv_timer_del(apTimer);
+    apTimer = nullptr;
+    if (apRoot) lv_obj_del_async(apRoot);
+    apRoot = nullptr;
+    net_ap_stop();
+    return;
+  }
+  if (apRoot) return;
+  apRoot = box(lv_layer_top(), 0, 0, W, H, C_BG);
+  lv_obj_add_flag(apRoot, LV_OBJ_FLAG_CLICKABLE);
+  Header h = header(apRoot, "SET UP FROM PHONE", "");
+  lv_obj_align(h.right, LV_ALIGN_TOP_RIGHT, -PAD, COMPACT ? 4 : 8);
+  if (INPUT_TOUCH) wpButton(h.right, LV_SYMBOL_CLOSE "  Cancel", C_TXT, apCancelCb);
+  else hint(h, "hold: cancel");
+  lv_obj_t* wait = label(apRoot, F16, C_MUTED, PAD + 4, TOP, "Starting the setup hotspot...");
+  lv_refr_now(NULL);  // the scan before the hotspot takes a few seconds
+  char ssid[24], pass[12];
+  if (!net_ap_start(ssid, sizeof(ssid), pass, sizeof(pass))) {
+    lv_label_set_text(wait, "Couldn't start the hotspot");
+    return;
+  }
+  lv_obj_del(wait);
+  // QR on the left, instructions and credentials on the right.
+  const int qs = min(TH - 24, COMPACT ? 150 : TALL ? 260 : 220);
+  lv_obj_t* qc = box(apRoot, PAD, TOP + (TH - qs - 16) / 2, qs + 16, qs + 16, 0xFFFFFF, 6);
+  apQr = lv_qrcode_create(qc, qs, lv_color_black(), lv_color_white());
+  lv_obj_center(apQr);
+  char es[64], ep[32], payload[128];
+  qrEscape(ssid, es, sizeof(es));
+  qrEscape(pass, ep, sizeof(ep));
+  snprintf(payload, sizeof(payload), "WIFI:T:WPA;S:%s;P:%s;;", es, ep);
+  lv_qrcode_update(apQr, payload, strlen(payload));
+  apShowUrl = false;
+  const int tx = PAD + qs + 16 + (COMPACT ? 10 : 24), tw = W - tx - PAD;
+  apCaption = label(apRoot, F16, C_SUB, tx, TOP + 8, "1. Scan with your phone's camera\n    to join the panel's hotspot.\n2. Pick your Wi-Fi on the page\n    that opens.");
+  lv_obj_set_width(apCaption, tw);
+  lv_label_set_long_mode(apCaption, LV_LABEL_LONG_WRAP);
+  char a[80];
+  int y = TOP + 8 + 4 * lineH(F16) + 16;
+  label(apRoot, F12, C_MUTED, tx, y, "NETWORK");
+  label(apRoot, TALL ? F22 : F16, C_TXT, tx, y + lineH(F12) + 2, ssid);
+  y += lineH(F12) + lineH(TALL ? F22 : F16) + 10;
+  label(apRoot, F12, C_MUTED, tx, y, "PASSWORD");
+  label(apRoot, TALL ? F22 : F16, C_ACCENT, tx, y + lineH(F12) + 2, pass);
+  y += lineH(F12) + lineH(TALL ? F22 : F16) + 14;
+  snprintf(a, sizeof(a), "Stops by itself in 10 minutes.");
+  apState = label(apRoot, F14, C_MUTED, tx, y, a);
+  lv_obj_set_width(apState, tw);
+  lv_label_set_long_mode(apState, LV_LABEL_LONG_WRAP);
+  apTimer = lv_timer_create(apTick, 500, nullptr);
+}
+
+void ui_wifi_page(bool open) {
+  if (open == (wpRoot != nullptr)) return;
+  if (!open) {
+    if (apRoot) apPage(false);
+    wpCloseDialog();
+    if (wpTimer) lv_timer_del(wpTimer);
+    wpTimer = nullptr;
+    lv_obj_del_async(wpRoot);
+    wpRoot = nullptr;
+    wifiOpen = false;
+    hbUpdate();
+    return;
+  }
+  if (menuOpen) openMenu(false);
+  wifiOpen = true;
+  hbUpdate();
+  wpRoot = box(lv_layer_top(), 0, 0, W, H, C_BG);
+  lv_obj_add_flag(wpRoot, LV_OBJ_FLAG_CLICKABLE);  // keep taps off the page below
+  Header h = header(wpRoot, "WI-FI", "");
+  lv_obj_align(h.right, LV_ALIGN_TOP_RIGHT, -PAD, COMPACT ? 4 : 8);
+  wpButton(h.right, LV_SYMBOL_REFRESH "  Rescan", C_ACCENT, wpRescanCb);
+  wpButton(h.right, LV_SYMBOL_CLOSE "  Back", C_TXT, wpBackCb);
+  wpCur = label(wpRoot, F16, C_SUB, PAD + 4, TOP, "");
+  dotLabel(wpCur, CW - 8);
+  wpStatus = label(wpRoot, F14, C_ACCENT, PAD + 4, TOP + lineH(F16) + 4, "");
+  dotLabel(wpStatus, CW - 8);
+  const int listY = TOP + lineH(F16) + lineH(F14) + 14;
+  lv_obj_t* c = card(wpRoot, PAD, listY, CW, BOT - listY);
+  wpList = lv_obj_create(c);
+  lv_obj_remove_style_all(wpList);
+  lv_obj_set_pos(wpList, 6, 6);
+  lv_obj_set_size(wpList, CW - 12, BOT - listY - 12);
+  lv_obj_set_flex_flow(wpList, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_style_pad_row(wpList, 2, 0);
+  lv_obj_set_scroll_dir(wpList, LV_DIR_VER);
+  lv_obj_set_scrollbar_mode(wpList, LV_SCROLLBAR_MODE_ACTIVE);
+  lv_obj_set_style_bg_color(wpList, C(C_DIM), LV_PART_SCROLLBAR);
+  lv_obj_set_style_bg_opa(wpList, LV_OPA_COVER, LV_PART_SCROLLBAR);
+  lv_obj_set_style_width(wpList, 3, LV_PART_SCROLLBAR);
+  lv_obj_update_layout(wpRoot);
+  wpRefreshCurrent();
+  wpConnLast = 0;
+  wpStartScan();
+  wpTimer = lv_timer_create(wpTick, 250, nullptr);
+}
+
+static int bannerKind = 0;  // status banner: 0 none, 1 Wi-Fi, 2 cookie, 3 stale
+static void wifiBannerCb(lv_event_t*) {
+  if (bannerKind == 1) ui_wifi_page(true);
+  else openStatus(true);
+}
+
+// "Wi-Fi not connected" strip above the page segments; tap opens the page.
+// One persistent banner, most important first: Wi-Fi down (opens the Wi-Fi
+// page), cookie expired (red), MakerWorld data stale (amber; both open Status).
+static void wifiBannerUpdate() {
+  static uint32_t downSince = 0;
+  if (g_net.connected) downSince = 0;
+  else if (!downSince) downSince = millis();
+  int kind = 0;
+  if (downSince && millis() - downSince > 20000) kind = 1;
+  else if (st.valid && st.health.has && st.health.expired) kind = 2;
+  else if (st.valid && st.health.has && st.health.stale) kind = 3;
+  if (wifiOpen || menuOpen || statusOpen) kind = 0;
+  static uint32_t shownSince = 0;
+  if (kind == bannerKind && (kind != 3 || shownSince == st.health.since)) return;
+  bannerKind = kind;
+  shownSince = st.health.since;
+  if (kind) {
+    char a[96], t[8];
+    uint32_t col = kind == 2 ? C_ERR : C_WARN;
+    if (kind == 1) snprintf(a, sizeof(a), LV_SYMBOL_WARNING "  Wi-Fi not connected  -  tap to choose network");
+    else if (kind == 2) snprintf(a, sizeof(a), LV_SYMBOL_WARNING "  Cookie expired  -  refresh it in the extension");
+    else {
+      fmtHM(t, sizeof(t), st.health.since);
+      snprintf(a, sizeof(a), LV_SYMBOL_WARNING "  MakerWorld data stale since %s", st.health.since ? t : "--:--");
+    }
+    lv_label_set_text(wifiBanner, a);
+    lv_obj_set_style_text_color(wifiBanner, C(col), 0);
+    lv_obj_set_style_border_color(wifiBanner, C(col), 0);
+  }
+  show(wifiBanner, kind != 0);
+}
+
+static void buildWifiBanner() {
+  wifiBanner = label(lv_layer_top(), F14, C_WARN, 0, 0, LV_SYMBOL_WARNING "  Wi-Fi not connected  -  tap to choose network");
+  chipStyle(wifiBanner, C_CHIP, C_WARN);
+  lv_obj_set_style_border_color(wifiBanner, C(C_WARN), 0);
+  lv_obj_set_style_pad_ver(wifiBanner, 8, 0);
+  lv_obj_set_style_pad_hor(wifiBanner, 16, 0);
+  lv_obj_add_flag(wifiBanner, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(wifiBanner, wifiBannerCb, LV_EVENT_CLICKED, nullptr);
+  lv_obj_align(wifiBanner, LV_ALIGN_BOTTOM_MID, 0, -(COMPACT ? 22 : 30));
+  show(wifiBanner, false);
 }
 
 static void buildHamburger();  // defined with the input handling below
@@ -1995,14 +4171,21 @@ void ui_init() {
   buildPoints();
   buildReach();
   buildComments();
+  buildBest();
+  buildCreator();
   buildStatus();
   buildMenu();
   buildAbout();
   buildUpdate();
   buildOverlay();
   buildHamburger();
+  buildWifiBanner();
   refreshAll();
   goScreen(SC_TODAY, 0);
+  if (splashObj) {
+    lv_obj_del(splashObj);
+    splashObj = nullptr;
+  }
   lastInput = millis();
   applyBrightness();
 #if INPUT_TOUCH
@@ -2017,9 +4200,191 @@ void ui_init() {
 #endif
 }
 
+// ---- first-run guide ----------------------------------------------------------
+// A new panel joins Wi-Fi but gets nothing until the poller knows where it
+// is. Until the first state push this page says what to set, with a QR code
+// for the panel's web console. "Skip" hides it until the next boot, "Don't
+// show again" for good; the first push also ends it for good.
+static lv_obj_t* guideRoot = nullptr;
+static bool guideSkipped = false;
+static uint32_t netUpAt = 0;
+
+static void guideClose(bool forever) {
+  if (forever) settings_set_guide_done();
+  guideSkipped = true;
+  if (!guideRoot) return;
+  lv_obj_del_async(guideRoot);
+  guideRoot = nullptr;
+  uiHeap("guide closed");
+}
+
+static void guideBtnCb(lv_event_t* e) {
+  lastInput = millis();
+  guideClose(tapIdx(e));
+}
+
+static void guideOpen() {
+  guideRoot = box(lv_layer_top(), 0, 0, W, H, C_BG);
+  lv_obj_add_flag(guideRoot, LV_OBJ_FLAG_CLICKABLE);  // keep taps off the page below
+  Header h = header(guideRoot, "CONNECT THE POLLER", "");
+  lv_obj_align(h.right, LV_ALIGN_TOP_RIGHT, -PAD, COMPACT ? 4 : 8);
+#if INPUT_TOUCH
+  headerBtn(h, COMPACT ? "Hide" : "Don't show again", C_MUTED, guideBtnCb, 1);
+  headerBtn(h, LV_SYMBOL_CLOSE "  Skip", C_TXT, guideBtnCb, 0);
+#else
+  hint(h, COMPACT ? "press: skip" : "press: skip  -  hold: don't show again");
+#endif
+  char url[48], host[48], body[320];
+  snprintf(url, sizeof(url), "http://%s/", g_net.ip);
+  snprintf(host, sizeof(host), g_net.mdns ? "%s.local" : "%s", g_net.mdns ? g_net.host : g_net.ip);
+  const int quiet = COMPACT ? 8 : 14;
+  int qr = min(TH - 2 * quiet - (COMPACT ? 4 : 16), COMPACT ? 132 : 220) & ~1;
+  const int plate = qr + 2 * quiet, y0 = TOP + (TH - plate) / 2;
+  lv_obj_t* pl = box(guideRoot, PAD, y0, plate, plate, 0xFFFFFF, COMPACT ? 6 : 12);
+  lv_obj_t* code = lv_qrcode_create(pl, qr, lv_color_hex(0x000000), lv_color_hex(0xFFFFFF));
+  lv_qrcode_update(code, url, strlen(url));
+  lv_obj_center(code);
+  const int tx = PAD + plate + (COMPACT ? 12 : 28), tw = W - tx - PAD;
+  snprintf(body, sizeof(body),
+           "1.  This panel is online as %s  (%s).\n"
+           "2.  On the PC that runs the MakerMonitor poller, open poller/config.yaml.\n"
+           "3.  Set  color_panel_host: \"%s\"  and restart the poller.",
+           host, g_net.ip, host);
+  lv_obj_t* l = label(guideRoot, COMPACT ? F14 : F16, C_TXT, tx, y0, body);
+  lv_obj_set_width(l, tw);
+  lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
+  lv_obj_set_style_text_line_space(l, COMPACT ? 4 : 10, 0);
+  lv_obj_update_layout(l);
+  lv_obj_t* n = label(guideRoot, F14, C_MUTED, tx, y0 + lv_obj_get_height(l) + (COMPACT ? 8 : 20),
+                      "Numbers show up here within a minute of the first poll. "
+                      "The code opens this panel's web console.");
+  lv_obj_set_width(n, tw);
+  lv_label_set_long_mode(n, LV_LABEL_LONG_WRAP);
+  uiHeap("guide");
+}
+
+static void guideTick() {
+  if (g_net.connected) {
+    if (!netUpAt) netUpAt = millis();
+  } else {
+    netUpAt = 0;
+  }
+  bool want = !st.valid && !settings_guide_done() && !guideSkipped && netUpAt && millis() - netUpAt > 15000 &&
+              g_net.ip[0] && !wifiOpen && !apRoot && !bannerUp;
+  if (want && !guideRoot) guideOpen();
+}
+
+// ---- remote page switching (/v2/ui/show, screenshot capture) ----------------
+// The web server runs in loop(), the same task as LVGL, so this is called
+// between LVGL timer runs and never concurrently with them.
+static const char* const PAGE_NAME[NCAR] = {"today", "feed", "models", "trend", "points",
+                                            "reach", "comments", "best", "creator"};
+static const char* const CV_KEY[NCVIEW] = {"convert", "trend", "launch", "earn", "followers", "reply"};
+static const char* const OTHER_PAGES[] = {"status", "settings", "about", "update", "wifi", "guide"};
+
+void ui_pages_json(String& out) {
+  out = F("{\"pages\":[");
+  for (int i = 0; i < NCAR; i++) out += String(i ? ",\"" : "\"") + PAGE_NAME[i] + "\"";
+  for (const char* p : OTHER_PAGES) out += String(",\"") + p + "\"";
+  out += F("],\"tabs\":{\"creator\":[");
+  for (int i = 0; i < NCVIEW; i++) out += String(i ? ",\"" : "\"") + CV_KEY[i] + "\"";
+  out += F("]},\"open\":{\"settings\":[\"display\",\"quiet\",\"alerts\",\"network\",\"device\",\"reset\","
+           "\"quiet_from\",\"quiet_until\"");
+  for (int i = 0; i < NMENU; i++)
+    if (MENU[i].kind == MK_CHOICE) out += String(",\"") + SETTINGS[MENU[i].id].key + "\"";
+  out += F("],\"models\":[\"<design id>\"");
+  for (int k = 0; k < 3; k++)
+    for (int j = 0; j < st.ntop[k]; j++) out += String(",\"") + st.top[k][j].id + "\"";
+  out += F("]}}");
+}
+
+bool ui_show(const char* page, const char* tab, const char* open, char* shown, size_t cap, bool slide) {
+  snprintf(shown, cap, "%s", page);
+  lastInput = millis();
+  ui_wake();
+  sheetClose();
+  modelPage(nullptr);
+  if (wifiOpen) ui_wifi_page(false);
+  if (guideRoot && strcmp(page, "guide")) guideClose(false);
+  if (hbIsOpen) hbOpen(false);
+  if (menuOpen) openMenu(false);
+  if (statusOpen) openStatus(false);
+  if (aboutOpen) openAbout(false);
+  if (updOpen) openUpdate(false);
+  if (bannerUp) bannerClear();
+  for (int i = 0; i < NCAR; i++) {
+    if (strcmp(page, PAGE_NAME[i])) continue;
+    if (i == SC_CREATOR && tab[0]) {
+      int v = -1;
+      for (int k = 0; k < NCVIEW; k++)
+        if (!strcmp(tab, CV_KEY[k])) v = k;
+      if (v < 0) return false;
+      crView = v;
+      refreshCreator();
+      markPagesDirty();
+    }
+    goScreen(i, slide && i != cur ? (i > cur ? 1 : -1) : 0);
+    if (i == SC_CREATOR) snprintf(shown, cap, "creator/%s", CV_KEY[crView]);
+    if (i == SC_TOP && open[0]) {  // model detail by design id
+      for (int k = 0; k < 3; k++)
+        for (int j = 0; j < st.ntop[k]; j++)
+          if (!strcmp(st.top[k][j].id, open)) {
+            modelPage(&st.top[k][j]);
+            snprintf(shown, cap, "models/%s", open);
+            return true;
+          }
+      return false;
+    }
+    return true;
+  }
+  if (!strcmp(page, "settings")) {
+    openMenu(true);
+    if (!open[0]) return true;
+    for (int i = 0; i < NMENU; i++) {
+      const MenuDef& d = MENU[i];
+      if (d.kind == MK_HEAD && !strncasecmp(open, d.label, strlen(open))) {  // section: scroll to it
+        lv_obj_scroll_to_y(menuList, max(0, (int)lv_obj_get_y(menuUi[i].row) - (COMPACT ? 4 : 8)), LV_ANIM_OFF);
+        // Near the end the list can't scroll that far; keep the title itself in view.
+        lv_obj_scroll_to_view(menuUi[i].row, LV_ANIM_OFF);
+        snprintf(shown, cap, "settings/%s", open);
+        return true;
+      }
+      if (!strcmp(open, "reset") && d.kind == MK_ACTION && d.id == MA_RESET) {
+        lv_obj_scroll_to_y(menuList, LV_COORD_MAX, LV_ANIM_OFF);
+        menuActivate(i);
+        snprintf(shown, cap, "settings/reset");
+        return true;
+      }
+      if ((!strcmp(open, "quiet_from") && d.kind == MK_TIME && d.id == 0) ||
+          (!strcmp(open, "quiet_until") && d.kind == MK_TIME && d.id == 1) ||
+          (d.kind == MK_CHOICE && !strcmp(open, SETTINGS[d.id].key))) {
+        // The quiet rows are hidden while quiet hours are off; show the
+        // picker anyway (only Save changes anything).
+        menuSel = i;
+        menuActivate(i);
+        snprintf(shown, cap, "settings/%s", open);
+        return true;
+      }
+    }
+    return false;
+  }
+  if (!strcmp(page, "status")) openStatus(true);
+  else if (!strcmp(page, "about")) openAbout(true);
+  else if (!strcmp(page, "update")) openUpdate(true);
+  else if (!strcmp(page, "wifi")) ui_wifi_page(true);
+  else if (!strcmp(page, "guide")) {
+    if (!guideRoot) guideOpen();
+  } else return false;
+  return true;
+}
+
 void ui_set_state(const State& s) {
   st = s;
   stateMs = millis();
+  if (st.valid) {
+    settings_set_guide_done();
+    guideClose(false);
+  }
   refreshAll();
 }
 
@@ -2032,7 +4397,8 @@ void ui_refresh_from_web() {
   refreshUpdate();
 }
 
-bool ui_overlay_open() { return menuOpen || statusOpen || aboutOpen || updOpen || hbIsOpen; }
+static bool modelOpen = false;  // model detail page (touch)
+bool ui_overlay_open() { return updScr || guideRoot || menuOpen || statusOpen || aboutOpen || updOpen || hbIsOpen || wifiOpen || modelOpen; }
 
 // The poller sends the full state (counts, hours, feed) before the events of
 // the same poll, so an event only announces itself: tile pulse, banner, chime.
@@ -2107,6 +4473,7 @@ static void buildHamburger() {
   const int bh = COMPACT ? max(26, TOUCH_PX - 6) : (TALL ? max(36, TOUCH_PX - 8) : 32);
   const int by = COMPACT ? 4 : (TALL ? 12 : 8);
   hbBtn = box(top, W - PAD - HB_W, by, HB_W, bh, C_CHIP, 4);
+  slideKeep[0] = hbBtn;
   lv_obj_set_style_border_width(hbBtn, 1, 0);
   lv_obj_set_style_border_color(hbBtn, C(C_EDGE), 0);
   lv_obj_add_flag(hbBtn, LV_OBJ_FLAG_CLICKABLE);
@@ -2153,7 +4520,7 @@ static void buildHamburger() {
 // Hidden while Settings, Status, About, or a notification banner owns the top edge.
 static void hbUpdate() {
   if (!hbBtn) return;
-  bool want = !menuOpen && !statusOpen && !aboutOpen && !updOpen && !bannerUp;
+  bool want = !menuOpen && !statusOpen && !aboutOpen && !updOpen && !bannerUp && !wifiOpen && !modelOpen;
   if (want == hbShown) return;
   hbShown = want;
   show(hbBtn, want);
@@ -2167,29 +4534,29 @@ void ui_input(const KnobInput& in) {
   lastCycle = millis();
   applyBrightness();
 
+  if (guideRoot) {
+    if (in.click || in.longPress) guideClose(in.longPress);
+    return;
+  }
+  if (wifiOpen) {
+    if (INPUT_TOUCH) {
+      if (in.longPress) ui_wifi_page(false);
+    } else {
+      wpKnob(in);  // turn/press through the list and the keyboard
+    }
+    return;
+  }
   if (menuOpen) {
+    if (sheet) {
+      sheetInput(in);
+      return;
+    }
     if (in.longPress) {
       openMenu(false);
       return;
     }
-    if (in.steps) {
-      menuSel = ((menuSel + in.steps) % NMENU + NMENU) % NMENU;
-      refreshMenu();
-    }
-    if (in.click) {
-      if (menuSel == NSET) {
-        openMenu(false);
-        return;
-      }
-      setting_next((SettingId)menuSel);
-      if (menuSel == SET_BRIGHTNESS) applyBrightness();
-      if (menuSel == SET_POLL) ui_toast("Poller picks this up within 15 s");
-#if AUDIO_I2S
-      if (menuSel == SET_VOLUME || menuSel == SET_SOUND) sound_test();
-#endif
-      refreshMenu();
-      refreshStatus();
-    }
+    if (in.steps) menuMove(in.steps);
+    if (in.click) menuActivate(menuSel);
     return;
   }
 
@@ -2218,6 +4585,22 @@ void ui_input(const KnobInput& in) {
     if (in.click && !INPUT_TOUCH) updAction(updSel);
     return;
   }
+  if (modelOpen) {  // model detail: press or hold returns
+    if (in.longPress || in.click) modelPage(nullptr);
+    return;
+  }
+  if (topSel >= 0 && cur == SC_TOP && !bannerUp) {
+    // Knob select mode on Top: 0-2 the mode chips, 3+ the model rows.
+    int n = 3 + st.ntop[topMode];
+    if (in.longPress) topSel = -1;
+    if (in.steps) topSel = ((topSel + in.steps) % n + n) % n;
+    if (in.click) {
+      if (topSel < 3) topMode = topSel;
+      else modelPage(&st.top[topMode][topSel - 3]);
+    }
+    refreshTop();
+    return;
+  }
   if (statusOpen && !bannerUp) {
     // Its own page: no swiping away; hold (or the Back button) returns.
     if (in.longPress) openStatus(false);
@@ -2244,9 +4627,20 @@ void ui_input(const KnobInput& in) {
         feedFilter = feedFilter >= NKIND - 1 ? -1 : feedFilter + 1;
         refreshFeed();
         break;
-      case SC_TOP:
-        topMode = (topMode + 1) % 3;
+      case SC_TOP:  // knob: enter select mode (chips + models)
+        topSel = st.ntop[topMode] ? 3 : 0;
         refreshTop();
+        break;
+      case SC_TODAY:  // the knob's way to the header dot: Status
+        openStatus(true);
+        break;
+      case SC_BEST:
+        bestMetric = (bestMetric + 1) % NBEST;
+        refreshBest();
+        break;
+      case SC_CREATOR:
+        crView = (crView + 1) % NCVIEW;
+        refreshCreator();
         break;
       case SC_TREND:
         trendStat = (trendStat + 1) % NSTAT;
@@ -2263,8 +4657,209 @@ void ui_input(const KnobInput& in) {
   }
 }
 
+// ---- model detail page ---------------------------------------------------------
+// One model's daily activity from the poller (GET <poller>/v2/model?id=),
+// fetched when opened: 7- and 30-day totals per stat and daily download bars.
+// Built on open, deleted on close.
+static lv_obj_t* mdRoot = nullptr;
+static void modelPage(const TopRow* r);
+static void mdBackCb(lv_event_t*) { modelPage(nullptr); }
+
+static void modelPage(const TopRow* r) {
+  if (!r) {
+    if (mdRoot) lv_obj_del_async(mdRoot);
+    mdRoot = nullptr;
+    modelOpen = false;
+    hbUpdate();
+    return;
+  }
+  if (mdRoot) return;
+  modelOpen = true;
+  hbUpdate();
+  mdRoot = box(lv_layer_top(), 0, 0, W, H, C_BG);
+  lv_obj_add_flag(mdRoot, LV_OBJ_FLAG_CLICKABLE);
+  Header h = header(mdRoot, "MODEL", "");
+  lv_obj_align(h.right, LV_ALIGN_TOP_RIGHT, -PAD, COMPACT ? 4 : 8);
+  lv_obj_t* back = label(h.right, F14, C_TXT, 0, 0, LV_SYMBOL_CLOSE "  Back");
+  chipStyle(back, C_CHIP, C_TXT);
+  lv_obj_set_style_pad_ver(back, 8, 0);
+  lv_obj_set_style_pad_hor(back, 16, 0);
+  lv_obj_add_flag(back, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_set_ext_click_area(back, 8);
+  lv_obj_add_event_cb(back, mdBackCb, LV_EVENT_CLICKED, nullptr);
+  lv_obj_t* name = label(mdRoot, TALL ? F22 : F16, C_TXT, PAD + 4, TOP, r->name);
+  dotLabel(name, CW - 8);
+  lv_obj_t* note = label(mdRoot, F14, C_MUTED, PAD + 4, TOP + lineH(TALL ? F22 : F16) + 4, "Loading...");
+  lv_refr_now(NULL);  // show the page before the (blocking) fetch
+
+  const size_t cap = 6144;  // response buffer in PSRAM, freed after parsing
+  char* body = (char*)heap_caps_malloc(cap, MALLOC_CAP_SPIRAM);
+  char url[96];
+  snprintf(url, sizeof(url), "%s/v2/model?id=%s", st.poller, r->id);
+  JsonDocument doc;
+  int n = body && st.poller[0] && r->id[0] ? net_http_get(url, body, cap) : -1;
+  bool bad = n <= 0 || deserializeJson(doc, body, n);
+  heap_caps_free(body);
+  if (bad) {
+    lv_label_set_text(note, st.poller[0] ? "Couldn't reach the poller" : "Poller address not known yet");
+    return;
+  }
+  JsonArrayConst days = doc["days"].as<JsonArrayConst>();
+  int nd = days.size();
+  int sum7[NSTAT] = {}, sum30[NSTAT] = {}, dl[30] = {}, mx = 1;
+  for (int i = 0; i < nd && i < 30; i++) {
+    JsonObjectConst d = days[nd - 1 - i];  // newest first
+    for (int k = 0; k < NSTAT; k++) {
+      int v = d[STAT_KEYS[k]] | 0;
+      sum30[k] += v;
+      if (i < 7) sum7[k] += v;
+    }
+    dl[i] = d["downloads"] | 0;
+    mx = max(mx, dl[i]);
+  }
+  char a[200];
+  int at = snprintf(a, sizeof(a), nd < 30 ? "%d day%s of history so far" : "last 30 days", nd, nd == 1 ? "" : "s");
+  // Creator stats for this model (when the poller has them).
+  JsonObjectConst cs = doc["stats"].as<JsonObjectConst>();
+  if (!cs.isNull() && (cs["has"] | false)) {
+    char p1[12], p2[12];
+    crPct(p1, sizeof(p1), cs["dpv30"] | -1.0f);
+    crPct(p2, sizeof(p2), cs["ppd"] | -1.0f);
+    at += snprintf(a + at, sizeof(a) - at, "  -  %s dl/view, %s prints/dl, %.0f eng/100 dl",
+                   p1, p2, cs["e100"]["m"]["all"] | 0.0f);
+    JsonObjectConst mo = cs["mom"].as<JsonObjectConst>();
+    if (!mo.isNull() && at < (int)sizeof(a))
+      at += snprintf(a + at, sizeof(a) - at, ", yday %d vs %.1f avg%s", mo["y"] | 0, mo["avg"] | 0.0f,
+                     (mo["rising"] | false) ? " (rising)" : (mo["stalled"] | false) ? " (stalled)" : "");
+    if (at < (int)sizeof(a))
+      at += snprintf(a + at, sizeof(a) - at, ", %.0f/%.0f pts, +%d/+%d followers 7d/30d", cs["pts7"] | 0.0f,
+                     cs["pts30"] | 0.0f, cs["fol7"] | 0, cs["fol30"] | 0);
+  }
+  if (!cs.isNull() && !cs["unans"].isNull() && at < (int)sizeof(a))
+    snprintf(a + at, sizeof(a) - at, ", %d unanswered", cs["unans"] | 0);
+  lv_label_set_text(note, a);
+  if (COMPACT) {
+    dotLabel(note, CW - 8);
+  } else {  // two lines
+    lv_label_set_long_mode(note, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(note, CW - 8);
+  }
+
+  const int y0 = TOP + lineH(TALL ? F22 : F16) + lineH(F14) * (COMPACT ? 1 : 2) + 14, tw = COMPACT ? CW : CW * 45 / 100;
+  lv_obj_t* tb = card(mdRoot, PAD, y0, tw, BOT - y0);
+  const int rh = (BOT - y0 - 16) / (NSTAT + 1);
+  label(tb, F12, C_MUTED, tw - 190, 8, "7 DAYS");
+  label(tb, F12, C_MUTED, tw - 90, 8, "30 DAYS");
+  static const int ORDER[NSTAT] = {S_DOWNLOADS, S_PRINTS, S_LIKES, S_COLLECTS, S_BOOSTS};
+  for (int i = 0; i < NSTAT; i++) {
+    int k = ORDER[i], y = 8 + (i + 1) * rh;
+    label(tb, F16, COL[k], 14, y, KIND_PLURAL[k]);
+    fmtSigned(a, sizeof(a), sum7[k]);
+    label(tb, F20, C_7D, tw - 190, y - 2, sum7[k] ? a : "0");
+    fmtSigned(a, sizeof(a), sum30[k]);
+    label(tb, F20, C_30D, tw - 90, y - 2, sum30[k] ? a : "0");
+  }
+  if (COMPACT) return;
+  // Daily downloads, oldest on the left.
+  const int cx = PAD + tw + 10, cw = CW - tw - 10;
+  lv_obj_t* ch = card(mdRoot, cx, y0, cw, BOT - y0);
+  label(ch, F12, C_SUB, 14, 10, "DAILY DOWNLOADS");
+  const int bars = max(1, min(nd, 30)), step = (cw - 28) / 30, bw = max(3, step - 2);
+  const int bottom = BOT - y0 - 14, maxH = bottom - (10 + lineH(F12) + 10);
+  for (int i = 0; i < bars; i++) {
+    int v = dl[bars - 1 - i], hh = v ? 4 + v * (maxH - 4) / mx : 3;
+    box(ch, 14 + (30 - bars + i) * step, bottom - hh, bw, hh, v ? COL[S_DOWNLOADS] : C_TRACK, 2);
+  }
+}
+
 #if INPUT_TOUCH
 static bool swiped = false;
+
+static void topRowCb(lv_event_t* e) {
+  if (swiped) return;  // the release of a page drag, not a tap
+  int i = (int)(intptr_t)lv_event_get_user_data(e);
+  if (i < st.ntop[topMode]) modelPage(&st.top[topMode][i]);
+}
+static void touchActivity();
+// Horizontal drags move the page with the finger (compositor boards).
+static bool dragDecided = false, dragging = false;
+static lv_point_t dragStart;
+static int dragDx = 0;
+static uint32_t pressT = 0;  // when the finger went down
+// Recent (time, x) samples: the release speed is measured over the last
+// ~100 ms, which catches quick flicks even when frames are slow.
+static uint32_t sampT[6];
+static int sampX[6], sampN = 0;
+
+static bool dragAllowed() { return display_can_compose() && !ui_overlay_open() && !slideBusy; }
+
+static void dragMove(const lv_point_t& p) {
+  uint32_t now = millis();
+  int dx = p.x - dragStart.x;
+  if (!dragDecided) {
+    int dy = p.y - dragStart.y;
+    if (abs(dx) < 10 && abs(dy) < 10) return;
+    dragDecided = true;
+    // Horizontal unless clearly vertical (|dx| < 0.8 |dy|); those are left to gestures.
+    if (abs(dx) * 10 < abs(dy) * 8 || !dragAllowed()) {
+      swipeLog("swipe dx %d dy %d: vertical\n", dx, dy);
+      return;
+    }
+    // Only the neighbor we're moving toward is needed (usually pre-rendered).
+    int slot = dx < 0 ? 1 : 0, nb = dx < 0 ? (cur + 1) % NCAR : (cur + NCAR - 1) % NCAR;
+    if (!pageSnap(slot, nb)) return;
+    slideBusy = dragging = swiped = true;
+    touchActivity();
+    if (bannerUp) bannerClear();
+    display_compose_begin();
+    sampN = 0;
+  }
+  if (!dragging) return;
+  dragDx = constrain(dx, -W, W);
+  // Changing direction past the start needs the other neighbor too.
+  int slot = dragDx < 0 ? 1 : 0, nb = dragDx < 0 ? (cur + 1) % NCAR : (cur + NCAR - 1) % NCAR;
+  if (dragDx && !pageSnap(slot, nb)) return;
+  memmove(&sampT[1], &sampT[0], sizeof(sampT) - sizeof(sampT[0]));
+  memmove(&sampX[1], &sampX[0], sizeof(sampX) - sizeof(sampX[0]));
+  sampT[0] = now;
+  sampX[0] = p.x;
+  if (sampN < 6) sampN++;
+  composeAt(dragDx < 0 ? 1 : 0, dragDx);
+}
+
+// Goes to the neighbor when the drag passed 80 px (1/10 of the width on
+// narrower panels), was a quick swipe (30+ px in under 350 ms), or was fast
+// that way (>= 0.3 px/ms, 25+ px). Speed is the larger of the average over
+// the whole gesture and the peak over the last ~50 ms of samples; the speed
+// right at lift-off alone reads far too low. Otherwise it snaps back.
+static void dragRelease() {
+  if (!dragging) return;
+  dragging = false;
+  int dir = dragDx < 0 ? 1 : -1, slot = dragDx < 0 ? 1 : 0;
+  uint32_t now = millis(), dur = now - pressT;
+  float avg = dur ? dragDx / (float)dur : 0, peak = 0;
+  for (int i = 1; i < sampN; i++) {
+    if (sampT[0] - sampT[i - 1] > 50) break;
+    if (sampT[i - 1] <= sampT[i]) continue;
+    float v = (sampX[i - 1] - sampX[i]) / (float)(sampT[i - 1] - sampT[i]);
+    if ((v < 0) == (dragDx < 0) && fabsf(v) > fabsf(peak)) peak = v;
+  }
+  float vel = fabsf(avg) >= fabsf(peak) ? avg : peak;
+  int adx = abs(dragDx);
+  bool far = adx >= min(80, W / 10);
+  bool quick = adx >= 30 && dur < 350;
+  bool flick = adx >= 25 && fabsf(vel) >= 0.3f && (vel < 0) == (dragDx < 0);
+  bool commit = dragDx != 0 && (far || quick || flick);
+  swipeLog("swipe dx %d %lums avg %.2f peak %.2f: %s\n", dragDx, (unsigned long)dur, avg, peak,
+           commit ? (far ? "commit" : quick ? "commit (quick)" : "commit (flick)") : "snap back");
+  if (commit) {
+    runSlide(slot, dragDx, -dir * W, 200);
+    finishSlide((cur + dir + NCAR) % NCAR);
+  } else {
+    runSlide(slot, dragDx, 0, 180);
+    finishSlide(cur);
+  }
+}
 static void touchActivity();
 
 // Touch model: horizontal swipe = page, vertical swipe = more within the page,
@@ -2298,6 +4893,14 @@ static void pageStep(int d) {
       commentPage += d;
       refreshComments();
       break;
+    case SC_BEST:
+      bestMetric = ((bestMetric + d) % NBEST + NBEST) % NBEST;
+      refreshBest();
+      break;
+    case SC_CREATOR:
+      crView = ((crView + d) % NCVIEW + NCVIEW) % NCVIEW;
+      refreshCreator();
+      break;
     default:
       break;
   }
@@ -2307,14 +4910,30 @@ static void touchEvent(lv_event_t* e) {
   switch (lv_event_get_code(e)) {
     case LV_EVENT_PRESSED:
       swiped = false;
+      dragDecided = dragging = false;
+      dragDx = 0;
+      pressT = millis();
+      lv_indev_get_point(lv_indev_get_act(), &dragStart);
+      return;
+    case LV_EVENT_PRESSING: {
+      lv_point_t p;
+      lv_indev_get_point(lv_indev_get_act(), &p);
+      dragMove(p);
+      return;
+    }
+    case LV_EVENT_RELEASED:
+    case LV_EVENT_PRESS_LOST:
+      dragRelease();
       return;
     case LV_EVENT_GESTURE: {
       lv_dir_t d = lv_indev_get_gesture_dir(lv_indev_get_act());
+      // Horizontal moves are finger-follow drags on compositor boards.
+      if ((d == LV_DIR_LEFT || d == LV_DIR_RIGHT) && (dragging || display_can_compose())) return;
       swiped = true;
       lv_indev_wait_release(lv_indev_get_act());
       touchActivity();
       if (hbIsOpen) hbOpen(false);
-      if (menuOpen || statusOpen || aboutOpen || updOpen) return;
+      if (wifiOpen || menuOpen || statusOpen || aboutOpen || updOpen) return;
       if (bannerUp && d == LV_DIR_TOP) {
         bannerClear();
         return;
@@ -2333,7 +4952,10 @@ static void touchEvent(lv_event_t* e) {
     case LV_EVENT_LONG_PRESSED:
       if (swiped) return;
       touchActivity();
-      if (menuOpen) openMenu(false);
+      if (wifiOpen) ui_wifi_page(false);
+      else if (modelOpen) modelPage(nullptr);
+      else if (menuOpen && sheet) sheetClose();
+      else if (menuOpen) openMenu(false);
       else if (statusOpen) openStatus(false);
       else if (aboutOpen) openAbout(false);
       else if (updOpen) openUpdate(false);
@@ -2344,11 +4966,15 @@ static void touchEvent(lv_event_t* e) {
 }
 
 static void menuTapCb(lv_event_t* e) {
-  menuSel = (int)(intptr_t)lv_event_get_user_data(e);
-  KnobInput in;
-  in.click = true;
-  ui_input(in);
+  if (ui_wake()) return;
+  lastInput = millis();
+  applyBrightness();
+  menuSel = tapIdx(e);
+  menuActivate(menuSel);
 }
+
+static void menuBackCb(lv_event_t*) { openMenu(false); }
+static void menuHoldCb(lv_event_t*) { openMenu(false); }
 #endif
 
 void ui_tick() {
@@ -2365,7 +4991,16 @@ void ui_tick() {
   lastSec = now;
 
   refreshTodayHeader();
+  wifiBannerUpdate();
+  guideTick();
   if (statusOpen) refreshStatus();
+  // Keep the neighbor snapshots fresh while nobody is touching the panel;
+  // paused while any overlay (Wi-Fi page, Settings, ...) is open.
+  if (display_can_compose() && !slideBusy && now - lastInput > 700 && !ui_overlay_open()) {
+    int prev = (cur + NCAR - 1) % NCAR, next = (cur + 1) % NCAR;
+    if (!(cacheOk[0] && cacheIdx[0] == prev)) pageSnap(0, prev);
+    else if (!(cacheOk[1] && cacheIdx[1] == next)) pageSnap(1, next);
+  }
   static uint32_t lastAct = 0;
   if (now - lastAct >= 30000) {  // relative times in Recent Activity
     lastAct = now;
@@ -2382,11 +5017,17 @@ void ui_tick() {
   } else if (!cycle && idle && cur != SC_TODAY && now - lastInput > (uint32_t)idle * 1000) {
     goScreen(SC_TODAY, -1);
   }
-  // Hourly bars shift as the clock moves.
-  static int lastHour = -1;
+  // Hourly bars shift as the clock moves. A new local day re-labels every
+  // "today" figure even if the poller has not sent a fresh payload yet.
+  static int lastHour = -1, lastDay = -1;
   uint32_t n = nowUtc();
   int h = n ? (int)(toLocal(n) / 3600 % 24) : -1;
-  if (h != lastHour) {
+  int day = n ? (int)(toLocal(n) / 86400) : -1;
+  if (day != lastDay) {
+    lastDay = day;
+    lastHour = h;
+    refreshAll();
+  } else if (h != lastHour) {
     lastHour = h;
     refreshToday();
   }

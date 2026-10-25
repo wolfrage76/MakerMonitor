@@ -69,11 +69,26 @@ static void playChime(const Chime& c, int peak) {
   for (int i = 0; i < RATE * 150 / 1000 / 256 + 1; i++) i2s.write((uint8_t*)buf, sizeof(buf));
 }
 
+static volatile bool playing = false;
+
 static void soundTask(void*) {
   uint8_t id;
   for (;;) {
-    if (xQueueReceive(q, &id, portMAX_DELAY) == pdTRUE) playChime(CHIMES[id], setting_value(SET_VOLUME));
+    if (xQueueReceive(q, &id, portMAX_DELAY) == pdTRUE && ok) {
+      playing = true;
+      playChime(CHIMES[id], setting_value(SET_VOLUME));
+      playing = false;
+    }
   }
+}
+
+// Before a firmware update: no more chimes, and the I2S DMA (and its
+// interrupt) stops, so nothing runs from it while flash writes disable the cache.
+void sound_stop() {
+  if (!ok) return;
+  ok = false;
+  for (int i = 0; i < 50 && playing; i++) delay(10);
+  i2s.end();
 }
 
 void sound_init() {
@@ -102,6 +117,7 @@ void sound_test() {
 
 #else
 void sound_init() {}
+void sound_stop() {}
 void sound_event(int) {}
 void sound_test() {}
 #endif

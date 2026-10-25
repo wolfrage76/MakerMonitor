@@ -1,7 +1,16 @@
 #include "model.h"
 
 #include <ArduinoJson.h>
+#include <esp_heap_caps.h>
 #include <string.h>
+
+// The state document is ~20 KB of nodes; keep it out of internal RAM.
+struct PsramAllocator : ArduinoJson::Allocator {
+  void* allocate(size_t n) override { return heap_caps_malloc(n, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT); }
+  void deallocate(void* p) override { heap_caps_free(p); }
+  void* reallocate(void* p, size_t n) override { return heap_caps_realloc(p, n, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT); }
+};
+static PsramAllocator psram;
 
 const char* const STAT_KEYS[NSTAT] = {"boosts", "likes", "collects", "downloads", "prints"};
 const char* const KIND_NAME[NKIND] = {"Boost", "Like", "Collect", "Download", "Print", "Comment"};
@@ -29,6 +38,7 @@ static void readTop(JsonArrayConst arr, TopRow* rows, int& n) {
   for (JsonObjectConst r : arr) {
     if (n >= 4) break;
     TopRow& t = rows[n++];
+    copyStr(t.id, sizeof(t.id), r["id"]);
     copyStr(t.name, sizeof(t.name), r["n"]);
     t.v[S_BOOSTS] = r["b"] | 0;
     t.v[S_LIKES] = r["l"] | 0;
@@ -40,7 +50,7 @@ static void readTop(JsonArrayConst arr, TopRow* rows, int& n) {
 }
 
 bool parse_state(const char* json, size_t len, State& s) {
-  JsonDocument doc;
+  JsonDocument doc(&psram);
   if (deserializeJson(doc, json, len)) return false;
   if ((doc["v"] | 0) != 1) return false;
 
@@ -51,7 +61,10 @@ bool parse_state(const char* json, size_t len, State& s) {
   readStats(doc["today"].as<JsonVariantConst>(), s.today);
   s.todayPoints = doc["today"]["points"] | 0.0f;
   s.hasYday = doc["yday"].is<JsonObjectConst>();
-  if (s.hasYday) readStats(doc["yday"].as<JsonVariantConst>(), s.yday);
+  if (s.hasYday) {
+    readStats(doc["yday"].as<JsonVariantConst>(), s.yday);
+    s.ydayPoints = doc["yday"]["points"] | 0.0f;
+  }
   s.since = doc["since"] | 0;
   s.midnight = doc["midnight"] | false;
 
@@ -90,6 +103,18 @@ bool parse_state(const char* json, size_t len, State& s) {
     f.t = e["t"] | 0;
   }
 
+  JsonObjectConst fo = doc["followers"].as<JsonObjectConst>();
+  s.fol.has = !fo.isNull();
+  if (s.fol.has) {
+    s.fol.total = fo["total"] | 0;
+    s.fol.today = fo["today"] | 0;
+    s.fol.d7 = fo["d7"] | 0;
+    s.fol.d30 = fo["d30"] | 0;
+    s.fol.n = 0;
+    for (JsonVariantConst v : fo["series30"].as<JsonArrayConst>())
+      if (s.fol.n < 30) s.fol.series[s.fol.n++] = v | 0;
+  }
+
   JsonObjectConst m = doc["month"].as<JsonObjectConst>();
   s.month.has = !m.isNull() && m["impressions"].is<long>();
   if (s.month.has) {
@@ -126,6 +151,82 @@ bool parse_state(const char* json, size_t len, State& s) {
   s.lastPoll = st["lastPoll"] | 0;
   s.pollOk = st["ok"] | true;
   s.pollSec = st["pollSec"] | 600;
+
+  JsonObjectConst h = doc["health"].as<JsonObjectConst>();
+  s.health.has = !h.isNull();
+  if (s.health.has) {
+    s.health.stale = h["stale"] | false;
+    s.health.expired = !strcmp(h["auth"] | "", "expired");
+    s.health.since = h["since"] | 0;
+    static const char* const SRC[NHSRC] = {"models", "reach", "points"};
+    for (int i = 0; i < NHSRC; i++) {
+      s.health.srcT[i] = h["src"][SRC[i]]["t"] | 0;
+      s.health.srcFails[i] = h["src"][SRC[i]]["f"] | 0;
+    }
+  }
+  JsonObjectConst ins = doc["insights"].as<JsonObjectConst>();
+  s.insights.has = ins["has"] | false;
+  s.insights.days = ins["days"] | 0;
+  static const char* const BEST[NBEST] = {"downloads", "prints", "boosts"};
+  for (int m = 0; m < NBEST; m++) {
+    JsonObjectConst b = ins[BEST[m]].as<JsonObjectConst>();
+    for (int i = 0; i < 24; i++) s.insights.hour[m][i] = b["hour"][i] | 0;
+    for (int i = 0; i < 7; i++) s.insights.wday[m][i] = b["wday"][i] | 0;
+    s.insights.bestHour[m] = b["bestHour"] | -1;
+    s.insights.bestDay[m] = b["bestDay"] | -1;
+  }
+  copyStr(s.poller, sizeof(s.poller), doc["poller"]);
+
+  JsonObjectConst cr = doc["creator"].as<JsonObjectConst>();
+  Creator& c = s.creator;
+  c.has = !cr.isNull();
+  if (c.has) {
+    c.have = cr["p"]["have"] | 0;
+    c.of = cr["p"]["of"] | 0;
+    // Per list: the two values each row shows.
+    static const char* const LIST[NCLIST] = {"conv", "eng", "rise", "stall", "pts", "fol", "unansTop"};
+    static const char* const KA[NCLIST] = {"v", "v", "r", "a", "w", "w", "u"};
+    static const char* const KB[NCLIST] = {"d", "d", "y", "a", "m", "m", "u"};
+    for (int l = 0; l < NCLIST; l++) {
+      c.n[l] = 0;
+      for (JsonObjectConst r : cr[LIST[l]].as<JsonArrayConst>()) {
+        if (c.n[l] >= 4) break;
+        CRow& row = c.rows[l][c.n[l]++];
+        copyStr(row.id, sizeof(row.id), r["id"]);
+        copyStr(row.name, sizeof(row.name), r["n"]);
+        row.a = r[KA[l]] | 0.0f;
+        row.b = r[KB[l]] | 0.0f;
+      }
+    }
+    c.unans = cr["unans"] | 0;
+    static const char* const TAIL[3] = {"today", "w", "m"};
+    for (int i = 0; i < 3; i++)
+      for (int j = 0; j < 2; j++) c.tail[i][j] = cr["tail"][TAIL[i]][j] | 0;
+    JsonObjectConst a = cr["acct"].as<JsonObjectConst>();
+    c.dpv7 = a["dpv7"] | -1.0f;
+    c.dpv30 = a["dpv30"] | -1.0f;
+    c.ppd = a["ppd"] | -1.0f;
+    c.e100 = a["e100"] | -1.0f;
+    c.pts7 = a["pts7"] | 0.0f;
+    c.pts30 = a["pts30"] | 0.0f;
+    c.pa7 = a["pa7"] | 0.0f;
+    c.acct7 = a["p7"] | (c.pa7 * 7);
+    c.fol7 = a["fol7"] | 0;
+    c.fol30 = a["fol30"] | 0;
+    const char* pt = a["pt"] | "flat";
+    c.ptTrend = !strcmp(pt, "up") ? 1 : !strcmp(pt, "down") ? -1 : 0;
+    JsonObjectConst la = cr["launch"].as<JsonObjectConst>();
+    c.hasLaunch = !la.isNull();
+    if (c.hasLaunch) {
+      copyStr(c.lname, sizeof(c.lname), la["n"]);
+      c.lday = la["day"] | 0;
+      c.lpct = la["pct"] | -1;
+      c.lpast = la["past"] | 0;
+      for (int i = 0; i < 7; i++) c.lcur[i] = la["cur"][i] | -1;
+      c.nmed = la["med"].size();
+      for (int i = 0; i < 7; i++) c.lmed[i] = la["med"][i] | 0.0f;
+    }
+  }
   s.valid = true;
   return true;
 }

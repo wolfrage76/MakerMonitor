@@ -5,3 +5,4 @@
 void sound_init();
 void sound_event(int kind);  // chime for a notified event (respects Sound)
 void sound_test();           // confirmation chime after a Sound/Volume change
+void sound_stop();           // before a firmware update: stop I2S for good (until restart)

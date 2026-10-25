@@ -7,5 +7,9 @@
 #define LCD_BL_ACTIVE_HIGH 1
 // No bounce buffer: its ISR restarts GDMA from flash-resident code, which
 // panics when a flash write (NVS, LittleFS, OTA) has the cache disabled.
+// (Tried on the 7" with XIP: without LCD_RGB_ISR_IRAM_SAFE the panel object
+// sits in PSRAM, GDMA refuses the refill callback and the glass stays black;
+// it would also cost 32 KB of internal RAM. Updates instead halve the pixel
+// clock; see display_update_mode().)
 #define LCD_BOUNCE_LINES 0
 #define INPUT_TOUCH      1
