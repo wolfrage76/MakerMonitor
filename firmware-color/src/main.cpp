@@ -868,11 +868,18 @@ static void handleScreenshot() {
   server.sendHeader("Cache-Control", "no-store");
   server.setContentLength(png.len);
   server.send(200, "image/png", "");
+  // write() returns 0 while the socket's send buffer is full; wait for it
+  // to drain (up to 3 s of no progress) rather than cut the image short.
   WiFiClient c = server.client();
-  for (size_t o = 0; o < png.len && c.connected();) {
+  uint32_t lastProgress = millis();
+  for (size_t o = 0; o < png.len && c.connected() && millis() - lastProgress < 3000;) {
     size_t n = c.write(png.data + o, min<size_t>(png.len - o, 4096));
-    if (!n) break;
-    o += n;
+    if (n) {
+      o += n;
+      lastProgress = millis();
+    } else {
+      delay(5);
+    }
   }
   heap_caps_free(png.data);
   deviceLogf("Screenshot sent (%u KB)", (unsigned)(png.len / 1024));

@@ -478,8 +478,8 @@ struct Tile {
 };
 static Tile tiles[NSTAT];
 static Header todayHdr;
-static lv_obj_t *ptsChip, *replyChip, *syncDot, *syncLbl, *clockLbl;
-static void openCreatorReply(lv_event_t*);  // Creator page, Reply view
+static lv_obj_t *ptsChip, *syncDot, *syncLbl, *clockLbl;
+static bool ptsWant = false;
 static int TILE_W, TILE_STEP, BAR_BOTTOM, BAR_MAX, BAR_W, BAR_GAP, BAR_X;
 
 // On tall panels the chart stays short and the room under the tiles is a
@@ -501,16 +501,12 @@ static void syncDotCb(lv_event_t*) { openStatus(true); }
 static void buildToday() {
   lv_obj_t* s = screens[SC_TODAY] = newScreen();
   todayHdr = header(s, "TODAY", "waiting for poller");
-  ptsChip = label(todayHdr.right, F14, C_WARN, 0, 0, "");
+  // Placed by layoutTodayChips(), not in the header row.
+  ptsChip = label(s, F14, C_WARN, 0, 0, "");
   chipStyle(ptsChip, C_CHIP, C_WARN);
   // Tap: the Points page, sliding like a swipe. 48 px tall target.
   tappable(ptsChip, [](lv_event_t*) { goScreen(SC_POINTS, SC_POINTS > cur ? 1 : -1); }, 0);
   lv_obj_set_ext_click_area(ptsChip, max(6, (48 - lineH(F14) - 6) / 2));
-  // Unanswered comments (creator stats); tap for the list.
-  replyChip = label(todayHdr.right, F14, C_ACCENT, 0, 0, "");
-  chipStyle(replyChip, C_CHIP, C_ACCENT);
-  tappable(replyChip, openCreatorReply, 0);
-  show(replyChip, false);
   // Sync state is just the dot (green ok / amber cookie / red error), in the
   // footer at the bottom left on every page; tapping it opens Status. The text
   // label is kept hidden for the knob-free layout code.
@@ -526,10 +522,13 @@ static void buildToday() {
   lv_obj_add_event_cb(sync, syncDotCb, LV_EVENT_CLICKED, nullptr);
 #endif
   // Clock centred on the full width, independent of the left and right items.
+  // Same centre line as the title (the header's right-hand row is empty
+  // now; the chips are placed by layoutTodayChips()).
   clockLbl = label(s, F16, C_TXT, 0, 0, "--:--");
   lv_obj_update_layout(s);
-  lv_obj_align(clockLbl, LV_ALIGN_TOP_MID, 0,
-               lv_obj_get_y(todayHdr.right) + (lv_obj_get_height(todayHdr.right) - lineH(F16)) / 2);
+  lv_area_t ttl;
+  lv_obj_get_coords(todayHdr.title, &ttl);
+  lv_obj_align(clockLbl, LV_ALIGN_TOP_MID, 0, (ttl.y1 + ttl.y2) / 2 - lineH(F16) / 2);
   // Keep the subtitle left of the clock ("waiting for poller - host" is long).
   const int clockHalf = lv_txt_get_width("12:00 PM", 8, F16, 0, LV_TEXT_FLAG_NONE) / 2 + 14;
   lv_obj_update_layout(s);
@@ -711,6 +710,24 @@ static void refreshActivity() {
   show(actEmpty, shown == 0);
 }
 
+// Today header: date left, clock centred, hamburger right; the points chip
+// sits centred in the gap between the clock and the hamburger, measured from
+// the real widths, on the title's centre line. If it doesn't fit, it hides.
+static void layoutTodayChips() {
+  if (!clockLbl) return;
+  const int m = COMPACT ? 4 : 8;
+  show(ptsChip, true);
+  lv_obj_update_layout(screens[SC_TODAY]);
+  lv_area_t clk, ttl;
+  lv_obj_get_coords(clockLbl, &clk);
+  lv_obj_get_coords(todayHdr.title, &ttl);
+  const int cy = (ttl.y1 + ttl.y2) / 2;
+  const int x1 = clk.x2 + 1, x2 = W - PAD - HB_W - 1, w = lv_obj_get_width(ptsChip);
+  bool fits = ptsWant && w + 2 * m <= x2 - x1;
+  show(ptsChip, fits);
+  if (fits) lv_obj_set_pos(ptsChip, (x1 + x2 - w) / 2, cy - lv_obj_get_height(ptsChip) / 2);
+}
+
 static void refreshToday() {
   char a[32], b[48];
   int hourNow = -1;
@@ -789,10 +806,8 @@ static void refreshToday() {
   }
   snprintf(a, sizeof(a), COMPACT ? "%+.1f pts" : "%+.1f pts today", lag ? 0.0f : st.todayPoints);
   lv_label_set_text(ptsChip, a);
-  show(ptsChip, st.valid && st.cookieAge >= 0);
-  snprintf(a, sizeof(a), COMPACT ? "%d to reply" : "%d to reply", st.creator.unans);
-  lv_label_set_text(replyChip, a);
-  show(replyChip, st.valid && st.creator.has && st.creator.unans > 0);
+  ptsWant = st.valid && st.cookieAge >= 0;
+  layoutTodayChips();
   refreshActivity();
 }
 static void setTextIfChanged(lv_obj_t* l, const char* txt) {
@@ -809,26 +824,23 @@ static void refreshTodayHeader() {
     setTextIfChanged(todayHdr.sub, "Wi-Fi setup: join " BOARD_AP);
   } else if (!st.valid) {
     snprintf(a, sizeof(a), "waiting for poller  -  %s.local", g_net.host[0] ? g_net.host : "offline");
-    // No Recent activity card on shorter panels: followers go in the subtitle.
-    if (!TALL && st.fol.has) {
-      size_t o = strlen(a);
-      snprintf(a + o, sizeof(a) - o, "  -  %d followers (%+d)", st.fol.total, st.fol.today);
-    }
     setTextIfChanged(todayHdr.sub, a);
   } else {
     time_t lt = toLocal(n ? n : st.t);
     struct tm tmv;
     gmtime_r(&lt, &tmv);
     static const char* const WD[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
-    if (COMPACT) {
-      snprintf(a, sizeof(a), "%s %s %d", WD[tmv.tm_wday], MONTHS[tmv.tm_mon], tmv.tm_mday);
-    } else if (st.midnight || payloadLagDays()) {
-      snprintf(a, sizeof(a), "%s %s %d  -  since midnight", WD[tmv.tm_wday], MONTHS[tmv.tm_mon], tmv.tm_mday);
-    } else {
-      fmtHM(b, sizeof(b), st.since);
-      snprintf(a, sizeof(a), "%s %s %d  -  since %s", WD[tmv.tm_wday], MONTHS[tmv.tm_mon], tmv.tm_mday, b);
-    }
+    // Just the date; when the day's baseline began is on the Status page.
+    snprintf(a, sizeof(a), "%s %s %d", WD[tmv.tm_wday], MONTHS[tmv.tm_mon], tmv.tm_mday);
     setTextIfChanged(todayHdr.sub, a);
+  }
+  // Re-centre the chips when the date or clock text changed width.
+  static char lastHdr[96] = "";
+  char now[96];
+  snprintf(now, sizeof(now), "%s|%s", lv_label_get_text(todayHdr.sub), lv_label_get_text(clockLbl));
+  if (strcmp(now, lastHdr)) {
+    strlcpy(lastHdr, now, sizeof(lastHdr));
+    layoutTodayChips();
   }
   uint32_t dot = C_IDLE;
   if (st.valid) {
@@ -1997,13 +2009,6 @@ static void refreshCreator() {
   for (int i = 0; i < CR_TILES; i++) crTileDef[i] = DEF[crView][i];
   crSetTiles(n, v, l, col);
   setTextIfChanged(crNote, note);
-}
-
-static void openCreatorReply(lv_event_t*) {
-  crView = CV_REPLY;
-  refreshCreator();
-  markPagesDirty();
-  goScreen(SC_CREATOR, SC_CREATOR > cur ? 1 : -1);
 }
 
 enum { ST_POLLER, ST_COOKIE, ST_NEXT, ST_BASE, ST_NET, ST_DEVICE, NSTATUS };
