@@ -3,17 +3,20 @@
 # MakerWorld public handle (without @)
 handle: "your-username"
 
-# CrowPanel IP from the e-paper display
+# CrowPanel IP from the e-paper display (leave empty if you have none)
 panel_host: "192.168.1.50"
 panel_port: 80
 
-# Optional color panels (Waveshare 3.16", CrowPanel 4.3/5/7"). IP is on the Status screen.
+# Optional color panels (Waveshare 3.16", CrowPanel 4.3/5/7"). The IP and the
+# .local name are on the Status screen; the .local name (makermonitor-xxxxx.local,
+# or the hostname set in the panel's Settings) survives DHCP changes.
 # Several: separate with commas, e.g. "192.168.1.50, makermonitor-e3b7d.local"
 # Leave empty to disable. Its Settings menu can change the poll interval.
 color_panel_host: ""
 color_panel_port: 80
 
-# How often to poll MakerWorld (seconds)
+# How often to poll MakerWorld (seconds). All MakerWorld requests share one
+# limiter (about 120 an hour); see README "MakerWorld requests".
 poll_interval_sec: 600
 # Seconds each page stays up before the panel flips to the next (min 10)
 page_cycle_sec: 30
@@ -30,3 +33,56 @@ data_dir: "data"
 
 # Browser-like UA (should roughly match the browser that minted cf_clearance)
 user_agent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
+# Optional push notifications. Leave out (or empty) to disable.
+# Test with: .venv/bin/python -m makermonitor --test-notify
+# Secrets can come from the environment: url: "${DISCORD_WEBHOOK}"
+# (config.yaml itself is git-ignored, so putting them here is fine too).
+#
+# Event types: download, print, boost, like, collect, comment, follower, points,
+# health (cookie expired, data stale, and their recovery).
+# Each poll sends at most one message per channel, grouped by type.
+notifications:
+  # Defaults for every channel (each channel can override them):
+  # events: [download, print, boost, like, collect, comment, follower, points, health]
+  # exclude: [points]            # or list what you don't want instead
+  # quiet_hours: "23:00-07:00"   # no messages then, except `urgent` types
+  # quiet_digest: true           # when quiet hours end: true = one "while you were away" message
+  #                              # with everything held, "always" = even after a quiet night,
+  #                              # false = drop what happened during quiet hours
+  # urgent: [health]             # types that ignore quiet_hours
+  # min_count: {download: 5}     # wait until a type adds up to n before sending it
+  channels:
+    # - type: discord
+    #   url: "https://discord.com/api/webhooks/..."   # channel > Integrations > Webhooks
+    #   events: [download, print, boost, comment, follower, health]
+    #   mention: "<@your-user-id>"   # optional, pinged on health alerts
+    # - type: pushbullet
+    #   token: "o.xxxxx"              # pushbullet.com > Settings > Access Tokens
+    #   events: [comment, follower, boost, health]
+    #   quiet_hours: "23:00-07:00"
+    #   device: ""                    # optional device_iden; empty = all devices
+    # - type: pushover
+    #   token: "axxxxx"               # pushover.net > Create an Application/API Token
+    #   user: "uxxxxx"                # your User Key (top of the pushover.net dashboard)
+    #   events: [comment, follower, boost, health]
+    #   priority: 0                   # -2 silent .. 1 high; health warnings use alert_priority (default 1)
+    #   sound: ""                     # optional, e.g. "cashregister"
+    # - type: ntfy                    # free phone push, no account (app: ntfy.sh)
+    #   topic: "makermonitor-pick-something-unguessable"
+    #   server: "https://ntfy.sh"     # or your own ntfy server
+    #   token: ""                     # optional access token (or username/password)
+    #   priority: 3                   # 1-5; health warnings use alert_priority (default 5)
+    # - type: telegram
+    #   token: "123456:ABC..."        # from @BotFather
+    #   chat_id: "123456789"          # your id (ask @userinfobot), a group id, or @channel
+    #   silent: false
+    # - type: homeassistant
+    #   url: "http://homeassistant.local:8123"
+    #   token: "${HA_TOKEN}"          # Profile > Security > Long-lived access tokens
+    #   service: "mobile_app_your_phone"   # notify service -> HA companion app
+    #   event: "makermonitor"         # optional: fire an event for automations
+    # - type: apprise                 # Slack, Matrix, Gotify, Signal, Teams, ... one URL each
+    #   urls: ["slack://T000/B000/XXXX", "gotify://gotify.local/AbCdEf"]
+    # - type: webhook                 # generic JSON POST (Home Assistant, n8n, ntfy bridge, ...)
+    #   url: "http://homeassistant.local:8123/api/webhook/makermonitor"
+    #   headers: {Authorization: "Bearer ${HA_TOKEN}"}

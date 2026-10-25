@@ -9,7 +9,8 @@ from pydantic import BaseModel, Field
 
 class Settings(BaseModel):
     handle: str = Field(..., description="MakerWorld handle without @")
-    panel_host: str
+    # E-ink CrowPanel; leave empty when there is none.
+    panel_host: str = ""
     panel_port: int = 80
     # Optional color panels (Waveshare 3.16", Elecrow CrowPanel 4.3/5/7").
     # One host, or several separated by commas; "host:port" overrides the port.
@@ -21,6 +22,8 @@ class Settings(BaseModel):
     listen_port: int = 8787
     api_token: str = "change-me"
     data_dir: str = "data"
+    # Optional push notifications; see config.example.yaml.
+    notifications: dict[str, Any] = Field(default_factory=dict)
     user_agent: str = (
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
         "(KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
@@ -41,11 +44,15 @@ class Settings(BaseModel):
 
     @property
     def panel_base(self) -> str:
-        return f"http://{self.panel_host}:{self.panel_port}"
+        return f"http://{self.panel_host}:{self.panel_port}" if self.panel_host else ""
+
+
+def config_path(path: str | Path | None = None) -> Path:
+    return Path(path) if path else Path(__file__).resolve().parent.parent / "config.yaml"
 
 
 def load_settings(path: str | Path | None = None) -> Settings:
-    cfg_path = Path(path) if path else Path(__file__).resolve().parent.parent / "config.yaml"
+    cfg_path = config_path(path)
     if not cfg_path.exists():
         example = cfg_path.with_name("config.example.yaml")
         raise FileNotFoundError(
