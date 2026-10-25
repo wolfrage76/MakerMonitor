@@ -16,7 +16,7 @@ The **poller** is the heart of it. Everything else is optional, so start small a
 |---|---|---|
 | **1. Web dashboard** | The poller | A dashboard on your phone or desktop: today's numbers, 7/30-day totals, every model in a sortable table, creator insights, followers, best times, health, and a Settings tab |
 | **2. Notifications** | The poller | Messages in Discord, Pushover, ntfy, Telegram, Home Assistant, Pushbullet, Apprise (Slack, Matrix, Gotify and 100+ more) or any webhook. No hardware at all |
-| **3. Color panel** | The poller + an Elecrow CrowPanel 7", 5" or 4.3", or a Waveshare 3.16" | A desk display with live banners and chimes as things happen, swipeable pages and touch (or knob) controls |
+| **3. Color panel** | The poller + an Elecrow CrowPanel 7", 5" or 4.3" | A desk display with live banners and chimes as things happen, swipeable pages and touch controls |
 | **4. E-ink panel** | The poller + an Elecrow CrowPanel 2.13" e-paper | A low-power glanceable summary (this firmware is on hold, so it doesn't get the newer creator pages) |
 | **5. Mix and match** | Any of the above | The dashboard is always there; add channels and panels side by side, several panels if you like |
 
@@ -114,14 +114,14 @@ Flash a color panel with PlatformIO:
 ```bash
 cd firmware-color
 rm -f sdkconfig.defaults
-pio run -e crowpanel_70 -t upload      # or crowpanel_50, crowpanel_43, ws316
+pio run -e crowpanel_70 -t upload      # or crowpanel_50, crowpanel_43
 ```
 
-Join it to your Wi-Fi on the screen. Until the poller knows about it, the panel shows a **Connect the poller** page with the line to add to `config.yaml` (`color_panel_host: "makermonitor.local"`). Build notes, controls and the full feature list are in [`firmware-color/README.md`](firmware-color/README.md); the e-ink panel is in [`firmware-eink/README.md`](firmware-eink/README.md).
+Join it to your Wi-Fi on the screen. Until the poller knows about it, the panel shows a **Connect the poller** page with the line to add to `config.yaml` (`panels: ["makermonitor.local"]`), or add it in the dashboard's Settings tab. Build notes, controls and the full feature list are in [`firmware-color/README.md`](firmware-color/README.md); the e-ink panel is in [`firmware-eink/README.md`](firmware-eink/README.md).
 
 ## Configuration
 
-Everything lives in `poller/config.yaml`; start from the commented [`config.example.yaml`](poller/config.example.yaml). The essentials are your MakerWorld `handle` and an `api_token` you make up. Panel addresses, the poll interval (10 minutes by default) and notification channels are all optional.
+Everything lives in `poller/config.yaml`; start from the commented [`config.example.yaml`](poller/config.example.yaml). The essentials are your MakerWorld `handle` and an `api_token` you make up. Panels go in one `panels:` list of IPs or `.local` names, color and e-paper alike (the poller works out which is which). The panel list, the poll interval (10 minutes by default) and notification channels are all optional.
 
 Most of it can also be changed from the dashboard's **Settings** tab, which checks your changes before saving, keeps a backup of the previous file and applies them right away. Secrets can come from environment variables (`"${DISCORD_WEBHOOK}"`).
 
@@ -140,10 +140,10 @@ From the 7" color panel (captured with `tools/capture_screens.sh`; the full set 
 
 | | | |
 |---|---|---|
-| ![Creator: Convert](docs/screens/creator-convert.png) | ![Creator: Followers](docs/screens/creator-followers.png) | ![Best times](docs/screens/best.png) |
-| Creator: Convert | Creator: Followers | Best times |
-| ![Top models](docs/screens/models.png) | ![Settings](docs/screens/settings.png) | ![Status](docs/screens/status.png) |
-| Top models | Settings | Status |
+| ![Creator: Convert](docs/screens/creator-convert.png) | ![Creator: Followers](docs/screens/creator-followers.png) |
+| Creator: Convert | Creator: Followers |
+| ![Top models](docs/screens/models.png) | ![Settings](docs/screens/settings.png) |
+| Top models | Settings |
 
 ## What's in the repo
 
@@ -151,7 +151,7 @@ From the 7" color panel (captured with `tools/capture_screens.sh`; the full set 
 |---|---|
 | [`poller/`](poller/) | The Python poller: MakerWorld fetching, the dashboard and Settings tab, notifications, panel pushes. See also [`NOTIFICATIONS.md`](poller/NOTIFICATIONS.md) |
 | [`extension/`](extension/) | The browser extension that hands your MakerWorld cookie to the poller |
-| [`firmware-color/`](firmware-color/) | Firmware for the color panels (CrowPanel 7" / 5" / 4.3", Waveshare 3.16") |
+| [`firmware-color/`](firmware-color/) | Firmware for the color panels (CrowPanel 7" / 5" / 4.3") |
 | [`firmware-eink/`](firmware-eink/) | Firmware for the CrowPanel 2.13" e-paper panel (on hold) |
 | [`tools/`](tools/) | `capture_screens.sh`, which screenshots every page of a running color panel |
 | [`docs/`](docs/) | [`architecture.md`](docs/architecture.md) (how the pieces fit, request limits, updates) and the screenshots |
@@ -171,7 +171,7 @@ Those need the MakerWorld cookie. Check the extension's popup, then visit MakerW
 On an always-on machine on your home network (a Linux box, a Raspberry Pi, a NAS with Docker). MakerWorld's Cloudflare check is often tied to your home IP, so a remote server tends to fail.
 
 **The color panel says "waiting for poller".**
-Set `color_panel_host` in `config.yaml` to the name or address on the panel's **Connect the poller** page (or its Status page) and restart the poller. `.local` names keep working when your router hands out a new address.
+Add the name or address from the panel's **Connect the poller** page (or its Status page) to the panel list: in the dashboard's Settings tab (takes effect right away), or under `panels:` in `config.yaml` and restart the poller. `.local` names keep working when your router hands out a new address.
 
 **How often does it update?**
 Every 10 minutes by default. The panel's Settings or the dashboard can change that, and a panel's Poll now button asks for one right away.

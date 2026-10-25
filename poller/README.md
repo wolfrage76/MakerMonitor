@@ -16,7 +16,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 cp config.example.yaml config.yaml
-# edit handle, api_token, and panel_host / color_panel_host / notifications as needed
+# edit handle, api_token, and panels / notifications as needed
 python -m makermonitor
 ```
 
@@ -24,9 +24,17 @@ Open `http://<poller-host>:8787/health` to verify.
 
 What happened overnight is in `data/poller.log` (rotated, 1 MB × 5). Each poll logs the cookie age, MakerWorld result, and whether the e-paper and color panels accepted the update. An extension cookie push is logged there too, by cookie name only.
 
-## Color panel (optional)
+## Panels (optional)
 
-Set `color_panel_host` in `config.yaml` to also drive color panels (see [`../firmware-color/`](../firmware-color/)); list several separated by commas. The poller then:
+List every panel, color or e-paper, under `panels:` in `config.yaml` (or in the dashboard's Settings → Panels): IPs or `.local` names, `host:port` for a port other than 80.
+
+```yaml
+panels: ["makermonitor.local", "192.168.1.50"]
+```
+
+The poller works out what each one is: both firmwares answer `GET /v2/settings` with a `board` name ("CrowPanel 7.0", "CrowPanel 2.13 e-ink"), and older e-paper firmware without it answers `GET /stats`. The result is cached in `data/panels.json` and checked again every 6 hours, at startup, and whenever a panel that wasn't answering comes back. A host that hasn't answered yet gets nothing until it does. The old `color_panel_host` / `panel_host` keys (and their ports) still work: they are merged into the list, the log says they are deprecated, and saving from the Settings tab moves them into `panels`. `GET /status` and the dashboard's Health view list each panel with its kind, board, firmware and whether it answers.
+
+For color panels (see [`../firmware-color/`](../firmware-color/)) the poller:
 
 - keeps a day baseline, 30 days of daily totals, per-day hourly buckets (35 days) and per-model daily baselines (31 days) in `data/daily.json` ("today" = since midnight),
 - pushes `POST /v2/state` every poll and `POST /v2/event` per new boost / like / collect / download / print / comment,
@@ -44,7 +52,7 @@ The state also carries:
 
 The e-paper panel gets some of the same data as pages: TODAY, LAST 30 DAYS, TOP MODELS (each with a 7/30-day page), BEST TIMES, COMMENTS, ACCOUNT, and a "data stale" status when health says so. E-paper work is on hold, so it has no creator stats.
 
-Color panels are best addressed by their `.local` name (e.g. `color_panel_host: "makermonitor.local"`, or the default `makermonitor-xxxxx.local`), which survives DHCP changes.
+Color panels are best addressed by their `.local` name (e.g. `makermonitor.local`, or the default `makermonitor-xxxxx.local`), which survives DHCP changes.
 
 If a poll fails before the first successful one since the poller started (network not up yet after a reboot, cookie not refreshed yet), it retries after 15, 30, 60 and 120 s, then falls back to the normal interval. Retries go through the same request limiter. The panel also shows time in 12-hour format; the poller sends it plain timestamps and its UTC offset.
 
@@ -102,7 +110,7 @@ Its data comes from `GET /api/dashboard` (same token or cookie), `GET /v2/creato
 
 ### Settings
 
-The Settings view edits `config.yaml` from the browser: the MakerWorld handle and cookie (status, plus a box to paste one by hand), poll interval and panel page time, color and e-paper panel hosts (with a **Check** button per panel), notification defaults (events, quiet hours, what happens when they end, urgent events, minimum counts) and each notification channel (on/off, events, quiet hours, its own fields, **Send test message**), and the user agent.
+The Settings view edits `config.yaml` from the browser: the MakerWorld handle and cookie (status, plus a box to paste one by hand), poll interval and panel page time, the panel list (one list for color and e-paper panels, each with its detected kind and a **Check** button), notification defaults (events, quiet hours, what happens when they end, urgent events, minimum counts) and each notification channel (on/off, events, quiet hours, its own fields, **Send test message**), and the user agent.
 
 - **Save changes** validates everything first (the same checks the poller makes at startup, including each channel's required fields and `${ENV}` references) and shows problems next to the field. Nothing is written until it passes.
 - The previous file is kept as `config.yaml.bak-<time>` next to it (the last 10), the new one is written atomically, and comments and quoting in the file are kept.
@@ -209,7 +217,7 @@ sudo -u makermonitor bash -lc '
   cp config.example.yaml config.yaml
   mkdir -p data
 '
-sudo -u makermonitor nano /opt/makermonitor/poller/config.yaml   # handle, panel_host, api_token
+sudo -u makermonitor nano /opt/makermonitor/poller/config.yaml   # handle, panels, api_token
 
 # Allow LAN clients to reach the poller (adjust zone/port if needed)
 sudo ufw allow 8787/tcp   # only if you use ufw

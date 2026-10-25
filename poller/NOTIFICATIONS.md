@@ -1,6 +1,6 @@
 # Notifications
 
-The poller can send MakerWorld activity and its own health alerts to other services. Notifications are optional, configured in `config.yaml` under `notifications:`, and work with or without any panel (leave `panel_host` and `color_panel_host` empty for a notifications-only setup).
+The poller can send MakerWorld activity and its own health alerts to other services. Notifications are optional, configured in `config.yaml` under `notifications:`, and work with or without any panel (leave `panels` empty for a notifications-only setup).
 
 Supported services:
 
