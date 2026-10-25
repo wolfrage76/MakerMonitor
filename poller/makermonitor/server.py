@@ -536,9 +536,18 @@ class AppContext:
             store.status.last_error = str(exc)
             store.status.last_poll_at = time.time()
             log.error("poll failed in %.1fs: %s", time.time() - started, exc)
-            await self.panel.status("error", str(exc)[:40], None)
-            await self._push_color(prev, [], "error", str(exc)[:60])
-            self.notifier.submit(None, None, self.health_view())
+            # A failed poll isn't a cookie problem (that is AuthError above).
+            # While the data is still fresh the panels keep their last good
+            # state (a retry follows in a few minutes); once it goes stale
+            # they get a plain message with the real cookie state.
+            health = self.health_view()
+            if health["stale"]:
+                code = re.search(r"\b([45]\d\d)\b", str(exc))
+                msg = f"MakerWorld error (HTTP {code.group(1)}), retrying" if code else "MakerWorld not answering, retrying"
+                auth = "ok" if self.auth_state == "ok" else "needed"
+                await self.panel.status("stale", msg[:40], None)
+                await self._push_color(prev, [], auth, msg)
+            self.notifier.submit(None, None, health)
             result["error"] = str(exc)
             return result
 
