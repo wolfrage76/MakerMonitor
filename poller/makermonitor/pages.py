@@ -210,11 +210,14 @@ def month_pages(snap: Snapshot) -> list[Any]:
     return [reach, earned]
 
 
-def top_model_pages(snap: Snapshot, count: int = 5) -> list[Any]:
-    """One model per page: name in two lines, then its three main counts."""
-    ranked = sorted(snap.models.values(), key=lambda m: (m.downloads + m.prints, m.boosts), reverse=True)[:count]
+def top_model_pages(snap: Snapshot, count: int = 5, history: Any = None) -> list[Any]:
+    """One model per page: name in two lines, then its three main counts.
+    With `history` (model id -> daily rows), each model gets a second page
+    with its last 7 and 30 days (OK steps to it)."""
+    ranked = sorted(snap.models.items(), key=lambda kv: (kv[1].downloads + kv[1].prints, kv[1].boosts),
+                    reverse=True)[:count]
     pages: list[Any] = []
-    for i, m in enumerate(ranked):
+    for i, (mid, m) in enumerate(ranked):
         items: list[dict[str, Any]] = []
         for j, line in enumerate(wrap(m.name, PANEL_W - 2 * MARGIN, 16, 2)):
             items.append(text(MARGIN, CONTENT_TOP + 1 + j * 18, 16, line))
@@ -226,6 +229,63 @@ def top_model_pages(snap: Snapshot, count: int = 5) -> list[Any]:
         items.append({"hl": 59, "x0": 0, "x1": PANEL_W - 1, "d": 1})
         items += [{"vl": x, "y0": 66, "y1": 114, "d": 1} for x in (83, 166)]
         pages.append({"title": f"TOP MODEL #{i + 1}", "items": items})
+        if history is not None:
+            pages.append(model_detail_page(i, m.name, history(mid)))
+    return pages
+
+
+def model_detail_page(i: int, name: str, rows: list[dict[str, Any]]) -> Any:
+    """Last 7 / 30 days of one model: name, then a small table."""
+    items: list[dict[str, Any]] = [text(MARGIN, CONTENT_TOP + 1, 16, fit(ascii_text(name), PANEL_W - 2 * MARGIN, 16))]
+    items.append(text(150, 40, 12, "7 DAYS", "c"))
+    items.append(text(215, 40, 12, "30 DAYS", "c"))
+    items.append({"hl": 53, "x0": 0, "x1": PANEL_W - 1, "d": 1})
+    last7, last30 = rows[-7:], rows[-30:]
+    for j, (k, lab) in enumerate((("downloads", "Downloads"), ("prints", "Prints"), ("boosts", "Boosts"))):
+        y = 57 + j * 18
+        items.append(text(MARGIN, y, 16, lab))
+        items.append(text(150, y, 16, signed(sum(r.get(k, 0) for r in last7)), "c"))
+        items.append(text(215, y, 16, signed(sum(r.get(k, 0) for r in last30)), "c"))
+    if len(rows) < 30:
+        items.append(text(PANEL_W // 2, 111, 12, f"{len(rows)} day(s) of history so far", "c"))
+    return {"title": f"MODEL #{i + 1} - 7/30 DAYS", "items": items}
+
+
+WEEKDAYS = ("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN")
+
+
+def best_time_pages(ins: dict[str, Any] | None) -> list[Any]:
+    """When activity happens (last 30 days): hour bars, then a weekday row."""
+    if not ins or not ins.get("has"):
+        days = (ins or {}).get("days", 0)
+        return [[text(PANEL_W // 2, 50, 16, f"Collecting data ({days} of 7 days)", "c")]]
+    pages: list[Any] = []
+    for key, lab in (("downloads", "DOWNLOADS"), ("prints", "PRINTS")):
+        m = ins.get(key) or {}
+        hours, wday = m.get("hour") or [0] * 24, m.get("wday") or [0] * 7
+        bh, bd = m.get("bestHour", -1), m.get("bestDay", -1)
+        mx, base, top = max(1, max(hours)), 84, 34
+        items: list[dict[str, Any]] = [text(MARGIN, CONTENT_TOP + 1, 12, f"{lab} BY HOUR", k=1)]
+        for h, v in enumerate(hours):
+            hh = 2 + int((base - top - 2) * v / mx) if v else 1
+            items.append({"rect": [MARGIN + h * 10, base - hh, 7, hh], "f": "s" if h == bh else "h"})
+        items.append({"hl": base + 1, "x0": MARGIN, "x1": MARGIN + 24 * 10 - 3})
+        for h, t in ((0, "12a"), (6, "6a"), (12, "12p"), (18, "6p")):
+            items.append(text(MARGIN + h * 10, base + 3, 12, t))
+        best = (f"{bh % 12 or 12}{'am' if bh < 12 else 'pm'}" if bh >= 0 else "-") + "  " + (WEEKDAYS[bd] if bd >= 0 else "-")
+        items.append(text(PANEL_W - MARGIN, CONTENT_TOP + 1, 12, f"BEST {best}", "r"))
+        pages.append({"title": f"BEST TIMES - {lab}", "items": items})
+        # Weekday row: name over value, best day inverted.
+        row: list[dict[str, Any]] = [text(MARGIN, CONTENT_TOP + 1, 12, f"{lab} BY WEEKDAY", k=1)]
+        cw = (PANEL_W - 2 * MARGIN) // 7
+        for d, v in enumerate(wday):
+            x = MARGIN + d * cw
+            inv = d == bd
+            if inv:
+                row.append({"rect": [x, 44, cw - 2, 50], "f": "s"})
+            row.append(text(x + cw // 2 - 1, 50, 12, WEEKDAYS[d], "c", inv=inv))
+            row.append(text(x + cw // 2 - 1, 68, 16, fmt_num(v), "c", inv=inv))
+        pages.append({"title": f"BEST TIMES - {lab}", "items": row})
     return pages
 
 
@@ -251,7 +311,8 @@ def comment_pages(snap: Snapshot, count: int = 5) -> list[Any]:
     return pages
 
 
-def build_sections(snap: Snapshot, cycle_sec: int, day: dict[str, Any] | None = None) -> dict[str, Any]:
+def build_sections(snap: Snapshot, cycle_sec: int, day: dict[str, Any] | None = None,
+                   insights: dict[str, Any] | None = None, model_history: Any = None) -> dict[str, Any]:
     # The firmware inserts its ALL TIME totals section after TODAY; tz is this
     # host's UTC offset, which the e-ink panel uses for quiet hours.
     return {
@@ -260,7 +321,8 @@ def build_sections(snap: Snapshot, cycle_sec: int, day: dict[str, Any] | None = 
         "sections": [
             {"name": "TODAY", "pages": today_pages(day)},
             {"name": "LAST 30 DAYS", "pages": month_pages(snap)},
-            {"name": "TOP MODELS", "pages": top_model_pages(snap)},
+            {"name": "TOP MODELS", "pages": top_model_pages(snap, history=model_history)},
+            {"name": "BEST TIMES", "pages": best_time_pages(insights)},
             {"name": "COMMENTS", "pages": comment_pages(snap)},
             {"name": "ACCOUNT", "pages": account_pages(snap)},
         ],

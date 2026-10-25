@@ -466,6 +466,7 @@ void drawDashboard(bool fullRefresh) {
 
   String chip;
   if (statusLine.auth == "needed") chip = "AUTH NEEDED";
+  else if (statusLine.auth == "stale") chip = "DATA STALE";
   else if (statusLine.auth == "error") chip = "ERROR";
   if (chip.length()) {
     int w = textWidth(chip.c_str(), 16) + 8;
@@ -644,8 +645,14 @@ void drawNotification() {
   epdEndFrame(true);
 }
 
+// Night mode: during Quiet hours only key presses redraw the panel (no
+// refreshes from polls, alerts or idle return).
+bool keyRedraw = false;
+
 void refreshDisplay(bool forceFull = false) {
   if (otaActive) return;
+  if (quietNow() && !keyRedraw) return;
+  keyRedraw = false;
   if (currentNotif.active) drawNotification();
   else if (mode == M_MENU) drawMenu();
   else if (mode == M_SETTINGS) drawSettings();
@@ -861,6 +868,7 @@ void goHome() {
 }
 void handleKey(Key k) {
   if (k == K_NONE) return;
+  keyRedraw = true;
   lastFlip = millis();
   lastKeyMs = millis();
   redrawAt = millis() + 250;

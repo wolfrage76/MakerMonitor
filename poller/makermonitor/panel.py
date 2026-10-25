@@ -12,11 +12,15 @@ log = logging.getLogger(__name__)
 
 
 class PanelClient:
+    """E-ink panel. With no base URL (no panel configured) every call is a no-op."""
+
     def __init__(self, base_url: str, timeout: float = 10.0) -> None:
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
 
     async def ping(self) -> bool:
+        if not self.base_url:
+            return False
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 r = await client.get(f"{self.base_url}/ping")
@@ -42,6 +46,8 @@ class PanelClient:
 
     async def settings(self) -> dict[str, Any] | None:
         """GET /v2/settings (firmware 0.3.0+): pollSec and the pollNow sequence."""
+        if not self.base_url:
+            return None
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 r = await client.get(f"{self.base_url}/v2/settings")
@@ -61,6 +67,8 @@ class PanelClient:
         return await self._post("/status", body)
 
     async def _post(self, path: str, body: dict[str, Any]) -> bool:
+        if not self.base_url:
+            return False
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 r = await client.post(f"{self.base_url}{path}", json=body)
