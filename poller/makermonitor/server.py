@@ -36,6 +36,8 @@ STARTUP_RETRIES = (15, 30, 60, 120)
 FAIL_RETRIES = (120, 300)
 POLL_TIMEOUT_SEC = 180.0
 DEAD_PANEL_PROBE_SEC = 60.0
+PANEL_DOWN_AFTER = 2       # failed checks in a row before a panel counts as down
+PANEL_RECENT_SEC = 90.0    # a panel that answered this recently still gets every push
 
 
 def setup_logging(log_path) -> None:
@@ -109,6 +111,8 @@ class AppContext:
         self._probes: dict[str, ColorPanelClient] = {}
         self._panel_up: dict[str, bool] = {}
         self._panel_next_probe: dict[str, float] = {}
+        self._panel_misses: dict[str, int] = {}
+        self._panel_ok_at: dict[str, float] = {}
         self._rebuild_panels()
         self.day = DayTracker(settings.data_path)
         # Any panel's Settings menu (e-ink or color) can override the interval.
@@ -392,6 +396,25 @@ class AppContext:
             except Exception as exc:  # noqa: BLE001 - an odd panel answer must not stop polling
                 log.exception("panel settings check failed: %s", exc)
 
+    def _panel_answer(self, base: str, ok: bool) -> bool:
+        """Record one check or push. A single miss (often a slow .local lookup)
+        doesn't count; PANEL_DOWN_AFTER in a row mark the panel down.
+        Returns True when the panel is now counted as down."""
+        now = time.time()
+        if ok:
+            self._panel_misses[base] = 0
+            self._panel_ok_at[base] = now
+            self._panel_up[base] = True
+            self._panel_next_probe.pop(base, None)
+            return False
+        misses = self._panel_misses.get(base, 0) + 1
+        self._panel_misses[base] = misses
+        if misses < PANEL_DOWN_AFTER and self._panel_up.get(base) is not False:
+            return False
+        self._panel_up[base] = False
+        self._panel_next_probe[base] = now + DEAD_PANEL_PROBE_SEC
+        return True
+
     async def _push_recovered_panel(self, base: str) -> None:
         """Push the latest cached state immediately when a panel comes online or reboots."""
         kind = self.panel_dir.kind(base)
@@ -430,15 +453,15 @@ class AppContext:
         for panel, cfg in zip(probes, results):
             base = panel.base_url
             was_up = self._panel_up.get(base)
-            self._panel_up[base] = bool(cfg)
             if not cfg:
-                self._panel_next_probe[base] = now + DEAD_PANEL_PROBE_SEC
+                if not self._panel_answer(base, False):
+                    continue  # one miss: check again on the next wake
                 down = self._color_seen.get(base)
                 if down != ("down", None):
                     log.warning("panel %s settings unreachable", base)
                     self._color_seen[base] = ("down", None)
                 continue
-            self._panel_next_probe.pop(base, None)
+            self._panel_answer(base, True)
             # A host that answers for the first time (or changed firmware)
             # joins the right group straight away.
             regroup |= self.panel_dir.note_board(base, cfg)
@@ -491,13 +514,14 @@ class AppContext:
             return
 
         async def _send_one(panel: ColorPanelClient) -> None:
-            if self._panel_up.get(panel.base_url) is False:
+            # Skip only a panel that is down and hasn't answered for a while; one
+            # that answered recently still gets this poll's state and banners.
+            base = panel.base_url
+            if self._panel_up.get(base) is False and time.time() - self._panel_ok_at.get(base, 0.0) > PANEL_RECENT_SEC:
                 return
             try:
                 ok = await panel.state(state)
-                self._panel_up[panel.base_url] = ok
-                if not ok:
-                    self._panel_next_probe[panel.base_url] = time.time() + DEAD_PANEL_PROBE_SEC
+                self._panel_answer(base, ok)
                 failed = 0
                 for ev in events:
                     if not await panel.event(ev):

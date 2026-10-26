@@ -25,7 +25,7 @@ class PanelClient:
             self.up = False
             return False
         try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(3.5, connect=1.5)) as client:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(5.0, connect=4.0)) as client:
                 r = await client.get(f"{self.base_url}/ping")
                 self.up = r.status_code == 200 and r.text.strip() == "OK"
                 return self.up
@@ -55,7 +55,7 @@ class PanelClient:
         if not self.base_url:
             return None
         try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(3.5, connect=1.5)) as client:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(5.0, connect=4.0)) as client:
                 r = await client.get(f"{self.base_url}/v2/settings")
                 if r.status_code == 200:
                     return r.json()
@@ -76,7 +76,7 @@ class PanelClient:
         if not self.base_url:
             return False
         try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(self.timeout, connect=2.5)) as client:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(self.timeout, connect=4.0)) as client:
                 r = await client.post(f"{self.base_url}{path}", json=body)
                 if r.status_code >= 400:
                     log.warning("Panel %s -> %s %s", path, r.status_code, r.text[:200])
