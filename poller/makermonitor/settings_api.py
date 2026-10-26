@@ -210,7 +210,7 @@ class SettingsService:
         if kind not in CHANNELS:
             errors[f"{where}.type"] = f"unknown type {kind!r}"
         out = target if target is not None and str(target.get("type", "")).lower() == kind else CommentedMap()
-        if out is not target and old:
+        if old and (str(old.get("type", "")).lower() != kind or (target is not None and out is not target)):
             old = None  # type changed: nothing to inherit
         fields = {f[0]: f for f in CHANNEL_FIELDS.get(kind, [])}
 
