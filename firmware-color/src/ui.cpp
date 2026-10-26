@@ -19,13 +19,15 @@
 #include "fw_version.h"
 
 extern "C" {
-extern const lv_img_dsc_t icon_boost_20, icon_like_20, icon_collect_20, icon_download_20, icon_print_20, icon_comment_20;
-extern const lv_img_dsc_t icon_boost_32, icon_like_32, icon_collect_32, icon_download_32, icon_print_32, icon_comment_32;
+extern const lv_img_dsc_t icon_boost_20, icon_like_20, icon_collect_20, icon_download_20, icon_print_20, icon_comment_20,
+    icon_rating_20;
+extern const lv_img_dsc_t icon_boost_32, icon_like_32, icon_collect_32, icon_download_32, icon_print_32, icon_comment_32,
+    icon_rating_32;
 }
 static const lv_img_dsc_t* const ICON20[NKIND] = {&icon_boost_20, &icon_like_20, &icon_collect_20,
-                                                  &icon_download_20, &icon_print_20, &icon_comment_20};
+                                                  &icon_download_20, &icon_print_20, &icon_comment_20, &icon_rating_20};
 static const lv_img_dsc_t* const ICON32[NKIND] = {&icon_boost_32, &icon_like_32, &icon_collect_32,
-                                                  &icon_download_32, &icon_print_32, &icon_comment_32};
+                                                  &icon_download_32, &icon_print_32, &icon_comment_32, &icon_rating_32};
 
 // ---- palette ----------------------------------------------------------------
 // Dark navy base, hairline card edges, one cyan accent; stat colors are neon.
@@ -33,11 +35,11 @@ static const uint32_t C_BG = 0x06090E, C_BG2 = 0x0B1119, C_CARD = 0x0E141D, C_CA
 static const uint32_t C_CHIP = 0x121A25, C_RAISED = 0x132030, C_EDGE = 0x1E2A38, C_ACCENT = 0x22D3EE;
 static const uint32_t C_TXT = 0xE6EDF3, C_SUB = 0xB3C1CF, C_MUTED = 0x7E8C9B, C_DIM = 0x2A3644, C_TRACK = 0x17212C;
 static const uint32_t C_OK = 0x2EE59D, C_WARN = 0xFFB020, C_ERR = 0xFF5C6C, C_IDLE = 0x4E5A68, C_SEL = C_ACCENT;
-// boosts, likes, collects, downloads, prints, comments
-static const uint32_t COL[NKIND] = {0xFFB020, 0xFF4D7E, 0x3DA9FF, 0x2EE59D, 0xA78BFA, 0x2DE2E6};
+// boosts, likes, collects, downloads, prints, comments, ratings
+static const uint32_t COL[NKIND] = {0xFFB020, 0xFF4D7E, 0x3DA9FF, 0x2EE59D, 0xA78BFA, 0x2DE2E6, 0xFFD23F};
 // Period colors for the 7-day / 30-day rows on the Today tiles.
 static const uint32_t C_7D = 0xF2F5F8, C_30D = 0x22D3EE;
-static const uint32_t COLBG[NKIND] = {0x2E230A, 0x2E1019, 0x0D2236, 0x0A2A1D, 0x1E1834, 0x0A2A2D};
+static const uint32_t COLBG[NKIND] = {0x2E230A, 0x2E1019, 0x0D2236, 0x0A2A1D, 0x1E1834, 0x0A2A2D, 0x2E2808};
 
 // Set by layout() from the display size.
 static int W = 820, H = 320, PAD = 16, TOP = 48, BOT = 300;
@@ -494,6 +496,7 @@ static ActUi actUi[ACT_MAX];
 static int actRows = 0;  // rows that fit in the card
 static lv_obj_t* actEmpty;
 static lv_obj_t* folLbl = nullptr;  // followers, Recent activity card
+static lv_obj_t *ratLbl = nullptr, *ratIcon = nullptr;  // ratings, left of the followers
 
 static void openStatus(bool open);
 #if INPUT_TOUCH
@@ -644,6 +647,11 @@ static void buildToday() {
   folLbl = label(c, F14, C_MUTED, 0, 0, "");
   lv_label_set_recolor(folLbl, true);
   lv_obj_align(folLbl, LV_ALIGN_TOP_RIGHT, -14, 6);
+  // Ratings: star, count, average and today's gain; placed by refreshActivity().
+  ratLbl = label(c, F14, C_MUTED, 0, 0, "");
+  lv_label_set_recolor(ratLbl, true);
+  ratIcon = icon(c, K_RATING, false, 0, 0);
+  show(ratIcon, false);
   const int rowsY = 8 + lineH(F12) + 6, rowH = lineH(F16) + 6;
   const int perCol = max(1, (h - rowsY - 6) / rowH), colW = (CW - 28 - 24) / 2;
   actRows = min(ACT_MAX, 2 * perCol);
@@ -668,6 +676,16 @@ static void buildToday() {
   lv_obj_align(actEmpty, LV_ALIGN_CENTER, 0, 8);
 }
 
+// "+3 Downloads"; ratings add their stars: "+1 Rating  -  4 stars", "+2 Ratings  -  4.5 avg".
+static void fmtEventTitle(char* out, size_t cap, int kind, int n, float stars) {
+  int len = snprintf(out, cap, "+%d %s", n, n == 1 ? KIND_NAME[kind] : KIND_PLURAL[kind]);
+  if (kind != K_RATING || stars <= 0 || len < 0 || (size_t)len >= cap) return;
+  char v[8];
+  snprintf(v, sizeof(v), "%.1f", stars);
+  if (v[strlen(v) - 1] == '0') v[strlen(v) - 2] = 0;  // "4.0" -> "4"
+  snprintf(out + len, cap - len, n == 1 ? "  -  %s star%s" : "  -  %s avg", v, n == 1 && strcmp(v, "1") ? "s" : "");
+}
+
 // "3m", "2h", "1d" since t.
 static void fmtShortAgo(char* out, size_t cap, long sec) {
   if (sec < 60) snprintf(out, cap, "now");
@@ -690,6 +708,19 @@ static void refreshActivity() {
   } else {
     setTextIfChanged(folLbl, "");
   }
+  if (st.totalRatings > 0) {
+    char r[96];
+    snprintf(r, sizeof(r), "Ratings  #E6EDF3 %d#   #%06lX %.2f avg#   #%06lX %+d today#", st.totalRatings,
+             (unsigned long)COL[K_RATING], st.ratingAvg,
+             (unsigned long)(st.todayRatings > 0 ? C_OK : st.todayRatings < 0 ? C_ERR : C_MUTED), st.todayRatings);
+    setTextIfChanged(ratLbl, r);
+  } else {
+    setTextIfChanged(ratLbl, "");
+  }
+  show(ratIcon, st.totalRatings > 0);
+  lv_obj_update_layout(ratLbl);
+  lv_obj_align_to(ratLbl, folLbl, LV_ALIGN_OUT_LEFT_MID, lv_label_get_text(folLbl)[0] ? -28 : 0, 0);
+  lv_obj_align_to(ratIcon, ratLbl, LV_ALIGN_OUT_LEFT_MID, -6, 0);
   char a[24];
   uint32_t now = nowUtc();
   int shown = 0;
@@ -934,7 +965,7 @@ static void refreshFeed() {
     lv_obj_set_style_bg_color(f.iconBox, C(COLBG[r.kind]), 0);
     setIcon(f.img, r.kind, TALL);
     if (r.kind == K_COMMENT) snprintf(a, sizeof(a), "New comment");
-    else snprintf(a, sizeof(a), "+%d %s", r.n, r.n == 1 ? KIND_NAME[r.kind] : KIND_PLURAL[r.kind]);
+    else fmtEventTitle(a, sizeof(a), r.kind, r.n, r.stars);
     lv_label_set_text(f.title, a);
     lv_obj_set_style_text_color(f.title, C(COL[r.kind]), 0);
     lv_label_set_text(f.model, r.model);
@@ -1556,7 +1587,7 @@ static void refreshBest() {
 // plus the long-tail share, points and followers per model, and unanswered
 // comments. A row of summary tiles, then two cards side by side.
 enum { CV_CONV, CV_TREND, CV_LAUNCH, CV_EARN, CV_FOL, CV_REPLY, NCVIEW };
-static const char* const CV_NAME[NCVIEW] = {"Convert", "Trend", "Launch", "Earn", "Followers", "Reply"};
+static const char* const CV_NAME[NCVIEW] = {"Convert", "Trend", "Launch", "Earn", "Followers", "Feedback"};
 static const int CR_ROWS = 4;
 static const int CR_TILES = 4;
 struct CrCard {
@@ -1832,6 +1863,7 @@ static void crList(CrCard& c, const char* title, int list) {
       case CL_STALL: snprintf(a, sizeof(a), "was %.1f/day", r.a); break;
       case CL_PTS: snprintf(a, sizeof(a), "%.0f  /  %.0f", r.a, r.b); break;
       case CL_FOL: snprintf(a, sizeof(a), "+%d  /  +%d", (int)r.a, (int)r.b); break;
+      case CL_RATED: snprintf(a, sizeof(a), "%.2f  (%d)", r.a, (int)r.b); break;
       default: snprintf(a, sizeof(a), "%d", (int)r.a); break;
     }
     lv_label_set_text(c.val[i], a);
@@ -1850,8 +1882,7 @@ static void refreshCreator() {
     lv_obj_set_style_text_color(crSeg[i], C(on ? C_BG : C_MUTED), 0);
   }
   setTextIfChanged(crHdr.sub, "");
-  // Reply has one list, so it gets the full width.
-  bool one = crView == CV_REPLY;
+  bool one = false;
   show(crCards[1].card, !one);
   if ((crCards[0].w == crCardW) == one) crCardWidth(crCards[0], one ? CW : crCardW);
   show(crChart, crView == CV_LAUNCH);
@@ -1989,12 +2020,17 @@ static void refreshCreator() {
       break;
     }
     default:
-      n = 2;
+      // Feedback: comments waiting for a reply, and star ratings.
       snprintf(t[0], sizeof(t[0]), "%d", cr.unans);
       snprintf(t[1], sizeof(t[1]), "%d", st.commentCount);
-      l[0] = "Unanswered"; l[1] = "Comments, all time";
+      snprintf(t[2], sizeof(t[2]), "%d", st.totalRatings);
+      if (st.totalRatings) snprintf(t[3], sizeof(t[3]), "%.2f", st.ratingAvg);
+      else snprintf(t[3], sizeof(t[3]), "-");
+      l[0] = "Unanswered"; l[1] = "Comments, all time"; l[2] = "Ratings, all time"; l[3] = "Average stars";
       col[0] = cr.unans ? C_WARN : C_OK;
+      col[3] = st.totalRatings ? COL[K_RATING] : C_TXT;
       crList(crCards[0], "MOST UNANSWERED", CL_UNANS);
+      crList(crCards[1], "BEST RATED  (3+ RATINGS)", CL_RATED);
       break;
   }
   static const char* const DEF[NCVIEW][CR_TILES] = {
@@ -2007,7 +2043,8 @@ static void refreshCreator() {
       {"Account points gained in 7 days: models, profile and spending", "Account points in 30 days (MakerWorld report)",
        "Points MakerWorld credits to models, 7 days (models with analytics)", "Points credited to models, 30 days"},
       {"Followers now", "Followers gained today", "Followers gained in 7 days", "Followers gained in 30 days"},
-      {"Comments from others you haven't replied to", "Comments on all your models", nullptr, nullptr}};
+      {"Comments from others you haven't replied to", "Comments on all your models", "Star ratings on all your models",
+       "Average stars over all ratings (out of 5)"}};
   for (int i = 0; i < CR_TILES; i++) crTileDef[i] = DEF[crView][i];
   crSetTiles(n, v, l, col);
   setTextIfChanged(crNote, note);
@@ -3381,7 +3418,7 @@ static void renderBanner() {
     snprintf(a, sizeof(a), "\"%s\"  -  %s", e.text, e.model);
     lv_label_set_text(bnModel, a);
   } else {
-    snprintf(a, sizeof(a), "+%d %s", e.n, e.n == 1 ? KIND_NAME[k] : KIND_PLURAL[k]);
+    fmtEventTitle(a, sizeof(a), k, e.n, e.stars);
     lv_label_set_text(bnTitle, a);
     lv_label_set_text(bnModel, e.model);
   }

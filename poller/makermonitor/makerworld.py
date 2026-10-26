@@ -153,6 +153,8 @@ class MakerWorldClient:
                         comments=int(_num(h.get("commentCount"))),
                         collects=int(_num(h.get("collectionCount"))),
                         published=str(h.get("publishTime") or h.get("createTime") or ""),
+                        ratings=sum(int(_num(i.get("ratingCount"))) for i in h.get("instances") or []),
+                        rating_sum=sum(int(_num(i.get("ratingScoreTotal"))) for i in h.get("instances") or []),
                     )
                 offset += len(hits)
                 if not hits or offset >= int(_num(data.get("total"))):

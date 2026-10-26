@@ -20,6 +20,7 @@ Supported services:
 | Event | When |
 |-------|------|
 | `download`, `print`, `boost`, `like`, `collect` | A model's count went up. Grouped per type, each model listed with `+N (total)` |
+| `rating` | A model got new star ratings. Grouped like the counts above, with the stars: `+1 (4★)`, or the average of the new ones (`+2 · 4.5★ avg`) |
 | `comment` | A new comment on one of your models (your own replies are skipped). Shows who and what |
 | `follower` | Follower count changed (up or down) |
 | `points` | MakerWorld points went up |

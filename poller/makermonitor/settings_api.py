@@ -87,7 +87,7 @@ CHANNEL_FIELDS: dict[str, list[F]] = {
 }
 COMMON = ("type", "name", "enabled", "events", "quiet_hours")
 DEFAULT_KEYS = ("events", "quiet_hours", "quiet_digest", "urgent", "min_count")
-GROUPED = ("download", "print", "boost", "like", "collect", "points")
+GROUPED = ("download", "print", "boost", "like", "collect", "rating", "points")
 _QUIET_T = re.compile(r"^(\d{1,2})(?::([0-5]\d))?\s*([ap])?\.?m?\.?$", re.I)
 
 

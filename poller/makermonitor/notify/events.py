@@ -10,7 +10,7 @@ from ..state import Snapshot
 MAKERWORLD = "https://makerworld.com/en"
 
 # Every event type a channel can subscribe to, in the order messages list them.
-EVENT_TYPES = ("health", "comment", "follower", "download", "print", "boost", "like", "collect", "points")
+EVENT_TYPES = ("health", "comment", "follower", "download", "print", "boost", "like", "collect", "rating", "points")
 
 _MODEL_STATS = (("download", "downloads"), ("print", "prints"), ("boost", "boosts"),
                 ("like", "likes"), ("collect", "collects"))
@@ -25,6 +25,8 @@ class Event:
     model_id: str = ""
     user: str = ""
     text: str = ""
+    # Ratings only: the stars of the new ratings added up (average = stars / count).
+    stars: float = 0
     # Health only: "warn" or "ok", with a short title.
     level: str = ""
     title: str = ""
@@ -40,6 +42,8 @@ class Event:
             d.pop("count"), d.pop("total")
         elif not self.total:
             d.pop("total")
+        if not self.stars:
+            d.pop("stars")
         if self.url:
             d["url"] = self.url
         return d
@@ -61,6 +65,10 @@ def snapshot_events(prev: Snapshot, cur: Snapshot, skip: set[str] | frozenset[st
                 delta = getattr(m, attr) - getattr(old, attr)
                 if delta > 0 and attr not in skip:
                     out.append(Event(kind, delta, getattr(m, attr), m.name or mid, mid))
+            delta = m.ratings - old.ratings
+            if delta > 0 and "ratings" not in skip:
+                out.append(Event("rating", delta, m.ratings, m.name or mid, mid,
+                                 stars=max(0, m.rating_sum - old.rating_sum)))
     else:
         for kind, attr in _MODEL_STATS[:3]:
             delta = getattr(cur, attr) - getattr(prev, attr)

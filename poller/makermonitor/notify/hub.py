@@ -89,6 +89,7 @@ class NotifyHub:
             Event("download", 3, 1205, "Sample Model", "123456"),
             Event("download", 1, 88, "Another Model", "654321"),
             Event("like", 2, 140, "Sample Model", "123456"),
+            Event("rating", 1, 34, "Sample Model", "123456", stars=5),
         ]
         out = {}
         for ch in self.channels:

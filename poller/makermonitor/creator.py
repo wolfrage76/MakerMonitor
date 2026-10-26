@@ -270,7 +270,9 @@ class CreatorStats:
             r: dict[str, Any] = {"id": mid, "n": ascii_text(m.name or mid)[:60], "age": age,
                                  "has": bool(c.get("t")), "fetched": int(c.get("t", 0)), "todayD": today_d,
                                  "life": {"d": m.downloads, "p": m.prints, "l": m.likes, "c": m.collects,
-                                          "m": m.comments, "b": m.boosts}}
+                                          "m": m.comments, "b": m.boosts},
+                                 # ratings: count and average stars (None without ratings)
+                                 "rt": m.ratings, "ra": round(m.rating_sum / m.ratings, 2) if m.ratings else None}
             for tag, keys in (("w", last7), ("m", last30)):
                 r[tag] = {f: round(tsum(days, keys, f), 2) for _, f in _DAY_KEYS}
             cm = c.get("cm") or {}
@@ -366,6 +368,8 @@ class CreatorStats:
             "tail": tail,
             "unans": sum(r["unans"] for r in unans),
             "unansScanned": sum(1 for r in rows.values() if r["unans"] is not None),
+            "rt": sum(r["rt"] for r in rows.values()),
+            "ra": _ratio(sum(m.rating_sum for m in snap.models.values()), sum(m.ratings for m in snap.models.values())),
         }
 
     def compact(self, full: dict[str, Any], n: int = 4) -> dict[str, Any]:
@@ -395,13 +399,16 @@ class CreatorStats:
                        lambda r: r["pts30"] > 0),
             "fol": top(lambda r: (r["fol30"], r["fol7"]), has, lambda r: {"w": r["fol7"], "m": r["fol30"]},
                        lambda r: r["fol30"] > 0),
+            # best rated: average first, then how many ratings back it
+            "rated": top(lambda r: (r["ra"] or 0, r["rt"]), rows, lambda r: {"a": r["ra"], "c": r["rt"]},
+                         lambda r: r["rt"] >= 3),
             "unans": a["unans"],
             "unansTop": top(lambda r: r["unans"] or 0, rows, lambda r: {"u": r["unans"]}, lambda r: bool(r["unans"])),
             "tail": a["tail"],
             "acct": {"dpv7": a["dpv7"], "dpv30": a["dpv30"], "ppd": a["ppd"], "e100": a["e100"]["m"]["all"],
                      "pts7": a["pts7"], "pts30": a["pts30"], "fol7": a["fol7"], "fol30": a["fol30"],
                      "pa7": a["pts7avg"], "p7": round(sum(a["ptsDays"][-7:]), 1), "pt": a["ptsTrend"],
-                     "pd": a["ptsDays"][-14:]},
+                     "pd": a["ptsDays"][-14:], "rt": a["rt"], "ra": a["ra"]},
         }
         la = a.get("launch")
         if la:

@@ -24,6 +24,7 @@ STYLES = {
     "boost": Style("🚀", 0xF59E0B, "boost", "boosts"),
     "like": Style("❤️", 0xEF4444, "like", "likes"),
     "collect": Style("📌", 0x8B5CF6, "collect", "collects"),
+    "rating": Style("🌟", 0xFACC15, "rating", "ratings"),
     "comment": Style("💬", 0x06B6D4, "comment", "comments"),
     "follower": Style("👤", 0xEC4899, "follower", "followers"),
     "points": Style("⭐", 0xEAB308, "point", "points"),
@@ -63,16 +64,26 @@ class Digest:
     heading: str = ""  # set for the end-of-quiet-hours digest
 
 
+# Per-model stats that are listed together under one heading.
+GROUPED = ("download", "print", "boost", "like", "collect", "rating")
+
+
+def stars(total: float, n: float) -> str:
+    """Average stars, e.g. "4★" or "4.5★"."""
+    return f"{total / n:.1f}".rstrip("0").rstrip(".") + "★" if n > 0 and total > 0 else ""
+
+
 def merge(events: list[Event]) -> list[Event]:
     """Same stat on the same model (e.g. held across polls) becomes one event."""
     out: list[Event] = []
     seen: dict[tuple[str, str], Event] = {}
     for e in events:
         key = (e.type, e.model_id or e.model)
-        if e.type in ("download", "print", "boost", "like", "collect") and key in seen:
+        if e.type in GROUPED and key in seen:
             first = seen[key]
             first.count += e.count
             first.total = max(first.total, e.total)
+            first.stars += e.stars
         elif e.type in ("follower", "points") and (e.type, "") in seen:
             first = seen[(e.type, "")]
             first.count += e.count
@@ -90,6 +101,7 @@ def build_digest(events: list[Event], handle: str = "", heading: str = "") -> Di
     events = sorted(events, key=lambda e: (order.get(e.type, 99), -e.count))
     sections: list[Section] = []
     totals: dict[str, float] = {}
+    star_total = 0.0
     for e in events:
         st = STYLES.get(e.type, HEALTH_WARN)
         if e.type == "health":
@@ -97,6 +109,8 @@ def build_digest(events: list[Event], handle: str = "", heading: str = "") -> Di
             sections.append(Section(e.type, st, f"{st.emoji} {e.title}", [e.text] if e.text else []))
             continue
         totals[e.type] = totals.get(e.type, 0) + e.count
+        if e.type == "rating":
+            star_total += e.stars
         if e.type == "comment":
             sections.append(Section(e.type, st, f"{st.emoji} New comment on {e.model}", [e.text],
                                     url=e.url, author=e.user))
@@ -115,11 +129,18 @@ def build_digest(events: list[Event], handle: str = "", heading: str = "") -> Di
                 sec = Section(e.type, st, "")
                 sections.append(sec)
             name = f"[{e.model}]({e.url})" if e.url else (e.model or "All models")
-            sec.lines.append(f"{name}: {signed(e.count)}" + (f" ({num(e.total)} total)" if e.total else ""))
+            if e.type == "rating":
+                s = stars(e.stars, e.count)
+                sec.lines.append(f"{name}: {signed(e.count)}" + (f" ({s if e.count == 1 else s + ' avg'})" if s else "")
+                                 + (f", {num(e.total)} total" if e.total else ""))
+            else:
+                sec.lines.append(f"{name}: {signed(e.count)}" + (f" ({num(e.total)} total)" if e.total else ""))
     for sec in sections:
-        if sec.type in ("download", "print", "boost", "like", "collect"):
+        if sec.type in GROUPED:
             n = totals[sec.type]
             sec.title = f"{sec.style.emoji} {signed(n)} {sec.style.label(n)}"
+            if sec.type == "rating" and stars(star_total, n):
+                sec.title += f" · {stars(star_total, n)}" + (" avg" if n != 1 else "")
     parts = []
     for e in events:
         if e.type == "health" and e.title not in parts:
@@ -128,7 +149,8 @@ def build_digest(events: list[Event], handle: str = "", heading: str = "") -> Di
         if t in totals and t != "health":
             n = totals[t]
             st = STYLES[t]
-            parts.append(f"{num(n)} new {st.label(n)}" if t == "comment" else f"{signed(n)} {st.label(n)}")
+            parts.append(f"{num(n)} new {st.label(n)}" if t == "comment" else f"{signed(n)} {st.label(n)}"
+                         + (f" ({stars(star_total, n)}{'' if n == 1 else ' avg'})" if t == "rating" and stars(star_total, n) else ""))
     summary = ", ".join(parts)
     if heading:
         summary = f"{heading}: {summary}" if summary else f"{heading}: no new activity"

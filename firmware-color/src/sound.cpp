@@ -25,7 +25,7 @@ struct Chime {
   Note notes[3];
 };
 
-// boosts, likes, collects, downloads, prints, comments; then the test chime.
+// boosts, likes, collects, downloads, prints, comments, ratings; then the test chime.
 static const Chime CHIMES[NKIND + 1] = {
   {3, {{784, 90}, {1047, 90}, {1568, 220}}},  // boost: bright rising arpeggio
   {2, {{1319, 80}, {1760, 180}}},             // like: quick high pair
@@ -33,6 +33,7 @@ static const Chime CHIMES[NKIND + 1] = {
   {2, {{1175, 90}, {880, 200}}},              // download: down-step
   {3, {{659, 90}, {831, 90}, {988, 240}}},    // print: major triad
   {3, {{1047, 70}, {0, 40}, {1047, 160}}},    // comment: double tap
+  {3, {{1568, 70}, {2093, 70}, {2637, 200}}},  // rating: high sparkle
   {1, {{1319, 150}}},                         // test / volume check
 };
 

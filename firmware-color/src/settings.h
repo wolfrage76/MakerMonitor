@@ -73,7 +73,7 @@ void settings_set_github_missing(bool on);
 bool settings_guide_done();
 void settings_set_guide_done();
 
-// Notify mask bit per kind (0-4 stats, 5 comments).
+// Notify mask bit per kind (0-4 stats, 5 comments, 6 ratings).
 bool notify_enabled(int kind);
 // Quiet hours; minutes since local midnight. SET_QUIET turns them on/off.
 bool in_quiet_hours(int minuteOfDay);

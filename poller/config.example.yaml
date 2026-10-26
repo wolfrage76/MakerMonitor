@@ -34,12 +34,12 @@ user_agent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gec
 # Secrets can come from the environment: url: "${DISCORD_WEBHOOK}"
 # (config.yaml itself is git-ignored, so putting them here is fine too).
 #
-# Event types: download, print, boost, like, collect, comment, follower, points,
+# Event types: download, print, boost, like, collect, rating, comment, follower, points,
 # health (cookie expired, data stale, and their recovery).
 # Each poll sends at most one message per channel, grouped by type.
 notifications:
   # Defaults for every channel (each channel can override them):
-  # events: [download, print, boost, like, collect, comment, follower, points, health]
+  # events: [download, print, boost, like, collect, rating, comment, follower, points, health]
   # exclude: [points]            # or list what you don't want instead
   # quiet_hours: "23:00-07:00"   # no messages then, except `urgent` types
   # quiet_digest: true           # when quiet hours end: true = one "while you were away" message

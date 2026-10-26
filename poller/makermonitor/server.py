@@ -568,6 +568,21 @@ def _fresh_fields(prev: Snapshot, cur: Snapshot) -> set[str]:
             and sum(getattr(m, f, 0) for m in cur.models.values()) > 0}
 
 
+def _carry_ratings(prev: Snapshot, cur: Snapshot) -> None:
+    """Only the design list has ratings. A snapshot from another source has
+    none at all; keep the last known ones rather than read that as every
+    rating deleted (and then re-added as new on the next full poll)."""
+    if any(m.ratings for m in cur.models.values()) or not any(m.ratings for m in prev.models.values()):
+        return
+    for mid, m in cur.models.items():
+        old = prev.models.get(mid)
+        if old:
+            m.ratings, m.rating_sum = old.ratings, old.rating_sum
+    acct = cur.extras.setdefault("account", {})
+    acct["ratings"] = sum(m.ratings for m in cur.models.values())
+    acct["rating_sum"] = sum(m.rating_sum for m in cur.models.values())
+
+
 def _totals_changed(a: Snapshot, b: Snapshot) -> bool:
     return (
         a.downloads != b.downloads

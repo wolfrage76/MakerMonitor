@@ -27,7 +27,7 @@ _KIND = {"boost": "boosts", "like": "likes", "download": "downloads", "print": "
 
 
 def color_events(prev: Snapshot, cur: Snapshot) -> list[dict[str, Any]]:
-    """Per-model events for the five stats plus comments."""
+    """Per-model events for the five stats, ratings and comments."""
     out: list[dict[str, Any]] = []
     for e in build_events(prev, cur):
         kind = _KIND.get(e.get("type", ""))
@@ -45,6 +45,11 @@ def color_events(prev: Snapshot, cur: Snapshot) -> list[dict[str, Any]]:
             if old and m.collects > old.collects:
                 out.append({"k": "collects", "n": m.collects - old.collects,
                             "m": ascii_text(m.name or mid)[:60]})
+            if old and m.ratings > old.ratings:
+                n = m.ratings - old.ratings
+                # s: average stars of the new ratings (exact when n == 1)
+                out.append({"k": "ratings", "n": n, "m": ascii_text(m.name or mid)[:60],
+                            "s": round(max(0, m.rating_sum - old.rating_sum) / n, 1)})
     return out
 
 
@@ -86,6 +91,8 @@ def build_state(snap: Snapshot, day: DayTracker, status: dict[str, Any], poll_se
     fol_days = month.pop("followers_daily", None) or []
     month["yday_impressions"] = yday_reach.get("impressions", 0)
     month["yday_views"] = yday_reach.get("views", 0)
+    ratings = sum(m.ratings for m in snap.models.values())
+    rating_sum = sum(m.rating_sum for m in snap.models.values())
     comments = [
         {"u": ascii_text(c.get("user", ""))[:32], "x": ascii_text(c.get("text", ""))[:160],
          "m": ascii_text(c.get("model", ""))[:60], "t": c.get("time", "")}
@@ -106,6 +113,7 @@ def build_state(snap: Snapshot, day: DayTracker, status: dict[str, Any], poll_se
             "downloads": snap.downloads, "prints": snap.prints, "points": round(snap.points, 2),
             "followers": int(acct.get("followers", 0)), "comments": int(acct.get("comments", 0)),
             "models": int(acct.get("models", len(snap.models))),
+            "ratings": ratings, "ratingAvg": round(rating_sum / ratings, 2) if ratings else 0,
         },
         "hours": v["hours"],
         "days": [{**{k: d.get(k, 0) for k in (*STATS, "points")},
@@ -115,7 +123,7 @@ def build_state(snap: Snapshot, day: DayTracker, status: dict[str, Any], poll_se
             "week": _top(snap, bases.get(week_key) if week_key else None),
             "life": _top(snap, None),
         },
-        "feed": [{k: e[k] for k in ("k", "n", "m", "t") if k in e} for e in v["feed"]],
+        "feed": [{k: e[k] for k in ("k", "n", "m", "t", "s") if k in e} for e in v["feed"]],
         "month": month,
         "followers": followers_view(int(acct.get("followers", 0)), int(v["today"].get("followers", 0)), fol_days),
         "comments": comments,

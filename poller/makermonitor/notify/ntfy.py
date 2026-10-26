@@ -7,7 +7,7 @@ from .style import HEALTH_OK, Digest, render_text
 
 # ntfy tags that render as emoji next to the title.
 _TAGS = {"download": "arrow_down", "print": "printer", "boost": "rocket", "like": "heart",
-         "collect": "pushpin", "comment": "speech_balloon", "follower": "bust_in_silhouette",
+         "collect": "pushpin", "rating": "star2", "comment": "speech_balloon", "follower": "bust_in_silhouette",
          "points": "star"}
 
 

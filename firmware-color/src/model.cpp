@@ -13,15 +13,16 @@ struct PsramAllocator : ArduinoJson::Allocator {
 static PsramAllocator psram;
 
 const char* const STAT_KEYS[NSTAT] = {"boosts", "likes", "collects", "downloads", "prints"};
-const char* const KIND_NAME[NKIND] = {"Boost", "Like", "Collect", "Download", "Print", "Comment"};
-const char* const KIND_PLURAL[NKIND] = {"Boosts", "Likes", "Collects", "Downloads", "Prints", "Comments"};
-const char* const KIND_UPPER[NKIND] = {"BOOSTS", "LIKES", "COLLECTS", "DOWNLOADS", "PRINTS", "COMMENTS"};
+const char* const KIND_NAME[NKIND] = {"Boost", "Like", "Collect", "Download", "Print", "Comment", "Rating"};
+const char* const KIND_PLURAL[NKIND] = {"Boosts", "Likes", "Collects", "Downloads", "Prints", "Comments", "Ratings"};
+const char* const KIND_UPPER[NKIND] = {"BOOSTS", "LIKES", "COLLECTS", "DOWNLOADS", "PRINTS", "COMMENTS", "RATINGS"};
 
 int kind_from_key(const char* k) {
   if (!k) return -1;
   for (int i = 0; i < NSTAT; i++)
     if (!strcmp(k, STAT_KEYS[i])) return i;
   if (!strcmp(k, "comment")) return K_COMMENT;
+  if (!strcmp(k, "ratings")) return K_RATING;
   return -1;
 }
 
@@ -60,10 +61,14 @@ bool parse_state(const char* json, size_t len, State& s) {
   copyStr(s.account, sizeof(s.account), doc["account"]);
   readStats(doc["today"].as<JsonVariantConst>(), s.today);
   s.todayPoints = doc["today"]["points"] | 0.0f;
+  s.todayRatings = doc["today"]["ratings"] | 0;
   s.hasYday = doc["yday"].is<JsonObjectConst>();
   if (s.hasYday) {
     readStats(doc["yday"].as<JsonVariantConst>(), s.yday);
     s.ydayPoints = doc["yday"]["points"] | 0.0f;
+    // Days closed before ratings were tracked have no count.
+    s.hasYdayRatings = doc["yday"]["ratings"].is<int>();
+    s.ydayRatings = doc["yday"]["ratings"] | 0;
   }
   s.since = doc["since"] | 0;
   s.midnight = doc["midnight"] | false;
@@ -74,6 +79,8 @@ bool parse_state(const char* json, size_t len, State& s) {
   s.followers = tot["followers"] | 0;
   s.commentCount = tot["comments"] | 0;
   s.models = tot["models"] | 0;
+  s.totalRatings = tot["ratings"] | 0;
+  s.ratingAvg = tot["ratingAvg"] | 0.0f;
 
   for (int i = 0; i < NSTAT; i++) {
     JsonArrayConst h = doc["hours"][STAT_KEYS[i]].as<JsonArrayConst>();
@@ -99,6 +106,7 @@ bool parse_state(const char* json, size_t len, State& s) {
     FeedRow& f = s.feed[s.nfeed++];
     f.kind = k;
     f.n = e["n"] | 1;
+    f.stars = e["s"] | 0.0f;
     copyStr(f.model, sizeof(f.model), e["m"]);
     f.t = e["t"] | 0;
   }
@@ -184,9 +192,9 @@ bool parse_state(const char* json, size_t len, State& s) {
     c.have = cr["p"]["have"] | 0;
     c.of = cr["p"]["of"] | 0;
     // Per list: the two values each row shows.
-    static const char* const LIST[NCLIST] = {"conv", "eng", "rise", "stall", "pts", "fol", "unansTop"};
-    static const char* const KA[NCLIST] = {"v", "v", "r", "a", "w", "w", "u"};
-    static const char* const KB[NCLIST] = {"d", "d", "y", "a", "m", "m", "u"};
+    static const char* const LIST[NCLIST] = {"conv", "eng", "rise", "stall", "pts", "fol", "unansTop", "rated"};
+    static const char* const KA[NCLIST] = {"v", "v", "r", "a", "w", "w", "u", "a"};
+    static const char* const KB[NCLIST] = {"d", "d", "y", "a", "m", "m", "u", "c"};
     for (int l = 0; l < NCLIST; l++) {
       c.n[l] = 0;
       for (JsonObjectConst r : cr[LIST[l]].as<JsonArrayConst>()) {
@@ -213,6 +221,8 @@ bool parse_state(const char* json, size_t len, State& s) {
     c.acct7 = a["p7"] | (c.pa7 * 7);
     c.fol7 = a["fol7"] | 0;
     c.fol30 = a["fol30"] | 0;
+    c.rt = a["rt"] | 0;
+    c.ra = a["ra"] | -1.0f;
     const char* pt = a["pt"] | "flat";
     c.ptTrend = !strcmp(pt, "up") ? 1 : !strcmp(pt, "down") ? -1 : 0;
     JsonObjectConst la = cr["launch"].as<JsonObjectConst>();
@@ -239,6 +249,7 @@ bool parse_event(const char* json, size_t len, Event& e) {
   memset(&e, 0, sizeof(e));
   e.kind = k;
   e.n = doc["n"] | 1;
+  e.stars = doc["s"] | 0.0f;
   copyStr(e.model, sizeof(e.model), doc["m"]);
   copyStr(e.user, sizeof(e.user), doc["u"]);
   copyStr(e.text, sizeof(e.text), doc["x"]);

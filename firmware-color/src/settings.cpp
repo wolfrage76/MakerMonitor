@@ -7,9 +7,9 @@ static const char* const BRIGHT_N[] = {"20%", "40%", "60%", "80%", "100%"};
 static const int BRIGHT_V[] = {20, 40, 60, 80, 100};
 static const char* const CYCLE_N[] = {"Off", "Every 15 s", "Every 30 s", "Every 60 s"};
 static const int CYCLE_V[] = {0, 15, 30, 60};
-// Bits: boosts, likes, collects, downloads, prints, comments.
-static const char* const NOTIFY_N[] = {"Everything", "All but likes", "Boosts, prints, comments", "Off"};
-static const int NOTIFY_V[] = {0x3F, 0x3D, 0x31, 0x00};
+// Bits: boosts, likes, collects, downloads, prints, comments, ratings.
+static const char* const NOTIFY_N[] = {"Everything", "All but likes", "Boosts, prints, ratings, comments", "Off"};
+static const int NOTIFY_V[] = {0x7F, 0x7D, 0x71, 0x00};
 // Quiet hours on/off; the window itself is qstart/qend below.
 static const char* const ONOFF_N[] = {"Off", "On"};
 static const int ONOFF_V[] = {0, 1};

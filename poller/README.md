@@ -37,7 +37,7 @@ The poller works out what each one is: both firmwares answer `GET /v2/settings` 
 For color panels (see [`../firmware-color/`](../firmware-color/)) the poller:
 
 - keeps a day baseline, 30 days of daily totals, per-day hourly buckets (35 days) and per-model daily baselines (31 days) in `data/daily.json` ("today" = since midnight),
-- pushes `POST /v2/state` every poll and `POST /v2/event` per new boost / like / collect / download / print / comment,
+- pushes `POST /v2/state` every poll and `POST /v2/event` per new boost / like / collect / download / print / rating / comment,
 - reads every panel's `GET /v2/settings` (color and e-paper) every 15 s, so the poll interval and "poll now" can be set from any panel.
 
 The state also carries:
@@ -78,6 +78,7 @@ Everything is cached in `data/creator.json` (gitignored), so restarts don't refe
 Followers are also tracked for the account: the total comes with every poll, today's gain from the daily baseline (`data/daily.json`), and the gains per day for the last 30 days from the same 30-day reach report (no extra request). The color panels and `/api/dashboard` get them as `followers: {total, today, d7, d30, days, series30}`; `series30` is oldest first and ends with today.
 7. **Long tail:** today's, 7-day and 30-day downloads from models older than 30 days against newer ones.
 8. **Unanswered comments:** the total and the models with the most.
+9. **Ratings:** star ratings per model and for the account (count and average), from the model list every poll already reads, and the best rated models (3 or more ratings). New ratings are counted like likes: against the previous poll and the day's baseline.
 
 MakerWorld fills a day in only once it is over, so per-model analytics run through yesterday; "today" values come from the poller's own baselines. The state's `creator` block has the top-4 lists; `GET /v2/creator` returns everything (every model's row, account numbers, and `compact` with top-10 lists). `GET /v2/model?id=` adds that model's `stats` (add `&full=1` for its MakerWorld daily rows).
 
@@ -100,8 +101,8 @@ The regular poll keeps its own cadence and only waits for the gap (it skips an e
 
 `http://<poller-host>:8787/` (or `/dashboard`) is a LAN page that works on a phone (two-column tiles and sticky section links there). Open it once as `http://<poller-host>:8787/?token=<api_token>`; the browser then keeps a cookie (180 days). Without the token it answers 401. It is plain HTML/JS with no external assets, follows the system light or dark theme, shows times in 12-hour format, and refreshes every 60 s. It has five views (each has its own link, such as `/#models`):
 
-- **Overview:** today's downloads, prints, boosts, likes and collects (with yesterday's total and an hourly line), top models with a 30-day download sparkline, followers (with a bar per day for 30 days), 7/30-day totals, best times and the creator numbers at a glance.
-- **Models:** every model in one sortable table (downloads, views, downloads per view, prints, likes, collects and points for 7 or 30 days, trend, unanswered comments, sparkline), then the creator lists: best converting, most engaging, rising, stalled, launch curve, points and followers by model, and long tail. Model names link to MakerWorld.
+- **Overview:** today's downloads, prints, boosts, likes and collects (with yesterday's total and an hourly line), new ratings with the average stars, top models with a 30-day download sparkline, followers (with a bar per day for 30 days), 7/30-day totals, best times and the creator numbers at a glance.
+- **Models:** every model in one sortable table (downloads, views, downloads per view, prints, likes, collects and points for 7 or 30 days, ratings with their average, trend, unanswered comments, sparkline), then the creator lists: best converting, most engaging, rising, stalled, launch curve, points and followers by model, best rated, and long tail. Model names link to MakerWorld.
 - **Activity:** today's events and the latest comments.
 - **Health:** each MakerWorld source with its last good fetch, failures and the last error text, the cookie, the request budget and backoffs.
 - **Settings:** see below.
@@ -129,7 +130,7 @@ The poller can send activity and health alerts to Discord, Pushbullet, Pushover,
 .venv/bin/python -m makermonitor --test-notify
 ```
 
-- Each poll sends at most one message per channel, grouped by event type (downloads, prints, boosts, likes, collects, comments, followers, points), each with its own emoji and color. Health alerts cover an expired cookie and stale data, and their recovery.
+- Each poll sends at most one message per channel, grouped by event type (downloads, prints, boosts, likes, collects, ratings, comments, followers, points), each with its own emoji and color. Health alerts cover an expired cookie and stale data, and their recovery.
 - `events` / `exclude` choose what each channel (or all channels) gets. `quiet_hours` mutes a window, `quiet_digest` sends a "while you were away" message when it ends, `min_count` waits for enough activity.
 - Secrets can come from the environment as `"${NAME}"`; `config.yaml` is git-ignored either way.
 

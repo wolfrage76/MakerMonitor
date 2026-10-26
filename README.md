@@ -1,6 +1,6 @@
 # MakerMonitor
 
-**Your MakerWorld stats at a glance.** Downloads, prints, boosts, likes, collects, comments, followers and points, as they happen, without keeping a MakerWorld tab open all day.
+**Your MakerWorld stats at a glance.** Downloads, prints, boosts, likes, collects, ratings, comments, followers and points, as they happen, without keeping a MakerWorld tab open all day.
 
 I publish models on [MakerWorld](https://makerworld.com/en/@Wofl) and kept refreshing my profile to see what was moving. MakerMonitor does that for me: a small poller on my home network checks MakerWorld every few minutes and puts the numbers wherever I want them. On a phone, in Discord, or on a little touchscreen on my desk.
 
@@ -39,12 +39,12 @@ The browser extension is how the poller stays logged in: when you visit MakerWor
 ### 📊 Dashboard
 - Opens at `http://<poller-host>:8787/` and works well on a phone. Light or dark follows your system, times are 12-hour.
 - **Overview** with today's numbers, top models with sparklines, followers, 7/30-day totals and best times.
-- **Models**: every model in one sortable table (downloads, views, downloads per view, prints, likes, collects, points, trend, unanswered comments), with links to MakerWorld.
+- **Models**: every model in one sortable table (downloads, views, downloads per view, prints, likes, collects, points, star ratings, trend, unanswered comments), with links to MakerWorld.
 - **Activity**, **Health** (each data source, the cookie, the request budget) and a **Settings** tab that edits `config.yaml` and applies it without a restart.
 
 ### 🔔 Notifications
 - Eight channel types, each with its own look: Discord, Pushbullet, Pushover, ntfy, Telegram, Home Assistant, Apprise and a generic JSON webhook.
-- One message per poll, grouped by event type: downloads, prints, boosts, likes, collects, comments, followers, points, plus health alerts when the cookie expires or data goes stale.
+- One message per poll, grouped by event type: downloads, prints, boosts, likes, collects, star ratings (with their stars), comments, followers, points, plus health alerts when the cookie expires or data goes stale.
 - Per channel: which events, quiet hours, a "While you were away" digest when they end, and a minimum count before it bothers you.
 
 ### 🖥️ Panels

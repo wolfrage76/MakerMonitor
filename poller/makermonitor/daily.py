@@ -25,6 +25,9 @@ KEEP_DAYS = 30
 KEEP_MODEL_BASES = 31   # per-model daily history for the panel's model detail
 KEEP_HOUR_DAYS = 35     # per-day hourly buckets for best-time insights
 KEEP_FEED = 40
+# Counters that joined after the first release. A baseline without one counts
+# from the first poll that has it, so the lifetime total never shows as today.
+LATE = ("followers", "ratings", "rating_sum")
 
 
 def counters(snap: Snapshot) -> dict[str, float]:
@@ -37,6 +40,8 @@ def counters(snap: Snapshot) -> dict[str, float]:
         "prints": snap.prints,
         "points": round(snap.points, 2),
         "followers": int(acct.get("followers", 0)),
+        "ratings": sum(m.ratings for m in snap.models.values()),
+        "rating_sum": sum(m.rating_sum for m in snap.models.values()),
     }
 
 
@@ -50,8 +55,8 @@ def model_counts(snap: Snapshot) -> dict[str, dict[str, int]]:
 def _diff(a: dict[str, float], b: dict[str, float]) -> dict[str, float]:
     out = {k: b.get(k, 0) - a.get(k, 0) for k in (*STATS, "points")}
     out["points"] = round(out["points"], 2)
-    # Followers joined the counters later: a baseline without them counts 0.
-    out["followers"] = int(b["followers"] - a["followers"]) if "followers" in a and "followers" in b else 0
+    for k in LATE:
+        out[k] = int(b[k] - a[k]) if k in a and k in b else 0
     return out
 
 
@@ -77,10 +82,11 @@ class DayTracker:
             d = self.d
             if d.get("day") != today:
                 self._roll(d, today, now, cur, models)
-            # Baselines from before followers were tracked: count from now.
+            # Baselines from before a counter was tracked: count from now.
             for b in (d.get("base"), d.get("last")):
-                if b is not None and "followers" not in b:
-                    b["followers"] = cur["followers"]
+                for k in LATE:
+                    if b is not None and k not in b:
+                        b[k] = cur[k]
             last = d.get("last") or cur
             delta = _diff(last, cur)
             hour = datetime.fromtimestamp(now).hour
@@ -143,7 +149,7 @@ class DayTracker:
     def today(self) -> dict[str, float]:
         with self._lock:
             if not self.d.get("base") or not self.d.get("last"):
-                return {k: 0 for k in (*STATS, "points", "followers")}
+                return {k: 0 for k in (*STATS, "points", *LATE)}
             return _diff(self.d["base"], self.d["last"])
 
     def insights(self, metrics: tuple[str, ...] = ("downloads", "prints", "boosts"),

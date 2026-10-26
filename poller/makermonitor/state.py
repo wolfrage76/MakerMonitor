@@ -18,6 +18,10 @@ class ModelStats:
     comments: int = 0
     collects: int = 0
     published: str = ""  # ISO publish time from the design list
+    # Star ratings, summed over the model's print profiles: how many, and the
+    # total of their stars (average = rating_sum / ratings).
+    ratings: int = 0
+    rating_sum: int = 0
 
 
 @dataclass
