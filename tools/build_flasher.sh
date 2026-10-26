@@ -5,7 +5,7 @@
 #   tools/build_flasher.sh [git-ref] [env ...]
 #
 # Builds from a clean export of git-ref (default HEAD), so uncommitted work in
-# firmware-color/ never ends up in a published image. Default env: crowpanel_70.
+# firmware-color/ never ends up in a published image. Default envs: crowpanel_70 waveshare_70.
 #
 # pioarduino rebuilds one shared Arduino core (~/.platformio/packages/
 # framework-arduinoespressif32-libs) for whichever custom_sdkconfig built last.
@@ -18,7 +18,7 @@ REPO="$(cd "$(dirname "$0")/.." && pwd)"
 REF="${1:-HEAD}"
 shift || true
 ENVS=("$@")
-[ ${#ENVS[@]} -eq 0 ] && ENVS=(crowpanel_70)
+[ ${#ENVS[@]} -eq 0 ] && ENVS=(crowpanel_70 waveshare_70)
 
 PIO="${PIO:-$HOME/.platformio/penv/bin/pio}"
 ESPTOOL="${ESPTOOL:-$HOME/.platformio/penv/bin/esptool.py}"
@@ -30,6 +30,7 @@ board_name() {
     crowpanel_43) echo 'Elecrow CrowPanel 4.3"' ;;
     crowpanel_50) echo 'Elecrow CrowPanel 5.0"' ;;
     crowpanel_70) echo 'Elecrow CrowPanel 7.0"' ;;
+    waveshare_70) echo 'Waveshare ESP32-S3-Touch-LCD-7' ;;
     *) echo "$1" ;;
   esac
 }

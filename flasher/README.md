@@ -7,7 +7,7 @@ Live at **https://wolfrage76.github.io/MakerMonitor/**.
 Build the files to publish:
 
 ```bash
-tools/build_flasher.sh            # HEAD, crowpanel_70
+tools/build_flasher.sh            # HEAD, crowpanel_70 and waveshare_70
 tools/build_flasher.sh v0.4.2     # a tag or commit
 ```
 
