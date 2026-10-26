@@ -1,5 +1,7 @@
 # Browser flasher
 
+Live at **https://wolfrage76.github.io/MakerMonitor/**.
+
 `index.html` is a one-page installer built on [ESP Web Tools](https://esphome.github.io/esp-web-tools/): plug a color panel in over USB, open the page in Chrome or Edge, pick the board and press **Connect and install**. It writes a full image (bootloader, partition table, OTA data and app) at offset 0, so it works on a blank or crash-looping panel. After that, updates go over Wi-Fi.
 
 Build the files to publish:
@@ -17,4 +19,10 @@ Try it locally before publishing (Web Serial only works over https or on localho
 python3 -m http.server -d flasher/dist 8000
 ```
 
-then open http://localhost:8000 in Chrome. Publish by uploading everything in `flasher/dist/` to any https host; the page and the images must be on the same site.
+then open http://localhost:8000 in Chrome. Publish with:
+
+```bash
+tools/publish_flasher.sh
+```
+
+It replaces the `gh-pages` branch contents with `flasher/dist/` in one commit; GitHub Pages serves that branch. The page and the images must stay on the same site, so the flasher can't point at release assets.

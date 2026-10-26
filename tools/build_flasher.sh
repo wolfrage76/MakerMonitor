@@ -74,6 +74,7 @@ for env in "${ENVS[@]}"; do
     0x10000 "$build/firmware.bin"
 
   name="$(board_name "$env")"
+  name="${name//\"/\\\"}"
   cat >"$DIST/manifest-$env.json" <<EOF
 {
   "name": "MakerMonitor for the $name",
@@ -85,7 +86,7 @@ for env in "${ENVS[@]}"; do
 }
 EOF
   boards_json+="${boards_json:+,}
-    { \"env\": \"$env\", \"name\": \"${name//\"/\\\"}\", \"manifest\": \"manifest-$env.json\" }"
+    { \"env\": \"$env\", \"name\": \"$name\", \"manifest\": \"manifest-$env.json\" }"
 done
 
 cat >"$DIST/boards.json" <<EOF
