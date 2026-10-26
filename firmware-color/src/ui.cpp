@@ -486,8 +486,8 @@ static lv_obj_t *ptsChip, *syncDot, *syncLbl, *clockLbl;
 static bool ptsWant = false;
 static int TILE_W, TILE_STEP, BAR_BOTTOM, BAR_MAX, BAR_W, BAR_GAP, BAR_X;
 
-// On tall panels the chart stays short and the room under the tiles is a
-// RECENT ACTIVITY card: the poller's feed, newest first, in two columns.
+// On tall panels the chart stays short and the room under the tiles is
+// RECENT ACTIVITY (one column) beside a RATINGS / FOLLOWERS column.
 static const int ACT_MAX = 8;
 struct ActUi {
   lv_obj_t *row, *img, *n, *model, *time;
@@ -495,8 +495,38 @@ struct ActUi {
 static ActUi actUi[ACT_MAX];
 static int actRows = 0;  // rows that fit in the card
 static lv_obj_t* actEmpty;
-static lv_obj_t* folLbl = nullptr;  // followers, Recent activity card
-static lv_obj_t *ratLbl = nullptr, *ratIcon = nullptr;  // ratings, left of the followers
+struct TodaySide {
+  lv_obj_t *head, *title, *avg, *value, *today, *icon;
+};
+static TodaySide ratSide, folSide;
+
+static void buildTodaySide(lv_obj_t* side, TodaySide& blk, int by, int halfH, int in, const char* name, bool star) {
+  const lv_font_t* numF = DENSE ? F20 : F22;
+  const int blockH = lineH(F12) + 3 + lineH(numF);
+  const int titleY = by + max(4, (halfH - blockH) / 2);
+  blk.head = row(side, 6);
+  if (star) blk.icon = icon(blk.head, K_RATING, false, 0, 0);
+  else blk.icon = nullptr;
+  blk.title = label(blk.head, F12, C_ACCENT, 0, 0, name);
+  lv_obj_set_style_text_letter_space(blk.title, 2, 0);
+  if (star) {
+    blk.avg = label(blk.head, F12, COL[K_RATING], 0, 0, "");
+    show(blk.avg, false);
+  } else {
+    blk.avg = nullptr;
+  }
+  lv_obj_update_layout(blk.head);
+  lv_obj_align(blk.head, LV_ALIGN_TOP_MID, 0, titleY);
+  const int numY = titleY + lv_obj_get_height(blk.head) + 4;
+  blk.value = label(side, numF, C_TXT, in, numY, "0");
+  blk.today = label(side, DENSE ? F16 : F20, C_MUTED, in + 80, numY, "");
+}
+
+static void centerSideHead(TodaySide& s) {
+  if (!s.head) return;
+  lv_obj_update_layout(s.head);
+  lv_obj_align(s.head, LV_ALIGN_TOP_MID, 0, lv_obj_get_y(s.head));
+}
 
 static void openStatus(bool open);
 #if INPUT_TOUCH
@@ -640,29 +670,22 @@ static void buildToday() {
   }
   if (!TALL) return;
   const int y0 = TOP + tileH + 10, h = BOT - y0;
-  lv_obj_t* c = card(s, PAD, y0, CW, h);
+  const int split = 10;
+  const int sideW = max(248, min(304, CW * 38 / 100));
+  const int actW = CW - sideW - split;
+  lv_obj_t* c = card(s, PAD, y0, actW, h);
   lv_obj_t* title = label(c, F12, C_ACCENT, 14, 8, "RECENT ACTIVITY");
   lv_obj_set_style_text_letter_space(title, 2, 0);
-  // Followers, top right of the card: total and today's gain.
-  folLbl = label(c, F14, C_MUTED, 0, 0, "");
-  lv_label_set_recolor(folLbl, true);
-  lv_obj_align(folLbl, LV_ALIGN_TOP_RIGHT, -14, 6);
-  // Ratings: star, count, average and today's gain; placed by refreshActivity().
-  ratLbl = label(c, F14, C_MUTED, 0, 0, "");
-  lv_label_set_recolor(ratLbl, true);
-  ratIcon = icon(c, K_RATING, false, 0, 0);
-  show(ratIcon, false);
   const int rowsY = 8 + lineH(F12) + 6, rowH = lineH(F16) + 6;
-  const int perCol = max(1, (h - rowsY - 6) / rowH), colW = (CW - 28 - 24) / 2;
-  actRows = min(ACT_MAX, 2 * perCol);
+  const int perCol = max(1, (h - rowsY - 6) / rowH), colW = actW - 28;
+  actRows = min(ACT_MAX, perCol);
   for (int i = 0; i < actRows; i++) {
-    // Newest first, down the left column, then the right.
-    int x = 14 + (i / perCol) * (colW + 24), y = rowsY + (i % perCol) * rowH;
+    int y = rowsY + i * rowH;
     ActUi& a = actUi[i];
     a.row = lv_obj_create(c);
     lv_obj_remove_style_all(a.row);
     lv_obj_clear_flag(a.row, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_pos(a.row, x, y);
+    lv_obj_set_pos(a.row, 14, y);
     lv_obj_set_size(a.row, colW, rowH);
     a.img = icon(a.row, 0, false, 0, (rowH - 20) / 2);
     a.n = label(a.row, F16, COL[0], 28, (rowH - lineH(F16)) / 2, "");
@@ -674,6 +697,12 @@ static void buildToday() {
   }
   actEmpty = label(c, F16, C_MUTED, 0, 0, "No activity yet today");
   lv_obj_align(actEmpty, LV_ALIGN_CENTER, 0, 8);
+
+  lv_obj_t* side = card(s, PAD + actW + split, y0, sideW, h);
+  const int halfH = h / 2;
+  buildTodaySide(side, ratSide, 0, halfH, 12, "RATINGS", true);
+  box(side, 12, halfH, sideW - 24, 1, C_EDGE);
+  buildTodaySide(side, folSide, halfH, h - halfH, 12, "FOLLOWERS", false);
 }
 
 // "+3 Downloads"; ratings add their stars: "+1 Rating  -  4 stars", "+2 Ratings  -  4.5 avg".
@@ -697,31 +726,50 @@ static void fmtShortAgo(char* out, size_t cap, long sec) {
 // The poller sends a fresh feed with each state, newest first, before the
 // banners for that poll. Also re-run every 30 s for the relative times.
 static void setTextIfChanged(lv_obj_t* l, const char* txt);
+static uint32_t gainColor(int v) { return v > 0 ? C_OK : v < 0 ? C_ERR : C_MUTED; }
+static void placeSideSubs(TodaySide& s) {
+  if (!s.value || !s.today) return;
+  lv_obj_update_layout(s.value);
+  if (lv_label_get_text(s.today)[0]) lv_obj_align_to(s.today, s.value, LV_ALIGN_OUT_RIGHT_MID, 12, 0);
+  centerSideHead(s);
+}
 static void refreshActivity() {
   markPagesDirty();
-  if (!TALL) return;
-  if (st.fol.has) {
-    char f[80];
-    snprintf(f, sizeof(f), "Followers  #E6EDF3 %d#   #%06lX %+d today#", st.fol.total,
-             (unsigned long)(st.fol.today > 0 ? C_OK : st.fol.today < 0 ? C_ERR : C_MUTED), st.fol.today);
-    setTextIfChanged(folLbl, f);
-  } else {
-    setTextIfChanged(folLbl, "");
-  }
+  if (!TALL || !ratSide.value) return;
+  char a[24], b[32];
   if (st.totalRatings > 0) {
-    char r[96];
-    snprintf(r, sizeof(r), "Ratings  #E6EDF3 %d#   #%06lX %.2f avg#   #%06lX %+d today#", st.totalRatings,
-             (unsigned long)COL[K_RATING], st.ratingAvg,
-             (unsigned long)(st.todayRatings > 0 ? C_OK : st.todayRatings < 0 ? C_ERR : C_MUTED), st.todayRatings);
-    setTextIfChanged(ratLbl, r);
+    fmtInt(a, sizeof(a), st.totalRatings);
+    setTextIfChanged(ratSide.value, a);
+    lv_obj_set_style_text_color(ratSide.value, C(COL[K_RATING]), 0);
+    snprintf(b, sizeof(b), "(%.2f avg)", st.ratingAvg);
+    setTextIfChanged(ratSide.avg, b);
+    show(ratSide.avg, true);
+    snprintf(b, sizeof(b), "%+d today", st.todayRatings);
+    setTextIfChanged(ratSide.today, b);
+    lv_obj_set_style_text_color(ratSide.today, C(gainColor(st.todayRatings)), 0);
   } else {
-    setTextIfChanged(ratLbl, "");
+    setTextIfChanged(ratSide.value, "0");
+    lv_obj_set_style_text_color(ratSide.value, C(C_MUTED), 0);
+    setTextIfChanged(ratSide.avg, "");
+    show(ratSide.avg, false);
+    setTextIfChanged(ratSide.today, "");
   }
-  show(ratIcon, st.totalRatings > 0);
-  lv_obj_update_layout(ratLbl);
-  lv_obj_align_to(ratLbl, folLbl, LV_ALIGN_OUT_LEFT_MID, lv_label_get_text(folLbl)[0] ? -28 : 0, 0);
-  lv_obj_align_to(ratIcon, ratLbl, LV_ALIGN_OUT_LEFT_MID, -6, 0);
-  char a[24];
+  if (ratSide.icon) show(ratSide.icon, true);
+  placeSideSubs(ratSide);
+
+  int folTotal = st.fol.has ? st.fol.total : st.followers;
+  fmtInt(a, sizeof(a), folTotal);
+  setTextIfChanged(folSide.value, a);
+  lv_obj_set_style_text_color(folSide.value, C(folTotal ? C_TXT : C_MUTED), 0);
+  if (st.fol.has) {
+    snprintf(b, sizeof(b), "%+d today", st.fol.today);
+    setTextIfChanged(folSide.today, b);
+    lv_obj_set_style_text_color(folSide.today, C(gainColor(st.fol.today)), 0);
+  } else {
+    setTextIfChanged(folSide.today, "");
+  }
+  placeSideSubs(folSide);
+
   uint32_t now = nowUtc();
   int shown = 0;
   for (int i = 0; i < st.nfeed && shown < actRows; i++) {
