@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import re
 import logging
 import socket
@@ -33,6 +34,8 @@ STARTUP_RETRIES = (15, 30, 60, 120)
 # After a failed poll later on (a MakerWorld blip): retry sooner, then back
 # to the normal interval.
 FAIL_RETRIES = (120, 300)
+POLL_TIMEOUT_SEC = 180.0
+DEAD_PANEL_PROBE_SEC = 60.0
 
 
 def setup_logging(log_path) -> None:
@@ -105,6 +108,7 @@ class AppContext:
         self.colors: list[ColorPanelClient] = []
         self._probes: dict[str, ColorPanelClient] = {}
         self._panel_up: dict[str, bool] = {}
+        self._panel_next_probe: dict[str, float] = {}
         self._rebuild_panels()
         self.day = DayTracker(settings.data_path)
         # Any panel's Settings menu (e-ink or color) can override the interval.
@@ -112,6 +116,10 @@ class AppContext:
         self._color_seen: dict[str, tuple[int, Any]] = {}  # base -> (pollSec, pollNow seq)
         self._poll_lock = asyncio.Lock()
         self._task: asyncio.Task | None = None
+        self._watchdog_task: asyncio.Task | None = None
+        self._loop_tick = time.time()
+        self._wake_event = asyncio.Event()
+        self._poll_requested = False
         # Per-source fetch health for the panels and the dashboard.
         self.health: dict[str, dict[str, Any]] = {k: {"t": 0.0, "fails": 0, "err": ""}
                                                   for k in ("models", "reach", "points")}
@@ -125,6 +133,20 @@ class AppContext:
         self._self_url = ""
         self.last_state: dict[str, Any] | None = None
         self.notifier = NotifyHub(settings.notifications, settings.handle)
+        snap = self.store.status.last_snapshot
+        if snap and snap.fetched_at:
+            try:
+                auth = "ok" if self.store.status.cookie_present else "needed"
+                st = build_state(snap, self.day, self._color_status(auth, "synced"), self.poll_interval)
+                st["health"] = self.health_view()
+                st["insights"] = self.day.insights()
+                st["poller"] = self.self_url()
+                full = self.creator_full()
+                if full:
+                    st["creator"] = self.creator.compact(full)
+                self.last_state = st
+            except Exception:  # noqa: BLE001
+                pass
 
     def update_health(self, client: MakerWorldClient, cookie: bool) -> None:
         """Fold one poll's per-source results in (once per poll)."""
@@ -143,27 +165,30 @@ class AppContext:
                 h["err"] = "rejected (401/403)" if r == "auth" else r
         if not cookie:
             self.auth_state = "none"
-        # Points and models only answer with a valid cookie; data-overview
-        # (reach) is sometimes refused on its own, so it doesn't count here.
-        elif any(client.results.get(k) == "auth" for k in ("models", "points")):
+        # Points and models only answer with a valid cookie, but single requests
+        # get refused now and then; data-overview (reach) is often refused on
+        # its own, so it doesn't count. Expired = AUTH_REFUSALS refused polls in a row.
+        elif self._auth_fails >= AUTH_REFUSALS:
             self.auth_state = "expired"
-        elif client.results.get("models") == "ok":
+        elif self._auth_fails == 0 and client.results.get("models") == "ok":
             self.auth_state = "ok"
 
     def _rebuild_panels(self) -> None:
         """Color clients and the e-paper group from the detected kinds."""
         bases = self.settings.panel_bases
         have = {p.base_url: p for p in self.colors}
+        have_eink = {c.base_url: c for c in self.panel.clients}
         self.colors = [have.get(b) or ColorPanelClient(b) for b in bases if self.panel_dir.kind(b) == "color"]
-        self.panel = PanelGroup([PanelClient(b) for b in bases if self.panel_dir.kind(b) == "eink"])
+        self.panel = PanelGroup([have_eink.get(b) or PanelClient(b) for b in bases if self.panel_dir.kind(b) == "eink"])
         self._probes = {b: self._probes.get(b) or ColorPanelClient(b) for b in bases}
 
     async def refresh_panels(self, force: bool = False) -> None:
         """Detect hosts not seen yet (or due a re-check) and regroup."""
-        before = {b: self.panel_dir.kind(b) for b in self.settings.panel_bases}
-        for b in self.settings.panel_bases:
-            await self.panel_dir.check(b, force=force)
-        after = {b: self.panel_dir.kind(b) for b in self.settings.panel_bases}
+        bases = self.settings.panel_bases
+        before = {b: self.panel_dir.kind(b) for b in bases}
+        if bases:
+            await asyncio.gather(*(self.panel_dir.check(b, force=force) for b in bases))
+        after = {b: self.panel_dir.kind(b) for b in bases}
         if after != before or force:
             self._rebuild_panels()
             log.info("panels: color=%s eink=%s unknown=%s",
@@ -194,6 +219,7 @@ class AppContext:
         live = set(old.panel_bases)
         self._color_seen = {k: v for k, v in self._color_seen.items() if k in live}
         self._panel_up = {k: v for k, v in self._panel_up.items() if k in live}
+        self._panel_next_probe = {k: v for k, v in self._panel_next_probe.items() if k in live}
         self._self_url = ""
         # New hub, same health state and held messages per channel name.
         hub = NotifyHub(old.notifications, old.handle)
@@ -212,9 +238,13 @@ class AppContext:
     def health_view(self) -> dict[str, Any]:
         m = self.health["models"]
         stale = bool(m["t"]) and time.time() - m["t"] > 3 * self.poll_interval or (not m["t"] and m["fails"] > 0)
+        # The poll loop wakes every 15 s; no wake for 3 poll intervals means it stopped.
+        tick = getattr(self, "_loop_tick", 0.0)
         return {
             "auth": self.auth_state,
             "stale": stale,
+            "loopStalled": bool(tick) and time.time() - tick > 3 * self.poll_interval,
+            "loopTick": int(tick),
             "since": int(m["t"]),
             "src": {k: {"t": int(h["t"]), "f": h["fails"], "e": h["err"][:40]} for k, h in self.health.items()},
             # All MakerWorld requests from this poller (ratelimit.py).
@@ -238,25 +268,65 @@ class AppContext:
         if not self._self_url:
             ip = "127.0.0.1"
             hosts = [b.split("//", 1)[-1].split(":")[0] for b in self.settings.panel_bases]
-            try:
-                with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sk:
-                    sk.connect((socket.gethostbyname(hosts[0]) if hosts else "192.168.1.1", 80))
-                    ip = sk.getsockname()[0]
-            except OSError:
-                pass
+            # Use a numeric target so UDP route lookup never blocks on mDNS/DNS.
+            target = next((h for h in hosts if re.match(r"^\d+(?:\.\d+){3}$", h)), "192.168.1.1")
+            for dst in (target, "192.168.1.1", "8.8.8.8"):
+                try:
+                    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sk:
+                        sk.connect((dst, 80))
+                        cand = sk.getsockname()[0]
+                        if cand and not cand.startswith("127."):
+                            ip = cand
+                            break
+                except OSError:
+                    continue
             self._self_url = f"http://{ip}:{self.settings.listen_port}"
         return self._self_url
 
+    def request_poll(self) -> None:
+        """Schedule an early poll and coalesce bursts (e.g. multiple cookie updates)."""
+        self._poll_requested = True
+        self._wake_event.set()
+
     async def start(self) -> None:
+        self._loop_tick = time.time()
         self._task = asyncio.create_task(self._poll_loop(), name="poll-loop")
+        self._task.add_done_callback(self._loop_done)
+        self._watchdog_task = asyncio.create_task(self._watchdog_loop(), name="poll-watchdog")
+
+    async def _watchdog_loop(self) -> None:
+        while True:
+            await asyncio.sleep(60)
+            limit = max(4 * self.poll_interval, 600)
+            age = time.time() - self._loop_tick
+            if age > limit:
+                log.critical("poll loop stalled for %.0fs (limit %ds); exiting for service restart", age, limit)
+                os._exit(1)
+
+    def _loop_done(self, task: asyncio.Task) -> None:
+        """The poll loop must never stop on its own: log why it did and start it again."""
+        if task.cancelled() or task is not self._task:
+            return
+        exc = task.exception()
+        log.error("poll loop stopped (%s); restarting it in 30 s", f"{type(exc).__name__}: {exc}" if exc else "returned",
+                  exc_info=exc)
+
+        async def again() -> None:
+            await asyncio.sleep(30)
+            if self._task is task:
+                self._task = asyncio.create_task(self._poll_loop(), name="poll-loop")
+                self._task.add_done_callback(self._loop_done)
+
+        asyncio.get_running_loop().create_task(again())
 
     async def stop(self) -> None:
-        if self._task:
-            self._task.cancel()
-            try:
-                await self._task
-            except asyncio.CancelledError:
-                pass
+        for t in (self._watchdog_task, self._task):
+            if t:
+                t.cancel()
+                try:
+                    await t
+                except asyncio.CancelledError:
+                    pass
 
     async def _poll_loop(self) -> None:
         # Small delay so HTTP server is up first
@@ -264,7 +334,10 @@ class AppContext:
         if self.settings.legacy_panel_keys:
             log.warning("config: %s still work but are deprecated; list every panel under `panels:` instead "
                         "(the dashboard's Settings tab does this when you save)", ", ".join(self.settings.legacy_panel_keys))
-        await self.refresh_panels(force=True)
+        try:
+            await asyncio.wait_for(self.refresh_panels(force=True), timeout=30.0)
+        except Exception as exc:  # noqa: BLE001 - a panel problem must not stop polling
+            log.exception("panel detection failed: %s", exc)
         last = 0.0
         # Right after boot the network or cookie is often not ready yet, so
         # failed polls retry on a short schedule until one succeeds. Requests
@@ -273,13 +346,17 @@ class AppContext:
         fail_retries = list(FAIL_RETRIES)
         wait: int | None = None
         while True:
-            if time.time() - last >= (wait or self.poll_interval):
+            self._loop_tick = time.time()
+            if self._poll_requested or time.time() - last >= (wait or self.poll_interval):
+                self._poll_requested = False
                 last = time.time()
                 wait = None
                 ok = False
                 try:
-                    await self.refresh_panels()  # new hosts, and the 6-hourly re-check
-                    ok = bool((await self.poll_once()).get("ok"))
+                    await asyncio.wait_for(self.refresh_panels(), timeout=30.0)  # new hosts, and the 6-hourly re-check
+                    ok = bool((await asyncio.wait_for(self.poll_once(), timeout=POLL_TIMEOUT_SEC)).get("ok"))
+                except asyncio.TimeoutError:
+                    log.error("Poll timed out after %.0fs", POLL_TIMEOUT_SEC)
                 except Exception as exc:  # noqa: BLE001
                     log.exception("Poll loop error: %s", exc)
                 if ok:
@@ -294,10 +371,45 @@ class AppContext:
                 elif fail_retries:
                     wait = fail_retries.pop(0)
                     log.info("poll failed; trying again in %ss", wait)
-            # Wake every 15 s to pick up panel settings / "poll now".
-            await asyncio.sleep(max(1.0, min(15.0, last + (wait or self.poll_interval) - time.time())))
-            if await self._check_color_settings():
-                last = 0.0
+            # Wake every 15 s (or after a short 2 s coalesce when request_poll() fires) to pick up panel settings / "poll now".
+            if self._poll_requested:
+                await asyncio.sleep(2.0)
+                continue
+            sleep_for = max(1.0, min(15.0, last + (wait or self.poll_interval) - time.time()))
+            self._wake_event.clear()
+            if not self._poll_requested:
+                try:
+                    await asyncio.wait_for(self._wake_event.wait(), timeout=sleep_for)
+                except asyncio.TimeoutError:
+                    pass
+            if self._poll_requested:
+                await asyncio.sleep(2.0)
+                continue
+            self._loop_tick = time.time()
+            try:
+                if await self._check_color_settings():
+                    last = 0.0
+            except Exception as exc:  # noqa: BLE001 - an odd panel answer must not stop polling
+                log.exception("panel settings check failed: %s", exc)
+
+    async def _push_recovered_panel(self, base: str) -> None:
+        """Push the latest cached state immediately when a panel comes online or reboots."""
+        kind = self.panel_dir.kind(base)
+        if kind == "color" and self.last_state:
+            panel = next((p for p in self.colors if p.base_url == base), None)
+            if panel:
+                ok = await panel.state(self.last_state)
+                log.info("color %s recovery state %s", base, "ok" if ok else "FAILED")
+        elif kind == "eink":
+            snap = self.store.status.last_snapshot
+            client = next((c for c in self.panel.clients if c.base_url == base), None)
+            if client and snap and snap.fetched_at:
+                client.up = True
+                ok = await client.sync(snap)
+                await client.pages(build_sections(snap, self.settings.page_cycle_sec, self.day.view(),
+                                                  insights=self.day.insights(),
+                                                  model_history=self.day.model_history))
+                log.info("eink %s recovery sync %s", base, "ok" if ok else "FAILED")
 
     async def _check_color_settings(self) -> bool:
         """Returns True when a panel (e-ink or color) asked for an immediate poll.
@@ -306,33 +418,51 @@ class AppContext:
         """
         poll_now = False
         regroup = False
-        for panel in self._probes.values():
-            cfg = await panel.settings()
-            self._panel_up[panel.base_url] = bool(cfg)
+        now = time.time()
+        # Probe reachable hosts every 15 s; unreachable hosts back off to 60 s so
+        # dead DNS/TCP timeouts don't stall every wake cycle.
+        probes = [p for p in list(self._probes.values())
+                  if now >= self._panel_next_probe.get(p.base_url, 0.0)]
+        if not probes:
+            return False
+        results = await asyncio.gather(*(p.settings() for p in probes))
+        recovered: list[str] = []
+        for panel, cfg in zip(probes, results):
+            base = panel.base_url
+            was_up = self._panel_up.get(base)
+            self._panel_up[base] = bool(cfg)
             if not cfg:
-                down = self._color_seen.get(panel.base_url)
+                self._panel_next_probe[base] = now + DEAD_PANEL_PROBE_SEC
+                down = self._color_seen.get(base)
                 if down != ("down", None):
-                    log.warning("panel %s settings unreachable", panel.base_url)
-                    self._color_seen[panel.base_url] = ("down", None)
+                    log.warning("panel %s settings unreachable", base)
+                    self._color_seen[base] = ("down", None)
                 continue
+            self._panel_next_probe.pop(base, None)
             # A host that answers for the first time (or changed firmware)
             # joins the right group straight away.
-            regroup |= self.panel_dir.note_board(panel.base_url, cfg)
+            regroup |= self.panel_dir.note_board(base, cfg)
             sec = int(cfg.get("pollSec") or 0)
             seq = cfg.get("pollNow")
-            seen = self._color_seen.get(panel.base_url)
+            seen = self._color_seen.get(base)
             if seen is None:
-                log.info("Panel %s (%s): pollSec=%s pollNow=%s", panel.base_url, cfg.get("board", "?"), sec, seq)
+                log.info("Panel %s (%s): pollSec=%s pollNow=%s", base, cfg.get("board", "?"), sec, seq)
             if sec and 60 <= sec <= 3600 and (seen is None or seen[0] != sec) and sec != self.poll_interval:
-                log.info("Poll interval %ss -> %ss (%s)", self.poll_interval, sec, panel.base_url)
+                log.info("Poll interval %ss -> %ss (%s)", self.poll_interval, sec, base)
                 self.poll_interval = sec
-            if seen not in (None, ("down", None)) and seq != seen[1]:
+            rebooted = (seen not in (None, ("down", None))
+                        and isinstance(seq, int) and isinstance(seen[1], int) and seq < seen[1])
+            if seen not in (None, ("down", None)) and seq != seen[1] and not rebooted:
                 poll_now = True
-            self._color_seen[panel.base_url] = (sec, seq)
+            if not was_up or rebooted:
+                recovered.append(base)
+            self._color_seen[base] = (sec, seq)
         if regroup:
             self._rebuild_panels()
             log.info("panels: color=%s eink=%s", ",".join(p.base_url for p in self.colors) or "none",
                      self.panel.base_url or "none")
+        if recovered:
+            await asyncio.gather(*(self._push_recovered_panel(b) for b in recovered), return_exceptions=True)
         return poll_now
 
     def _color_status(self, auth: str, message: str) -> dict[str, Any]:
@@ -359,9 +489,15 @@ class AppContext:
             return
         if not self.colors:
             return
-        for panel in self.colors:
+
+        async def _send_one(panel: ColorPanelClient) -> None:
+            if self._panel_up.get(panel.base_url) is False:
+                return
             try:
                 ok = await panel.state(state)
+                self._panel_up[panel.base_url] = ok
+                if not ok:
+                    self._panel_next_probe[panel.base_url] = time.time() + DEAD_PANEL_PROBE_SEC
                 failed = 0
                 for ev in events:
                     if not await panel.event(ev):
@@ -373,6 +509,8 @@ class AppContext:
                     log.info("color %s state %s events %d", panel.base_url, "ok" if ok else "FAILED", len(events))
             except Exception as exc:  # noqa: BLE001 - never break the e-ink path
                 log.exception("color %s push failed: %s", panel.base_url, exc)
+
+        await asyncio.gather(*(_send_one(p) for p in self.colors))
 
     async def poll_once(self) -> dict[str, Any]:
         async with self._poll_lock:
@@ -413,9 +551,15 @@ class AppContext:
             # count jump and sent bogus events; keep the last full snapshot.
             if prev.models and not snap.models:
                 raise RuntimeError(f"partial data ({snap.source}): keeping the last full snapshot")
+            _carry_ratings(prev, snap)
             store.status.auth_ok = bool(cookie)
             store.status.last_poll_ok = True
-            self._auth_fails = 0
+            # A poll whose points or model list was refused still counts as refused.
+            refused = any(client.results.get(k) == "auth" for k in ("models", "points"))
+            self._auth_fails = self._auth_fails + 1 if refused else 0
+            if refused and self._auth_fails < AUTH_REFUSALS:
+                log.warning("poll partly refused (%d of %d in a row before the cookie counts as expired)",
+                            self._auth_fails, AUTH_REFUSALS)
             store.status.last_error = ""
             store.status.last_poll_at = time.time()
             store.save_snapshot(snap)
@@ -502,17 +646,17 @@ class AppContext:
             return result
 
         except AuthError as exc:
-            # MakerWorld also refuses (403) while it is failing (5xx). One such
-            # refusal during server errors isn't an expired cookie: only a second
-            # refused poll in a row, or a refusal without server errors, is.
+            # MakerWorld's front end refuses single requests (403) now and then,
+            # and while it is failing (5xx). Only AUTH_REFUSALS refused polls in
+            # a row mean an expired cookie; until then the panels keep their state.
             self._auth_fails += 1
-            outage = any(re.search(r"\b5\d\d\b", str(v)) for v in client.results.values())
-            if outage and self._auth_fails < 2:
+            if self._auth_fails < AUTH_REFUSALS:
                 store.status.last_poll_ok = False
                 store.status.last_error = str(exc)
                 store.status.last_poll_at = time.time()
-                log.warning("poll refused (%s) while MakerWorld returns server errors; not treating the cookie as "
-                            "expired unless the next poll is refused too", exc)
+                self.update_health(client, bool(cookie))
+                log.warning("poll refused (%s), %d of %d in a row before the cookie counts as expired",
+                            exc, self._auth_fails, AUTH_REFUSALS)
                 result["error"] = str(exc)
                 return result
             store.status.auth_ok = False
@@ -552,9 +696,12 @@ class AppContext:
             return result
 
 
-_MODEL_FIELDS = ("downloads", "prints", "boosts", "likes", "collects", "comments")
+# Refused polls (401/403) in a row before the cookie counts as expired.
+AUTH_REFUSALS = 3
+
+_MODEL_FIELDS = ("downloads", "prints", "boosts", "likes", "collects", "comments", "ratings")
 _COLOR_FIELD = {"downloads": "downloads", "prints": "prints", "boosts": "boosts", "likes": "likes",
-                "collects": "collects", "comment": "comments"}
+                "collects": "collects", "comment": "comments", "ratings": "ratings"}
 _EINK_FIELD = {"download": "downloads", "print": "prints", "boost": "boosts", "like": "likes",
                "comment": "comments"}
 
@@ -639,8 +786,11 @@ def create_app(settings: Settings, cfg_path=None) -> FastAPI:
     async def _shutdown() -> None:
         await ctx.stop()
 
-    @app.get("/health")
-    async def health() -> dict[str, str]:
+    @app.get("/health", response_model=None)
+    async def health() -> JSONResponse | dict[str, str]:
+        hv = ctx.health_view()
+        if hv.get("loopStalled"):
+            return JSONResponse({"status": "stalled", "loopTick": hv.get("loopTick", 0)}, status_code=503)
         return {"status": "ok"}
 
     @app.get("/status")
@@ -658,9 +808,9 @@ def create_app(settings: Settings, cfg_path=None) -> FastAPI:
             _cookie_names(header),
             len(header),
         )
-        # Kick an early poll when cookie changes
+        # Kick an early poll when cookie changes (coalesced across bursts)
         if changed:
-            asyncio.create_task(ctx.poll_once())
+            ctx.request_poll()
         return {
             "ok": True,
             "changed": changed,
@@ -712,7 +862,7 @@ def create_app(settings: Settings, cfg_path=None) -> FastAPI:
         changed = ctx.store.set_cookie(header)
         log.info("dashboard cookie changed=%s names=%s bytes=%d", changed, _cookie_names(header), len(header))
         if changed:
-            asyncio.create_task(ctx.poll_once())
+            ctx.request_poll()
         return changed
 
     settings_api.register(app, ctx, config_path(cfg_path), _dash_ok, _paste_cookie)
@@ -725,8 +875,11 @@ def create_app(settings: Settings, cfg_path=None) -> FastAPI:
         if st is None:
             snap = ctx.store.status.last_snapshot
             st = build_state(snap, ctx.day, ctx._color_status("ok", ""), ctx.poll_interval) if snap else {}
-            st["health"] = ctx.health_view()
             st["insights"] = ctx.day.insights()
+        else:
+            st = dict(st)
+        # Live, not from the last push: a stopped poll loop must show here.
+        st["health"] = ctx.health_view()
         return JSONResponse(st)
 
     return app

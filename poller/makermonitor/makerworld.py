@@ -16,6 +16,13 @@ log = logging.getLogger(__name__)
 
 BASE = "https://makerworld.com"
 LIST_PAGE = f"{BASE}/en/my/data-overview/model"
+MAX_COMMENT_FETCHES = 5
+
+# Cached per handle so a transient Cloudflare 403 on the public profile HTML
+# page doesn't block the design-service API or masquerade as an expired cookie.
+_PROFILE_CACHE: dict[str, dict[str, Any]] = {}
+# mid -> (comment_count, extracted_comments)
+_COMMENT_CACHE: dict[str, tuple[int, list[dict[str, Any]]]] = {}
 
 
 class AuthError(Exception):
@@ -31,7 +38,7 @@ class MakerWorldClient:
     def __init__(self, handle: str, user_agent: str, cookie: str = "") -> None:
         self.handle = handle.lstrip("@")
         self.user_agent = user_agent
-        self.cookie = cookie.strip()
+        self.cookie = _without_cf_bm(cookie.strip())
         # Per-source outcome of the last fetch: "ok", "auth" (401/403) or an error.
         self.results: dict[str, str] = {}
 
@@ -109,23 +116,46 @@ class MakerWorldClient:
                 errors.append(f"creator:{exc}")
                 log.warning("Creator Center scrape failed: %s", exc)
 
-        if self.cookie:
-            # Cookie present but everything failed — often expired / CF
-            raise AuthError("; ".join(errors) or "Authenticated fetch failed")
         raise RuntimeError("; ".join(errors) or "Could not fetch MakerWorld stats")
 
     async def _from_design_api(self, prev: Snapshot | None = None) -> Snapshot:
         url = f"{BASE}/en/@{self.handle}"
+        prev_acct = (prev.extras.get("account") if prev else None) or {}
+        cached_prof = _PROFILE_CACHE.get(self.handle.lower()) or {}
+        user: dict[str, Any] = {}
+        uid = None
         async with _session(30.0) as client:
-            r = await LIMITER.get(client, endpoint="profile", core=True, url=url, headers=self._headers("text/html"))
-            if r.status_code in (401, 403):
-                raise AuthError(f"Profile HTTP {r.status_code}")
-            r.raise_for_status()
-            nd = _extract_next_data(r.text)
-            user = (((nd or {}).get("props") or {}).get("pageProps") or {}).get("userInfo") or {}
-            uid = user.get("uid")
-            if not uid:
-                raise RuntimeError("uid not found on profile page")
+            try:
+                r = await LIMITER.get(client, endpoint="profile", core=True, url=url, headers=self._headers("text/html"))
+                if "/sign" in str(r.url) or "/login" in str(r.url):
+                    raise AuthError("Redirected to login")
+                if r.status_code in (401, 403):
+                    raise RuntimeError(f"Profile HTTP {r.status_code}")
+                r.raise_for_status()
+                nd = _extract_next_data(r.text)
+                user = (((nd or {}).get("props") or {}).get("pageProps") or {}).get("userInfo") or {}
+                uid = user.get("uid")
+                if not uid:
+                    raise RuntimeError("uid not found on profile page")
+                _PROFILE_CACHE[self.handle.lower()] = {
+                    "uid": uid,
+                    "handle": str(user.get("handle") or user.get("name") or self.handle),
+                    "fanCount": int(_num(user.get("fanCount"))),
+                    "point": _num(user.get("point")),
+                }
+            except AuthError:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                uid = cached_prof.get("uid") or prev_acct.get("uid")
+                if not uid:
+                    raise
+                user = {
+                    "uid": uid,
+                    "handle": cached_prof.get("handle") or (prev.account_name if prev else "") or self.handle,
+                    "fanCount": cached_prof.get("fanCount", prev_acct.get("followers", 0)),
+                    "point": cached_prof.get("point", prev.points if prev else 0.0),
+                }
+                log.warning("Profile page unavailable (%s); using cached uid %s", exc, uid)
 
             models: dict[str, ModelStats] = {}
             offset, limit = 0, 50
@@ -170,18 +200,24 @@ class MakerWorldClient:
             source="design_api",
         )
         snap.extras["account"] = {
+            "uid": uid,
             "followers": int(_num(user.get("fanCount"))),
             "likes": sum(m.likes for m in models.values()),
             "saves": sum(m.collects for m in models.values()),
             "comments": sum(m.comments for m in models.values()),
             "models": len(models),
+            "ratings": sum(m.ratings for m in models.values()),
+            "rating_sum": sum(m.rating_sum for m in models.values()),
         }
         try:
-            snap.extras["comments"] = await self._recent_comments(models, prev)
+            comments, complete = await self._recent_comments(models, prev)
+            snap.extras["comments"] = comments
+            snap.extras["comments_complete"] = complete
         except Exception as exc:  # noqa: BLE001
             log.info("comments skipped: %s", exc)
             if prev:
                 snap.extras["comments"] = prev.extras.get("comments") or []
+                snap.extras["comments_complete"] = bool(prev.extras.get("comments_complete"))
         if self.cookie:
             try:
                 bal = await self._points_balance()
@@ -221,43 +257,68 @@ class MakerWorldClient:
 
     async def _recent_comments(
         self, models: dict[str, ModelStats], prev: Snapshot | None, keep: int = 8
-    ) -> list[dict[str, Any]]:
+    ) -> tuple[list[dict[str, Any]], bool]:
         """Newest comments across all models. Refetch only models whose count changed."""
         cached: dict[str, list[dict[str, Any]]] = {}
         for c in (prev.extras.get("comments") if prev else None) or []:
             cached.setdefault(str(c.get("designId")), []).append(c)
+        prev_complete = bool(prev and prev.extras.get("comments_complete"))
         out: list[dict[str, Any]] = []
-        async with _session(30.0) as client:
-            for mid, m in models.items():
-                if not m.comments:
-                    continue
-                old = prev.models.get(mid) if prev else None
-                if old and old.comments == m.comments and mid in cached:
-                    out.extend(cached[mid])
-                    continue
-                r = await LIMITER.get(client, endpoint="comments", core=True, url=
-                    f"{BASE}/api/v1/comment-service/comment?designId={mid}&offset=0&limit=3",
-                    headers=self._headers(),
-                )
-                if not r.ok:
-                    out.extend(cached.get(mid, []))
-                    continue
-                for c in (r.json() or {}).get("comments") or []:
-                    user = c.get("user") or {}
-                    if str(user.get("handle") or "").lstrip("@").lower() == self.handle.lower():
-                        continue
-                    out.append(
-                        {
-                            "id": c.get("id"),
-                            "designId": mid,
-                            "model": m.name,
-                            "user": user.get("name") or user.get("handle") or "",
-                            "text": c.get("content") or "",
-                            "time": c.get("createTime") or "",
-                        }
+        to_fetch: list[tuple[int, str, ModelStats]] = []
+        for mid, m in models.items():
+            if not m.comments:
+                _COMMENT_CACHE.pop(mid, None)
+                continue
+            old = prev.models.get(mid) if prev else None
+            mem = _COMMENT_CACHE.get(mid)
+            if mem and mem[0] == m.comments:
+                out.extend(mem[1])
+                continue
+            if old and old.comments == m.comments and (mid in cached or prev_complete):
+                rows = cached.get(mid, [])
+                _COMMENT_CACHE[mid] = (m.comments, rows)
+                out.extend(rows)
+                continue
+            # Prioritise models whose comment count rose since the last snapshot.
+            changed_prio = 0 if (old and m.comments > old.comments) else 1
+            to_fetch.append((changed_prio, mid, m))
+
+        to_fetch.sort(key=lambda item: item[0])
+        batch = to_fetch[:MAX_COMMENT_FETCHES]
+        deferred = len(to_fetch) > len(batch)
+        for _, mid, _ in to_fetch[MAX_COMMENT_FETCHES:]:
+            out.extend(cached.get(mid, []))
+
+        if batch:
+            async with _session(30.0) as client:
+                for _, mid, m in batch:
+                    r = await LIMITER.get(client, endpoint="comments", core=True, url=
+                        f"{BASE}/api/v1/comment-service/comment?designId={mid}&offset=0&limit=3",
+                        headers=self._headers(),
                     )
+                    if not r.ok:
+                        deferred = True
+                        out.extend(cached.get(mid, []))
+                        continue
+                    rows = []
+                    for c in (r.json() or {}).get("comments") or []:
+                        user = c.get("user") or {}
+                        if str(user.get("handle") or "").lstrip("@").lower() == self.handle.lower():
+                            continue
+                        rows.append(
+                            {
+                                "id": c.get("id"),
+                                "designId": mid,
+                                "model": m.name,
+                                "user": user.get("name") or user.get("handle") or "",
+                                "text": c.get("content") or "",
+                                "time": c.get("createTime") or "",
+                            }
+                        )
+                    _COMMENT_CACHE[mid] = (m.comments, rows)
+                    out.extend(rows)
         out.sort(key=lambda c: c.get("time") or "", reverse=True)
-        return out[:keep]
+        return out[:keep], not deferred
 
     async def _last_30_days(self) -> dict[str, Any] | None:
         build_id, _ = await self._get_build_id()
@@ -330,10 +391,10 @@ class MakerWorldClient:
         url = f"{BASE}/en/@{self.handle}"
         async with _session(30.0) as client:
             r = await LIMITER.get(client, endpoint="profile", core=True, url=url, headers=self._headers("text/html"))
-            if r.status_code in (401, 403):
-                raise AuthError(f"Profile HTTP {r.status_code}")
             if "/sign" in str(r.url) or "/login" in str(r.url):
                 raise AuthError("Redirected to login")
+            if r.status_code in (401, 403):
+                raise RuntimeError(f"Profile HTTP {r.status_code}")
             r.raise_for_status()
             html = r.text
 
@@ -512,6 +573,13 @@ _BUILD: tuple[str, str, float] = ("", "", 0.0)
 def _clear_build() -> None:
     global _BUILD
     _BUILD = ("", "", 0.0)
+
+
+def _without_cf_bm(cookie: str) -> str:
+    """Drop Cloudflare's bot cookie from the browser's set. It lasts 30 minutes,
+    so the copy the extension sent goes stale long before the next push, and a
+    stale one only makes Cloudflare more suspicious of the poller."""
+    return "; ".join(p.strip() for p in cookie.split(";") if p.strip() and p.split("=", 1)[0].strip() != "__cf_bm")
 
 
 def _num(v: Any) -> float:
