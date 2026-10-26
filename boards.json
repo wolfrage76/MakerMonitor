@@ -1,0 +1,7 @@
+{
+  "version": "0.4.28",
+  "commit": "fc19288",
+  "boards": [
+    { "env": "crowpanel_70", "name": "Elecrow CrowPanel 7.0\"", "manifest": "manifest-crowpanel_70.json" }
+  ]
+}
