@@ -1,7 +1,8 @@
 {
   "version": "0.4.28",
-  "commit": "fc19288",
+  "commit": "4669075",
   "boards": [
-    { "env": "crowpanel_70", "name": "Elecrow CrowPanel 7.0\"", "manifest": "manifest-crowpanel_70.json" }
+    { "env": "crowpanel_70", "name": "Elecrow CrowPanel 7.0\"", "manifest": "manifest-crowpanel_70.json" },
+    { "env": "waveshare_70", "name": "Waveshare ESP32-S3-Touch-LCD-7", "manifest": "manifest-waveshare_70.json" }
   ]
 }
