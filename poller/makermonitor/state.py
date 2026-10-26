@@ -1,11 +1,28 @@
 from __future__ import annotations
 
 import json
+import logging
+import os
 import threading
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
+
+log = logging.getLogger(__name__)
+
+
+def atomic_write_text(path: Path, text: str, mode: int | None = None) -> None:
+    """Write via a sibling temp file + rename so a crash never leaves a truncated JSON file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.tmp")
+    with open(tmp, "w", encoding="utf-8") as fh:
+        fh.write(text)
+        fh.flush()
+        os.fsync(fh.fileno())
+    if mode is not None:
+        os.chmod(tmp, mode)
+    os.replace(tmp, path)
 
 
 @dataclass
@@ -111,8 +128,8 @@ class Store:
             try:
                 data = json.loads(self.snapshot_path.read_text())
                 self.status.last_snapshot = Snapshot.from_dict(data)
-            except json.JSONDecodeError:
-                pass
+            except json.JSONDecodeError as exc:
+                log.warning("Could not parse %s (%s); starting with empty snapshot", self.snapshot_path, exc)
 
     def set_cookie(self, cookie: str) -> bool:
         """Returns True if cookie content changed."""
@@ -122,8 +139,7 @@ class Store:
             if not cookie:
                 return False
             self.cookie = cookie
-            self.cookie_path.write_text(cookie)
-            self.cookie_path.chmod(0o600)
+            atomic_write_text(self.cookie_path, cookie, mode=0o600)
             self.status.cookie_present = True
             self.status.cookie_updated_at = time.time()
             return changed
@@ -135,7 +151,7 @@ class Store:
     def save_snapshot(self, snap: Snapshot) -> None:
         with self._lock:
             self.status.last_snapshot = snap
-            self.snapshot_path.write_text(json.dumps(snap.to_dict(), indent=2))
+            atomic_write_text(self.snapshot_path, json.dumps(snap.to_dict(), indent=2))
 
     @property
     def history_path(self) -> Path:
@@ -168,7 +184,7 @@ class Store:
             cutoff = entry["t"] - window_sec
             older = [h for h in hist if h["t"] <= cutoff]
             hist = older[-1:] + [h for h in hist if h["t"] > cutoff]
-            self.history_path.write_text(json.dumps(hist))
+            atomic_write_text(self.history_path, json.dumps(hist))
             return hist[0]
 
     def public_status(self) -> dict[str, Any]:

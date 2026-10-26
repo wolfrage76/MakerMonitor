@@ -16,15 +16,17 @@ from typing import Any
 
 import httpx
 
+from .state import atomic_write_text
+
 log = logging.getLogger(__name__)
 
 RECHECK_SEC = 6 * 3600
 
 
-async def detect(base: str, timeout: float = 4.0) -> dict[str, Any] | None:
+async def detect(base: str, timeout: float = 3.5) -> dict[str, Any] | None:
     """{"type": "color" | "eink", "board", "fw"} or None when nothing answers."""
     try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(timeout, connect=1.5)) as client:
             try:
                 r = await client.get(f"{base}/v2/settings")
                 if r.status_code == 200:
@@ -52,7 +54,7 @@ class PanelDirectory:
 
     def _save(self) -> None:
         try:
-            self.path.write_text(json.dumps(self.known))
+            atomic_write_text(self.path, json.dumps(self.known))
         except OSError as exc:
             log.warning("panels: could not save %s: %s", self.path, exc)
 

@@ -10,13 +10,16 @@ and a short event feed. Persisted to data/daily.json.
 from __future__ import annotations
 
 import json
+import logging
 import threading
 import time
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
-from .state import Snapshot
+from .state import Snapshot, atomic_write_text
+
+log = logging.getLogger(__name__)
 
 STATS = ("boosts", "likes", "collects", "downloads", "prints")
 MODEL_KEYS = {"boosts": "boosts", "likes": "likes", "collects": "collects",
@@ -66,11 +69,14 @@ class DayTracker:
         self._lock = threading.RLock()
         try:
             self.d: dict[str, Any] = json.loads(self.path.read_text())
-        except (FileNotFoundError, json.JSONDecodeError):
+        except FileNotFoundError:
+            self.d = {}
+        except json.JSONDecodeError as exc:
+            log.warning("Could not parse %s (%s); starting with empty day state", self.path, exc)
             self.d = {}
 
     def _save(self) -> None:
-        self.path.write_text(json.dumps(self.d))
+        atomic_write_text(self.path, json.dumps(self.d))
 
     def update(self, snap: Snapshot, now: float | None = None) -> None:
         """Fold one successful poll into the day state."""

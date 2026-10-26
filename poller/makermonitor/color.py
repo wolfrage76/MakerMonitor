@@ -138,7 +138,7 @@ class ColorPanelClient:
 
     async def settings(self) -> dict[str, Any] | None:
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(3.5, connect=1.5)) as client:
                 r = await client.get(f"{self.base_url}/v2/settings")
                 if r.status_code == 200:
                     return r.json()
@@ -154,7 +154,7 @@ class ColorPanelClient:
 
     async def _post(self, path: str, body: dict[str, Any]) -> bool:
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(self.timeout, connect=2.0)) as client:
                 r = await client.post(f"{self.base_url}{path}", json=body)
                 if r.status_code >= 400:
                     log.warning("Color panel %s -> %s", path, r.status_code)

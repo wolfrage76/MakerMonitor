@@ -25,6 +25,8 @@ from collections import deque
 from pathlib import Path
 from typing import Any
 
+from .state import atomic_write_text
+
 log = logging.getLogger(__name__)
 
 MIN_GAP = 3.0          # seconds between requests
@@ -70,7 +72,7 @@ class Limiter:
         if not self._path:
             return
         try:
-            self._path.write_text(json.dumps({"sent": list(self._sent), "backoff": self.backoff}))
+            atomic_write_text(self._path, json.dumps({"sent": list(self._sent), "backoff": self.backoff}))
         except OSError:
             pass
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -17,16 +18,21 @@ class PanelClient:
     def __init__(self, base_url: str, timeout: float = 10.0) -> None:
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
+        self.up = True
 
     async def ping(self) -> bool:
         if not self.base_url:
+            self.up = False
             return False
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(3.5, connect=1.5)) as client:
                 r = await client.get(f"{self.base_url}/ping")
-                return r.status_code == 200 and r.text.strip() == "OK"
+                self.up = r.status_code == 200 and r.text.strip() == "OK"
+                return self.up
         except httpx.HTTPError as exc:
-            log.warning("Panel ping failed: %s", exc)
+            if self.up:
+                log.warning("Panel ping failed (%s): %s", self.base_url, exc)
+            self.up = False
             return False
 
     async def sync(self, snap: Snapshot) -> bool:
@@ -49,7 +55,7 @@ class PanelClient:
         if not self.base_url:
             return None
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(3.5, connect=1.5)) as client:
                 r = await client.get(f"{self.base_url}/v2/settings")
                 if r.status_code == 200:
                     return r.json()
@@ -70,7 +76,7 @@ class PanelClient:
         if not self.base_url:
             return False
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(self.timeout, connect=2.5)) as client:
                 r = await client.post(f"{self.base_url}{path}", json=body)
                 if r.status_code >= 400:
                     log.warning("Panel %s -> %s %s", path, r.status_code, r.text[:200])
@@ -224,18 +230,36 @@ class PanelGroup:
     def base_url(self) -> str:
         return ", ".join(c.base_url for c in self.clients)
 
+    def _active(self) -> list[PanelClient]:
+        return [c for c in self.clients if c.up]
+
     async def ping(self) -> bool:
-        return any([await c.ping() for c in self.clients])
+        if not self.clients:
+            return False
+        res = await asyncio.gather(*(c.ping() for c in self.clients))
+        return any(res)
 
     async def sync(self, snap: Snapshot) -> bool:
-        return bool(self.clients) and all([await c.sync(snap) for c in self.clients])
+        active = self._active()
+        if not active:
+            return False
+        return all(await asyncio.gather(*(c.sync(snap) for c in active)))
 
     async def notify(self, payload: dict[str, Any]) -> bool:
-        return bool(self.clients) and all([await c.notify(payload) for c in self.clients])
+        active = self._active()
+        if not active:
+            return False
+        return all(await asyncio.gather(*(c.notify(payload) for c in active)))
 
     async def pages(self, payload: dict[str, Any]) -> bool:
-        return bool(self.clients) and all([await c.pages(payload) for c in self.clients])
+        active = self._active()
+        if not active:
+            return False
+        return all(await asyncio.gather(*(c.pages(payload) for c in active)))
 
     async def status(self, auth: str, message: str, last_poll_age_sec: int | None = None) -> bool:
-        return bool(self.clients) and all([await c.status(auth, message, last_poll_age_sec) for c in self.clients])
+        active = self._active()
+        if not active:
+            return False
+        return all(await asyncio.gather(*(c.status(auth, message, last_poll_age_sec) for c in active)))
 
