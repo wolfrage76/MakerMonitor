@@ -38,3 +38,6 @@ firmware-color/CMakeLists.txt
 .cursor/
 *.swp
 *~
+
+# Browser flasher output (tools/build_flasher.sh)
+flasher/dist/
