@@ -169,9 +169,10 @@ class AppContext:
                 h["err"] = "rejected (401/403)" if r == "auth" else r
         if not cookie:
             self.auth_state = "none"
-        # Points and models only answer with a valid cookie, but single requests
-        # get refused now and then; data-overview (reach) is often refused on
-        # its own, so it doesn't count. Expired = AUTH_REFUSALS refused polls in a row.
+        # The model list only answers with a valid cookie, but single requests get
+        # refused now and then; point-bill and data-overview (reach) are often
+        # refused on their own, so they don't count. Expired = AUTH_REFUSALS
+        # refused polls in a row.
         elif self._auth_fails >= AUTH_REFUSALS:
             self.auth_state = "expired"
         elif self._auth_fails == 0 and client.results.get("models") == "ok":
@@ -578,8 +579,10 @@ class AppContext:
             _carry_ratings(prev, snap)
             store.status.auth_ok = bool(cookie)
             store.status.last_poll_ok = True
-            # A poll whose points or model list was refused still counts as refused.
-            refused = any(client.results.get(k) == "auth" for k in ("models", "points"))
+            # A model list that answered proves the cookie works, so it resets the
+            # count; point-bill is refused on its own like reach and doesn't count.
+            # Only a refused model list (profile fallback) counts as refused.
+            refused = client.results.get("models") == "auth"
             self._auth_fails = self._auth_fails + 1 if refused else 0
             if refused and self._auth_fails < AUTH_REFUSALS:
                 log.warning("poll partly refused (%d of %d in a row before the cookie counts as expired)",
