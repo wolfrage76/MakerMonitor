@@ -19,7 +19,7 @@ void display_update_mode(bool on);
 bool display_is_suspended();
 // True when the panel can keep drawing while flash is written without XIP:
 // a panel with its own GRAM, fed by polling transfers that need no ISR
-// (the Guition 3.5"). Updates then show their progress screen.
+// (the Guition 3.5", the Waveshare 2"). Updates then show their progress screen.
 bool display_survives_flash();
 
 // Page-slide compositor (unrotated panels only). Between begin and end LVGL's

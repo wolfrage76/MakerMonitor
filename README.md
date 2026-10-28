@@ -16,7 +16,7 @@ The **poller** is the heart of it. Everything else is optional, so start small a
 |---|---|---|
 | **1. Web dashboard** | The poller | A dashboard on your phone or desktop: today's numbers, 7/30-day totals, every model in a sortable table, creator insights, followers, best times, health, and a Settings tab |
 | **2. Notifications** | The poller | Messages in Discord, Pushover, ntfy, Telegram, Home Assistant, Pushbullet, Apprise (Slack, Matrix, Gotify and 100+ more) or any webhook. No hardware at all |
-| **3. Color panel** | The poller + an Elecrow CrowPanel 7", 5" or 4.3", a Waveshare ESP32-S3-Touch-LCD-7, or a Guition JC3248W535 3.5" | A desk display with live banners and chimes as things happen, swipeable pages and touch controls |
+| **3. Color panel** | The poller + an Elecrow CrowPanel 7", 5" or 4.3", a Waveshare ESP32-S3-Touch-LCD-7 or ESP32-S3-Touch-LCD-2, or a Guition JC3248W535 3.5" | A desk display with live banners and chimes as things happen, swipeable pages and touch controls |
 | **4. E-ink panel** | The poller + an Elecrow CrowPanel 2.13" e-paper | A low-power glanceable summary (this firmware is on hold, so it doesn't get the newer creator pages) |
 | **5. Mix and match** | Any of the above | The dashboard is always there; add channels and panels side by side, several panels if you like |
 
@@ -109,14 +109,14 @@ Add channels under `notifications:` in `config.yaml` (or in the dashboard's Sett
 
 ### 5. Optional: a panel
 
-The quickest way onto a CrowPanel 7", a Waveshare ESP32-S3-Touch-LCD-7 or a Guition JC3248W535 3.5" is the **[web flasher](https://wolfrage76.github.io/MakerMonitor/)**: plug the panel in over USB, open the page in Chrome or Edge, pick the board and press **Connect and install**.
+The quickest way onto a CrowPanel 7", a Waveshare ESP32-S3-Touch-LCD-7 or ESP32-S3-Touch-LCD-2, or a Guition JC3248W535 3.5" is the **[web flasher](https://wolfrage76.github.io/MakerMonitor/)**: plug the panel in over USB, open the page in Chrome or Edge, pick the board and press **Connect and install**.
 
 Or build and flash it with PlatformIO:
 
 ```bash
 cd firmware-color
 rm -f sdkconfig.defaults
-pio run -e crowpanel_70 -t upload      # or waveshare_70, jc3248w535, crowpanel_50, crowpanel_43
+pio run -e crowpanel_70 -t upload      # or waveshare_70, ws_lcd2, jc3248w535, crowpanel_50, crowpanel_43
 ```
 
 Join it to your Wi-Fi on the screen. Until the poller knows about it, the panel shows a **Connect the poller** page with the line to add to `config.yaml` (`panels: ["makermonitor.local"]`), or add it in the dashboard's Settings tab. Build notes, controls and the full feature list are in [`firmware-color/README.md`](firmware-color/README.md); the e-ink panel is in [`firmware-eink/README.md`](firmware-eink/README.md).
@@ -153,7 +153,7 @@ From the 7" color panel (captured with `tools/capture_screens.sh`; the full set 
 |---|---|
 | [`poller/`](poller/) | The Python poller: MakerWorld fetching, the dashboard and Settings tab, notifications, panel pushes. See also [`NOTIFICATIONS.md`](poller/NOTIFICATIONS.md) |
 | [`extension/`](extension/) | The browser extension that hands your MakerWorld cookie to the poller |
-| [`firmware-color/`](firmware-color/) | Firmware for the color panels (CrowPanel 7" / 5" / 4.3", Waveshare ESP32-S3-Touch-LCD-7, Guition JC3248W535 3.5") |
+| [`firmware-color/`](firmware-color/) | Firmware for the color panels (CrowPanel 7" / 5" / 4.3", Waveshare ESP32-S3-Touch-LCD-7 and -LCD-2, Guition JC3248W535 3.5") |
 | [`firmware-eink/`](firmware-eink/) | Firmware for the CrowPanel 2.13" e-paper panel (on hold) |
 | [`flasher/`](flasher/) | The [browser flasher](https://wolfrage76.github.io/MakerMonitor/) and how to rebuild and publish it |
 | [`tools/`](tools/) | `capture_screens.sh`, which screenshots every page of a running color panel, and the flasher build and publish scripts |

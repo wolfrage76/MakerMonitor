@@ -5,7 +5,7 @@
 #   tools/build_flasher.sh [git-ref] [env ...]
 #
 # Builds from a clean export of git-ref (default HEAD), so uncommitted work in
-# firmware-color/ never ends up in a published image. Default envs: crowpanel_70 waveshare_70 jc3248w535.
+# firmware-color/ never ends up in a published image. Default envs: crowpanel_70 waveshare_70 jc3248w535 ws_lcd2.
 # Each board's OTA app image (the asset name from its board header) also goes
 # to flasher/release/ for the GitHub release.
 #
@@ -20,7 +20,7 @@ REPO="$(cd "$(dirname "$0")/.." && pwd)"
 REF="${1:-HEAD}"
 shift || true
 ENVS=("$@")
-[ ${#ENVS[@]} -eq 0 ] && ENVS=(crowpanel_70 waveshare_70 jc3248w535)
+[ ${#ENVS[@]} -eq 0 ] && ENVS=(crowpanel_70 waveshare_70 jc3248w535 ws_lcd2)
 
 PIO="${PIO:-$HOME/.platformio/penv/bin/pio}"
 ESPTOOL="${ESPTOOL:-$HOME/.platformio/penv/bin/esptool.py}"
@@ -34,6 +34,7 @@ board_name() {
     crowpanel_70) echo 'Elecrow CrowPanel 7.0"' ;;
     waveshare_70) echo 'Waveshare ESP32-S3-Touch-LCD-7' ;;
     jc3248w535) echo 'Guition JC3248W535 3.5"' ;;
+    ws_lcd2) echo 'Waveshare ESP32-S3-Touch-LCD-2' ;;
     *) echo "$1" ;;
   esac
 }
@@ -59,9 +60,10 @@ for env in "${ENVS[@]}"; do
   build="$SRC/.pio/build/$env"
 
   # A build linked against the stock core crashes on its first flash write.
-  # The Guition's QSPI panel has no RGB ISR; its speaker's I2S one must be in IRAM.
+  # The Guition's QSPI and the Waveshare 2"'s SPI panels have no RGB ISR; the
+  # Guition's speaker I2S one must be in IRAM.
   want=(gdma_start gdma_reset gdma_append gdma_hal_append gdma_default_tx_isr)
-  [ "$env" = jc3248w535 ] || want+=(rgb_lcd_default_isr_handler)
+  case "$env" in jc3248w535|ws_lcd2) ;; *) want+=(rgb_lcd_default_isr_handler) ;; esac
   case "$env" in crowpanel_70|jc3248w535) want+=(i2s_dma_tx_callback) ;; esac
   syms="$("$NM" "$build/firmware.elf")"
   for s in "${want[@]}"; do
