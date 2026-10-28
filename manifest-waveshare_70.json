@@ -1,8 +1,8 @@
 {
   "name": "MakerMonitor for the Waveshare ESP32-S3-Touch-LCD-7",
-  "version": "0.4.34",
+  "version": "0.4.52",
   "new_install_prompt_erase": true,
   "builds": [
-    { "chipFamily": "ESP32-S3", "parts": [{ "path": "firmware/makermonitor-waveshare-70-0.4.34.bin", "offset": 0 }] }
+    { "chipFamily": "ESP32-S3", "parts": [{ "path": "firmware/makermonitor-waveshare-70-0.4.52.bin", "offset": 0 }] }
   ]
 }
