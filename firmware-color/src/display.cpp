@@ -2,7 +2,8 @@
 // Waveshare 3.16" first needs its ST7701 init over bit-banged 3-wire SPI and
 // is rotated to 820x320 landscape; the CrowPanels are landscape already. The
 // Guition 3.5" is a QSPI panel with its own GRAM instead: frames are kept in
-// a PSRAM framebuffer and sent to the panel whole.
+// a PSRAM framebuffer and sent to the panel whole. The Waveshare 2" ST7789
+// also keeps its picture; it takes dirty windows over plain SPI.
 #include "display.h"
 
 #include <Arduino.h>
@@ -16,7 +17,7 @@
 #if LCD_CH422G
 #include <Wire.h>
 #endif
-#if LCD_QSPI_AXS15231B
+#if LCD_HAS_GRAM
 #include <driver/spi_master.h>
 #endif
 
@@ -287,6 +288,112 @@ static void axsInit() {
 }
 #endif
 
+#if LCD_SPI_ST7789
+// ---- ST7789 over 4-wire SPI --------------------------------------------------
+// D/C and CS by hand, polling transfers only (nothing has to stay out of
+// flash). The panel turns itself to landscape (MADCTL MV) and honours
+// CASET/RASET, so a flush sends just its window from the framebuffer,
+// byte-swapped on the way.
+
+static spi_device_handle_t lspi = nullptr;
+static uint16_t* txBuf[2] = {nullptr, nullptr};
+static const int TX_PX = 16 * LCD_NATIVE_W;  // pixels per DMA chunk
+static uint16_t* stFb = nullptr;
+
+static void stSend(bool data, const void* buf, size_t len) {
+  digitalWrite(LCD_PIN_DC, data);
+  spi_transaction_t t = {};
+  t.length = len * 8;
+  if (len <= 4) {
+    t.flags = SPI_TRANS_USE_TXDATA;
+    memcpy(t.tx_data, buf, len);
+  } else {
+    t.tx_buffer = buf;
+  }
+  spi_device_polling_transmit(lspi, &t);
+}
+
+static void stCmd(uint8_t cmd, const uint8_t* data = nullptr, size_t len = 0) {
+  digitalWrite(LCD_PIN_CS, LOW);
+  stSend(false, &cmd, 1);
+  if (len) stSend(true, data, len);
+  digitalWrite(LCD_PIN_CS, HIGH);
+}
+
+static void stPush(int x1, int y1, int x2, int y2) {
+  if (!lspi || displaySuspended) return;
+  const uint8_t ca[4] = {(uint8_t)(x1 >> 8), (uint8_t)x1, (uint8_t)(x2 >> 8), (uint8_t)x2};
+  const uint8_t ra[4] = {(uint8_t)(y1 >> 8), (uint8_t)y1, (uint8_t)(y2 >> 8), (uint8_t)y2};
+  stCmd(0x2A, ca, 4);
+  stCmd(0x2B, ra, 4);
+  const int w = x2 - x1 + 1, rows = max(1, TX_PX / w);
+  static spi_transaction_t t[2];
+  digitalWrite(LCD_PIN_CS, LOW);
+  const uint8_t ramwr = 0x2C;
+  stSend(false, &ramwr, 1);
+  digitalWrite(LCD_PIN_DC, HIGH);
+  int n = 0;
+  for (int y = y1; y <= y2; y += rows, n++) {
+    const int h = min(rows, y2 - y + 1);
+    uint16_t* buf = txBuf[n & 1];
+    for (int r = 0; r < h; r++) {
+      const uint16_t* src = stFb + (y + r) * LCD_NATIVE_W + x1;
+      uint16_t* dst = buf + r * w;
+      for (int i = 0; i < w; i++) dst[i] = __builtin_bswap16(src[i]);
+    }
+    if (n) spi_device_polling_end(lspi, portMAX_DELAY);
+    t[n & 1] = {};
+    t[n & 1].tx_buffer = buf;
+    t[n & 1].length = h * w * 16;
+    spi_device_polling_start(lspi, &t[n & 1], portMAX_DELAY);
+  }
+  if (n) spi_device_polling_end(lspi, portMAX_DELAY);
+  digitalWrite(LCD_PIN_CS, HIGH);
+}
+
+static void stPushAll() { stPush(0, 0, LCD_NATIVE_W - 1, LCD_NATIVE_H - 1); }
+
+static void stInit() {
+  pinMode(LCD_PIN_CS, OUTPUT);
+  pinMode(LCD_PIN_DC, OUTPUT);
+  digitalWrite(LCD_PIN_CS, HIGH);
+  pinMode(LCD_PIN_RST, OUTPUT);
+  digitalWrite(LCD_PIN_RST, LOW);
+  delay(10);
+  digitalWrite(LCD_PIN_RST, HIGH);
+  delay(120);
+  spi_bus_config_t bus = {};
+  bus.mosi_io_num = LCD_PIN_MOSI;
+  bus.miso_io_num = -1;
+  bus.sclk_io_num = LCD_PIN_SCK;
+  bus.quadwp_io_num = bus.quadhd_io_num = -1;
+  bus.max_transfer_sz = TX_PX * 2;
+  ESP_ERROR_CHECK(spi_bus_initialize(SPI2_HOST, &bus, SPI_DMA_CH_AUTO));
+  spi_device_interface_config_t dev = {};
+  dev.mode = 0;
+  dev.clock_speed_hz = LCD_SPI_HZ;
+  dev.spics_io_num = -1;
+  dev.queue_size = 1;
+  ESP_ERROR_CHECK(spi_bus_add_device(SPI2_HOST, &dev, &lspi));
+  spi_device_acquire_bus(lspi, portMAX_DELAY);
+  for (auto& b : txBuf) b = (uint16_t*)heap_caps_aligned_alloc(16, TX_PX * 2, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
+
+  stCmd(0x01);  // SWRESET
+  delay(150);
+  stCmd(0x11);  // SLPOUT
+  delay(120);
+  const uint8_t colmod = 0x55;  // RGB565
+  stCmd(0x3A, &colmod, 1);
+  const uint8_t madctl = LCD_FLIP ? 0xA0 : 0x60;  // MV + MY or MX: landscape
+  stCmd(0x36, &madctl, 1);
+  stCmd(0x21);  // INVON: IPS glass
+  stCmd(0x13);  // NORON
+  delay(10);
+  stCmd(0x29);  // DISPON
+  delay(20);
+}
+#endif
+
 // ---- RGB panel + LVGL ------------------------------------------------------
 
 static bool composing = false;
@@ -295,6 +402,8 @@ static bool composing = false;
 static bool panelLive() {
 #if LCD_QSPI_AXS15231B
   return qspiFb != nullptr;
+#elif LCD_SPI_ST7789
+  return stFb != nullptr;
 #else
   return panel != nullptr;
 #endif
@@ -331,6 +440,13 @@ static void flushCb(lv_disp_drv_t* drv, const lv_area_t* a, lv_color_t* px) {
       memcpy(qspiFb + y * LCD_NATIVE_W + a->x1, (const uint16_t*)px + (y - a->y1) * w, w * 2);
     if (lv_disp_flush_is_last(drv)) axsPush();
   }
+#elif LCD_SPI_ST7789
+  if (stFb && !displaySuspended && !composing) {
+    const int w = a->x2 - a->x1 + 1;
+    for (int y = a->y1; y <= a->y2; y++)
+      memcpy(stFb + y * LCD_NATIVE_W + a->x1, (const uint16_t*)px + (y - a->y1) * w, w * 2);
+    stPush(a->x1, a->y1, a->x2, a->y2);
+  }
 #else
   if (panel && !displaySuspended && !composing)
     esp_lcd_panel_draw_bitmap(panel, a->x1, a->y1, a->x2 + 1, a->y2 + 1, px);
@@ -351,12 +467,12 @@ void display_suspend() {
 
 bool display_is_suspended() { return displaySuspended; }
 
-bool display_survives_flash() { return LCD_QSPI_AXS15231B; }
+bool display_survives_flash() { return LCD_HAS_GRAM; }
 
 void deviceLogf(const char* fmt, ...);
 
 void display_update_mode(bool on) {
-#if LCD_QSPI_AXS15231B
+#if LCD_HAS_GRAM
   (void)on;  // no pixel clock: the panel refreshes from its own GRAM
 #else
   if (!panel) return;
@@ -409,6 +525,8 @@ void display_compose(const uint16_t* nb, int dx, const lv_area_t* keep, int nkee
   }
 #if LCD_QSPI_AXS15231B
   axsPush();
+#elif LCD_SPI_ST7789
+  stPushAll();
 #else
   // The RGB DMA reads PSRAM directly; push the CPU cache out.
   esp_cache_msync(fb, W * H * 2, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
@@ -465,6 +583,12 @@ void display_init() {
   void* fbp = qspiFb;
   fbAny = qspiFb;
   axsPush();  // clear whatever the panel's GRAM held
+#elif LCD_SPI_ST7789
+  stInit();
+  stFb = (uint16_t*)heap_caps_calloc(LCD_NATIVE_W * LCD_NATIVE_H, 2, MALLOC_CAP_SPIRAM);
+  void* fbp = stFb;
+  fbAny = stFb;
+  stPushAll();  // clear whatever the panel's GRAM held
 #else
   esp_lcd_rgb_panel_config_t cfg = {};
   cfg.clk_src = LCD_CLK_SRC_DEFAULT;

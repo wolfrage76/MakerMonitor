@@ -1,7 +1,8 @@
 // Touchscreen drivers for the CrowPanels, read by LVGL as a pointer device:
 // GT911 (capacitive, I2C) on the 5" and 7", XPT2046 (resistive, SPI) on the
 // 4.3", the AXS15231B's own touch (I2C) on the Guition 3.5". ui.cpp turns
-// swipes, taps and long presses into navigation.
+// swipes, taps and long presses into navigation. The Waveshare 2" has a
+// CST816D (I2C).
 #include "touch.h"
 
 #include <Arduino.h>
@@ -235,6 +236,65 @@ static bool hwInit() {
   axsFound = Wire.endTransmission() == 0;
   Serial.printf("AXS15231B touch %s (0x%02X)\n", axsFound ? "found" : "not found", TOUCH_ADDR);
   return axsFound;
+}
+
+#elif TOUCH_CST816
+#include <Wire.h>
+
+// CST816D: finger count at 0x02, then x and y (12 bits each, event in the
+// top 2 bits of x high) in portrait panel coordinates. Auto-sleep is turned
+// off at start-up so the chip keeps answering between touches.
+//  - Mid-swipe the chip now and then reports no finger for one read. Only a
+//    lift event or CST_MISSES empty reads in a row release, so a swipe isn't
+//    cut into taps; a failed read counts as empty, so a press can't stick.
+//  - Polled at the chip's own report rate: a read that repeats the last
+//    point looks to LVGL like the finger stopped, which restarts its gesture
+//    count (same as the AXS15231B above).
+#define TOUCH_READ_MS 20
+static const int CST_MISSES = 3;
+static bool cstFound = false;
+
+static bool cstWrite(uint8_t reg, uint8_t val) {
+  Wire.beginTransmission(TOUCH_ADDR);
+  Wire.write(reg);
+  Wire.write(val);
+  return Wire.endTransmission() == 0;
+}
+
+static void readCb(lv_indev_drv_t*, lv_indev_data_t* d) {
+  static lv_indev_data_t last = {};
+  static int misses = 0;
+  *d = last;
+  uint8_t b[5];
+  bool got = false;
+  Wire.beginTransmission(TOUCH_ADDR);
+  Wire.write(0x02);
+  if (Wire.endTransmission(false) == 0 && Wire.requestFrom((uint8_t)TOUCH_ADDR, (uint8_t)5) == 5) {
+    for (uint8_t& v : b) v = Wire.read();
+    got = true;
+  }
+  const int rx = ((b[1] & 0x0F) << 8) | b[2], ry = ((b[3] & 0x0F) << 8) | b[4];
+  const bool lift = got && (b[1] >> 6) == 1;
+  if (got && !lift && (b[0] & 0x0F) && rx < LCD_NATIVE_H && ry < LCD_NATIVE_W) {
+    misses = 0;
+    mapPoint(rx, ry, d);
+    d->state = LV_INDEV_STATE_PR;
+  } else if (lift || ++misses >= CST_MISSES) {
+    d->state = LV_INDEV_STATE_REL;
+  }
+  last = *d;
+}
+
+static bool hwInit() {
+  pinMode(TOUCH_INT, INPUT_PULLUP);
+  Wire.begin(TOUCH_SDA, TOUCH_SCL, 400000);
+  Wire.setTimeOut(10);  // a stuck read must not stall the UI loop
+  for (int i = 0; i < 5 && !cstFound; i++) {
+    cstFound = cstWrite(0xFE, 0x01);  // DisAutoSleep
+    if (!cstFound) delay(20);
+  }
+  Serial.printf("CST816 touch %s (0x%02X)\n", cstFound ? "found" : "not found", TOUCH_ADDR);
+  return cstFound;
 }
 
 #elif TOUCH_XPT2046

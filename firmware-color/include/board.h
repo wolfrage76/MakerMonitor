@@ -16,6 +16,8 @@
 #include "boards/waveshare_70.h"
 #elif defined(BOARD_JC3248W535)
 #include "boards/jc3248w535.h"
+#elif defined(BOARD_WS_LCD2)
+#include "boards/ws_lcd2.h"
 #else
 #include "boards/ws316.h"
 #endif
@@ -48,11 +50,20 @@
 #ifndef LCD_QSPI_AXS15231B
 #define LCD_QSPI_AXS15231B 0
 #endif
+#ifndef LCD_SPI_ST7789
+#define LCD_SPI_ST7789 0
+#endif
+// Panels that keep their own picture: frames go from a PSRAM framebuffer
+// over SPI, and the screen survives flash writes.
+#define LCD_HAS_GRAM (LCD_QSPI_AXS15231B || LCD_SPI_ST7789)
 #ifndef LCD_CH422G
 #define LCD_CH422G 0
 #endif
 #ifndef BAT_ADC_PIN
 #define BAT_ADC_PIN -1
+#endif
+#ifndef BAT_DIVIDER
+#define BAT_DIVIDER 2
 #endif
 #ifndef TOUCH_FLIP_X
 #define TOUCH_FLIP_X 0

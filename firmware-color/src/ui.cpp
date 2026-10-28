@@ -49,6 +49,7 @@ static bool COMPACT = false;  // 480x272-class panels
 static bool TALL = false;     // 800x480-class panels (5" and 7")
 static bool ROOMY = false;    // compact width with ~320 px of height (3.5")
 static bool DENSE = false;    // same pixels, smaller glass (5": 187 ppi vs 7": 133)
+static bool TINY = false;     // compact under 400 px wide (2": 320x240)
 static int TOUCH_PX = 36;     // ~7 mm touch target at this panel's density
 
 // Named by their size on the large panels; compact panels step each one down.
@@ -60,6 +61,7 @@ static void layout() {
   COMPACT = W < 640;
   TALL = !COMPACT && H >= 400;
   ROOMY = COMPACT && H >= 300;
+  TINY = W < 400;
   DENSE = TALL && BOARD_PPI >= 170;
   TOUCH_PX = constrain((int)(7.0f * BOARD_PPI / 25.4f + 0.5f), 32, 52);
   PAD = COMPACT ? 8 : 16;
@@ -318,7 +320,7 @@ static Header header(lv_obj_t* root, const char* title, const char* sub) {
   lv_obj_set_pos(left, PAD, COMPACT ? 9 : (TALL ? 16 : 14));
   box(left, 0, 0, 3, lineH(tf) - 4, C_ACCENT, 1);
   h.title = label(left, tf, C_ACCENT, 0, 0, title);
-  lv_obj_set_style_text_letter_space(h.title, 3, 0);
+  lv_obj_set_style_text_letter_space(h.title, TINY ? 1 : 3, 0);
   // Hairline under the header, fading out to the right.
   lv_obj_t* rule = box(root, PAD, TOP - (COMPACT ? 5 : 8), CW, 1, C_ACCENT);
   lv_obj_set_style_bg_grad_color(rule, C(C_BG), 0);
@@ -326,13 +328,27 @@ static Header header(lv_obj_t* root, const char* title, const char* sub) {
   lv_obj_set_style_bg_opa(rule, LV_OPA_70, 0);
   h.sub = label(left, F14, C_MUTED, 0, 0, sub);
   // Keep the subtitle from running under the right-hand cluster.
-  dotLabel(h.sub, COMPACT ? 168 : (W * 2) / 5);
+  if (TINY) {
+    // Whatever the title leaves before the hamburger.
+    const int tw = lv_txt_get_width(title, strlen(title), tf, 1, LV_TEXT_FLAG_NONE);
+    dotLabel(h.sub, max(0, CW - 3 - 20 - tw - HB_W - 8));
+  } else {
+    dotLabel(h.sub, COMPACT ? 168 : (W * 2) / 5);
+  }
   h.right = row(root, 14);
   lv_obj_align(h.right, LV_ALIGN_TOP_RIGHT, -PAD - HB_W - (COMPACT ? 14 : 24), COMPACT ? 7 : (TALL ? 16 : 12));
   return h;
 }
 
-static lv_obj_t* hint(Header& h, const char* txt) { return label(h.right, F14, C_MUTED, 0, 0, txt); }
+// Gesture/knob hints; the 2" header has no room, so they stay empty there.
+static lv_obj_t* hint(Header& h, const char* txt) {
+  lv_obj_t* l = label(h.right, F14, C_MUTED, 0, 0, txt);
+  if (TINY) {
+    lv_label_set_long_mode(l, LV_LABEL_LONG_CLIP);
+    lv_obj_set_width(l, 0);
+  }
+  return l;
+}
 
 static lv_obj_t* newScreen() {
   lv_obj_t* s = box(lv_scr_act(), 0, 0, W, H, C_BG2);
@@ -572,9 +588,9 @@ static void buildToday() {
   lv_area_t subA;
   lv_obj_get_coords(todayHdr.sub, &subA);
   lv_label_set_long_mode(todayHdr.sub, LV_LABEL_LONG_DOT);
-  lv_obj_set_style_max_width(todayHdr.sub, max(40, W / 2 - clockHalf - subA.x1), 0);
+  lv_obj_set_style_max_width(todayHdr.sub, TINY ? 0 : max(40, W / 2 - clockHalf - subA.x1), 0);
 
-  const int gap = COMPACT ? 6 : 9, in = COMPACT ? 8 : 12;
+  const int gap = TINY ? 4 : COMPACT ? 6 : 9, in = TINY ? 5 : COMPACT ? 8 : 12;
   TILE_STEP = (CW + gap) / NSTAT;
   TILE_W = TILE_STEP - gap;
   // Bucket count follows the tile width: aim for ~16 px bars and snap to a
@@ -627,9 +643,14 @@ static void buildToday() {
     lv_obj_set_style_border_side(t.card, LV_BORDER_SIDE_TOP, 0);
     lv_obj_set_style_border_width(t.card, 2, 0);
     lv_obj_set_style_border_color(t.card, C(COL[k]), 0);
-    if (!COMPACT) icon(t.card, k, false, 12, 12);
-    lv_obj_t* name = label(t.card, F12, C_SUB, COMPACT ? in : 38, COMPACT ? 9 : 15, COMPACT ? KIND_PLURAL[k] : KIND_UPPER[k]);
-    dotLabel(name, TILE_W - (COMPACT ? 2 * in : 44));
+    if (TINY) {
+      // Names don't fit 57 px tiles; the stat's icon does.
+      icon(t.card, k, false, in, 8);
+    } else {
+      if (!COMPACT) icon(t.card, k, false, 12, 12);
+      lv_obj_t* name = label(t.card, F12, C_SUB, COMPACT ? in : 38, COMPACT ? 9 : 15, COMPACT ? KIND_PLURAL[k] : KIND_UPPER[k]);
+      dotLabel(name, TILE_W - (COMPACT ? 2 * in : 44));
+    }
     t.today = label(t.card, F48, COL[k], in, numY, "0");
     t.yday = label(t.card, F12, C_MUTED, in, ydayY, "today");
     dotLabel(t.yday, TILE_W - 2 * in);
@@ -869,7 +890,7 @@ static void refreshToday() {
     lv_label_set_text(t.today, todayV == 0 ? "0" : a);
     if (hasY) {
       fmtSigned(a, sizeof(a), ydayV);
-      snprintf(b, sizeof(b), COMPACT ? "%s yday" : "today  /  %s yday", a);
+      snprintf(b, sizeof(b), TINY ? "y %s" : COMPACT ? "%s yday" : "today  /  %s yday", a);
     } else {
       snprintf(b, sizeof(b), "today");
     }
@@ -1025,11 +1046,14 @@ static void buildFeed() {
     f.card = card(s, PAD + col * (colW + 12), TOP + r * (rowH + gap), colW, rowH);
     f.iconBox = box(f.card, TALL ? 14 : 12, (rowH - ib) / 2, ib, ib, COLBG[0], 10);
     f.img = icon(f.iconBox, 0, TALL, (ib - (TALL ? 32 : 20)) / 2, (ib - (TALL ? 32 : 20)) / 2);
+    // Time on the action's line, so the model name gets the full width.
+    const int timeW = lv_txt_get_width("12:00 PM", 8, F14, 0, LV_TEXT_FLAG_NONE);
     f.title = label(f.card, tf, COL[0], tx, textY, "");
+    dotLabel(f.title, colW - tx - 14 - timeW - 8);
     f.model = label(f.card, mf, C_SUB, tx, textY + lineH(tf) + 4, "");
-    dotLabel(f.model, colW - tx - 70);
+    dotLabel(f.model, colW - tx - 14);
     f.time = label(f.card, F14, C_MUTED, 0, 0, "");
-    lv_obj_align(f.time, LV_ALIGN_RIGHT_MID, -14, 0);
+    lv_obj_align(f.time, LV_ALIGN_TOP_RIGHT, -14, textY + lineH(tf) - lineH(F14));
   }
   feedEmpty = label(s, F20, C_MUTED, 0, 0, "No activity yet today");
   lv_obj_align(feedEmpty, LV_ALIGN_CENTER, 0, 10);
@@ -1089,10 +1113,10 @@ static void modelPage(const TopRow* r);
 
 static void buildTop() {
   lv_obj_t* s = screens[SC_TOP] = newScreen();
-  topHdr = header(s, "TOP MODELS", COMPACT ? "" : INPUT_TOUCH ? "tap a model for detail" : "ranked by activity");
+  topHdr = header(s, TINY ? "TOP" : "TOP MODELS", COMPACT ? "" : INPUT_TOUCH ? "tap a model for detail" : "ranked by activity");
   lv_obj_add_flag(s, LV_OBJ_FLAG_EVENT_BUBBLE);  // row taps/drags reach the screen handler
   lv_obj_set_style_pad_column(topHdr.right, 6, 0);
-  const char* names[3] = {"Today", "7 days", "Lifetime"};
+  const char* names[3] = {"Today", TINY ? "7d" : "7 days", TINY ? "All" : "Lifetime"};
   for (int i = 0; i < 3; i++) {
     topChips[i] = label(topHdr.right, F14, C_MUTED, 0, 0, names[i]);
     tappable(topChips[i], topChipCb, i);
@@ -1100,11 +1124,13 @@ static void buildTop() {
   const int gap = COMPACT ? 6 : 8, rowH = (TH - 3 * gap) / 4;
   topChipN = NSTAT;
   for (int i = 0; i < NSTAT; i++) topChipKind[i] = i;
-  const int chipW = COMPACT ? 34 : (TALL ? 52 : 46), chipH = TALL ? 36 : 28, chipStep = chipW + (COMPACT ? 4 : 6);
-  const int nameX = COMPACT ? 32 : 48;
+  const int chipW = TINY ? 28 : COMPACT ? 34 : (TALL ? 52 : 46), chipH = TALL ? 36 : TINY ? 24 : 28;
+  const int chipStep = chipW + (TINY ? 2 : COMPACT ? 4 : 6);
+  const int nameX = TINY ? 24 : COMPACT ? 32 : 48;
   const lv_font_t* nf = TALL ? F20 : F16;
   const int barH = TALL ? 8 : 5;
-  TOP_BAR_W = CW - nameX - 16 - topChipN * chipStep - 10;
+  const int chipR = TINY ? 8 : 16;  // chip row's right margin
+  TOP_BAR_W = CW - nameX - chipR - topChipN * chipStep - (TINY ? 6 : 10);
   const int nameY = TALL ? (rowH - lineH(nf) - barH - 10) / 2 : (rowH - lineH(F16) - 13) / 2;
   for (int i = 0; i < 4; i++) {
     TopUi& t = topUi[i];
@@ -1116,7 +1142,7 @@ static void buildTop() {
     lv_obj_set_style_border_color(t.card, C(C_ACCENT), LV_STATE_PRESSED);
     lv_obj_add_event_cb(t.card, topRowCb, LV_EVENT_SHORT_CLICKED, (void*)(intptr_t)i);
 #endif
-    t.rank = label(t.card, F22, C_IDLE, COMPACT ? 10 : 16, (rowH - lineH(F22)) / 2, "");
+    t.rank = label(t.card, F22, C_IDLE, TINY ? 7 : COMPACT ? 10 : 16, (rowH - lineH(F22)) / 2, "");
     lv_label_set_text_fmt(t.rank, "%d", i + 1);
     t.name = label(t.card, nf, C_TXT, nameX, nameY, "");
     dotLabel(t.name, TOP_BAR_W);
@@ -1124,7 +1150,7 @@ static void buildTop() {
     t.fill = box(track, 0, 0, TOP_BAR_W, barH, C_TXT, 3);
     for (int s = 0; s < topChipN; s++) {
       int k = topChipKind[s];
-      lv_obj_t* c = box(t.card, CW - 16 - (topChipN - s) * chipStep + 6, (rowH - chipH) / 2, chipW, chipH, COLBG[k], 8);
+      lv_obj_t* c = box(t.card, CW - chipR - (topChipN - s) * chipStep + 6, (rowH - chipH) / 2, chipW, chipH, COLBG[k], TINY ? 6 : 8);
       t.chips[s] = label(c, F14, COL[k], 0, 0, "");
       lv_obj_center(t.chips[s]);
     }
@@ -1306,7 +1332,8 @@ static void refreshTrend() {
     lv_label_set_text(c.val, a);
     lv_obj_set_y(c.val, TR_BOTTOM - h - 22);
     lv_obj_set_style_text_color(c.val, C(today ? C_MUTED : C_TXT), 0);
-    lv_label_set_text(c.day, today ? "Today" : st.days[di].d);
+    // "Today" is wider than a 2" column; the muted bar marks it there.
+    lv_label_set_text(c.day, today && !TINY ? "Today" : st.days[di].d);
   }
 }
 
@@ -1319,10 +1346,11 @@ static void buildPoints() {
   lv_obj_t* s = screens[SC_POINTS] = newScreen();
   Header h = header(s, "POINTS", "");
   ptHint = hint(h, COMPACT ? "needs cookie" : "30-day stats need a MakerWorld cookie");
-  const int w1 = (CW - 20) / 3, mx = COMPACT ? 12 : (TALL ? 22 : 18);
+  const int w1 = TINY ? CW * 2 / 5 : (CW - 20) / 3, mx = TINY ? 8 : COMPACT ? 12 : (TALL ? 22 : 18);
   lv_obj_t* c1 = card(s, PAD, TOP, w1, TH);
   label(c1, F12, C_SUB, mx, TALL ? 24 : 18, "BALANCE");
-  ptBalance = label(c1, F48, C_WARN, mx, TALL ? TH / 4 : (TH - lineH(F48)) / 2, "-");
+  const lv_font_t* balF = TINY ? F40 : F48;
+  ptBalance = label(c1, balF, C_WARN, mx, TALL ? TH / 4 : (TH - lineH(balF)) / 2, "-");
   if (TALL) {
     // Fill the tall card: followers and model count under the balance.
     ptFollow = label(c1, F32, C_TXT, mx, TH / 2 + 22, "-");
@@ -1343,6 +1371,12 @@ static void buildPoints() {
     lv_obj_align(ptMonth, LV_ALIGN_TOP_RIGHT, -mx, 14);
     trackY = 22 + lineH(F40) + 16;
     legY = trackY + trackH + 16;
+  } else if (TINY) {
+    // Range over the total: side by side they collide at this width.
+    ptRange = label(m, F12, C_SUB, mx, 10, "LAST 30 DAYS");
+    ptMonth = label(m, F32, C_TXT, mx, 10 + lineH(F12) + 2, "");
+    trackY = 10 + lineH(F12) + 2 + lineH(F32) + 6;
+    legY = trackY + trackH + 10;
   } else {
     ptRange = label(m, F12, C_SUB, mx, 22, "LAST 30 DAYS");
     ptMonth = label(m, F32, C_TXT, 0, 0, "");
@@ -1355,8 +1389,10 @@ static void buildPoints() {
   ptSplitB = box(track, PT_SPLIT_W / 2, 0, PT_SPLIT_W / 2, trackH, 0x7A5B22, trackH / 2);
   box(m, mx, legY + 4, 10, 10, C_WARN, 3);
   ptLegA = label(m, F14, C_TXT, mx + 18, legY, "");
-  box(m, mx + PT_SPLIT_W / 2, legY + 4, 10, 10, 0x7A5B22, 3);
-  ptLegB = label(m, F14, C_TXT, mx + PT_SPLIT_W / 2 + 18, legY, "");
+  // 2": the legend stacks; two side by side overlap.
+  const int legBX = TINY ? mx : mx + PT_SPLIT_W / 2, legBY = TINY ? legY + lineH(F14) + 2 : legY;
+  box(m, legBX, legBY + 4, 10, 10, 0x7A5B22, 3);
+  ptLegB = label(m, F14, C_TXT, legBX + 18, legBY, "");
   if (TALL) {
     // Three figure tiles under the split bar, tall enough to read as
     // metrics but not stretched over the whole lower card.
@@ -1375,7 +1411,7 @@ static void buildPoints() {
   } else {
     const int figY = TH - lineH(F22) - lineH(F12) - 22, capY = figY + lineH(F22) + 2, step = PT_SPLIT_W / 3;
     ptAvg = label(m, F22, C_TXT, mx, figY, "");
-    label(m, F12, C_MUTED, mx, capY, "avg / day");
+    label(m, F12, C_MUTED, mx, capY, TINY ? "avg/day" : "avg / day");
     ptBoosts = label(m, F22, C_TXT, mx + step, figY, "");
     label(m, F12, C_MUTED, mx + step, capY, "boosts");
     ptPrints = label(m, F22, C_TXT, mx + 2 * step, figY, "");
@@ -1591,10 +1627,10 @@ static void bestChipCb(lv_event_t* e) {
 
 static void buildBest() {
   lv_obj_t* s = screens[SC_BEST] = newScreen();
-  bestHdr = header(s, "BEST TIMES", COMPACT ? "" : "last 30 days");
+  bestHdr = header(s, TINY ? "BEST" : "BEST TIMES", COMPACT ? "" : "last 30 days");
   lv_obj_set_style_pad_column(bestHdr.right, 6, 0);
   for (int i = 0; i < NBEST; i++) {
-    bestChips[i] = label(bestHdr.right, F14, C_MUTED, 0, 0, BEST_NAME[i]);
+    bestChips[i] = label(bestHdr.right, F14, C_MUTED, 0, 0, TINY && i == 0 ? "DLs" : BEST_NAME[i]);
     tappable(bestChips[i], bestChipCb, i);
   }
   const int gap = COMPACT ? 6 : 10, dayH = COMPACT ? 56 : (TALL ? 96 : 72), hourH = TH - dayH - gap;
@@ -1760,9 +1796,12 @@ static void crCardWidth(CrCard& c, int w) {
   lv_obj_set_width(c.title, w - 2 * px);
   for (int i = 0; i < CR_ROWS; i++) {
     if (c.rule[i]) lv_obj_set_width(c.rule[i], w - 2 * px);
-    dotLabel(c.name[i], (w - 2 * px) * 58 / 100);
-    lv_obj_set_width(c.val[i], (w - 2 * px) * 40 / 100);
-    lv_obj_set_x(c.val[i], w - px - 2 - (w - 2 * px) * 40 / 100);
+    // 2" cards are ~130 px inside: values like "6.4%  19 dl" need the
+    // larger share, and never wrap onto the row below.
+    const int namePct = TINY ? 43 : 58, valPct = TINY ? 55 : 40;
+    dotLabel(c.name[i], (w - 2 * px) * namePct / 100);
+    dotLabel(c.val[i], (w - 2 * px) * valPct / 100);
+    lv_obj_set_x(c.val[i], w - px - 2 - (w - 2 * px) * valPct / 100);
   }
   lv_obj_align(c.empty, LV_ALIGN_CENTER, 0, crEmptyDy());
 }
@@ -1822,9 +1861,10 @@ static void buildCreator() {
     lv_obj_align(crHdr.right, LV_ALIGN_TOP_RIGHT, -PAD - HB_W - 24, TALL ? 8 : 6);
   }
   for (int i = 0; i < NCVIEW; i++) {
-    lv_obj_t* l = crSeg[i] = label(seg, F14, C_MUTED, 0, 0, CV_NAME[i]);
+    static const char* const CV_SHORT[NCVIEW] = {"Conv", "Trend", "Launch", "Earn", "Fans", "Reply"};
+    lv_obj_t* l = crSeg[i] = label(seg, F14, C_MUTED, 0, 0, TINY ? CV_SHORT[i] : CV_NAME[i]);
     lv_obj_set_style_radius(l, 4, 0);
-    lv_obj_set_style_pad_hor(l, COMPACT ? 4 : 12, 0);
+    lv_obj_set_style_pad_hor(l, TINY ? 1 : COMPACT ? 4 : 12, 0);
     lv_obj_set_style_pad_ver(l, TALL ? 6 : 4, 0);
     lv_obj_set_style_bg_color(l, C(C_ACCENT), 0);
     lv_obj_set_style_text_align(l, LV_TEXT_ALIGN_CENTER, 0);
@@ -1874,7 +1914,7 @@ static void buildCreator() {
   // Legend, top right of the chart.
   lv_obj_t* lg = row(crChart, 6);
   box(lg, 0, 0, 8, 8, C_ACCENT, 2);
-  label(lg, F12, C_MUTED, 0, 0, "this launch");
+  label(lg, F12, C_MUTED, 0, 0, TINY ? "latest" : "this launch");
   box(lg, 0, 0, 8, 8, C_MUTED, 2);
   label(lg, F12, C_MUTED, 0, 0, "median");
   lv_obj_align(lg, LV_ALIGN_TOP_RIGHT, 0, 0);
@@ -2154,7 +2194,7 @@ static void makeStatusCell(lv_obj_t* parent, int i, int x, int y, int w, int h, 
   const bool two = h >= lineH(valF) + lineH(subF) + pad * 2 + 2;
   cells[i].dot = box(c, pad, pad + (lineH(nameF) - 8) / 2, 8, 8, C_IDLE, LV_RADIUS_CIRCLE);
   lv_obj_t* l = label(c, nameF, C_SUB, pad + 14, pad, name);
-  lv_obj_set_style_text_letter_space(l, 1, 0);
+  lv_obj_set_style_text_letter_space(l, TINY ? 0 : 1, 0);
   lv_label_set_long_mode(l, LV_LABEL_LONG_CLIP);
   lv_obj_set_width(l, nameW - 14);
   const int textX = pad + nameW;
@@ -2279,7 +2319,7 @@ static void refreshStatus() {
   }
   fmtAgo(a, sizeof(a), millis() / 1000);
 #if BAT_ADC_PIN >= 0
-  float v = analogReadMilliVolts(BAT_ADC_PIN) * 2 / 1000.0f;
+  float v = analogReadMilliVolts(BAT_ADC_PIN) * BAT_DIVIDER / 1000.0f;
   if (v > 4.3f || v < 2.5f) snprintf(b, sizeof(b), "v" FW_VERSION "  -  " BOARD_NAME "  -  USB power");
   else snprintf(b, sizeof(b), "v" FW_VERSION "  -  " BOARD_NAME "  -  battery %.2f V", v);
 #else
@@ -3069,7 +3109,9 @@ static void buildAbout() {
 #else
   hint(h, COMPACT ? "press: back" : "press or hold: back");
 #endif
-  const int urlH = COMPACT ? 0 : lineH(TALL ? F16 : F14) + 16;
+  // Compact shows "@Wofl on MakerWorld" under the plate; 240 px tall needs
+  // its line kept out of the QR's share.
+  const int urlH = TINY ? lineH(F14) + 8 : COMPACT ? 0 : lineH(TALL ? F16 : F14) + 16;
   const int quiet = TALL ? 22 : (COMPACT ? 10 : 14);
   int qr = TH - urlH - 8 - quiet * 2;
   const int cap = TALL ? 300 : (COMPACT ? 150 : 188);

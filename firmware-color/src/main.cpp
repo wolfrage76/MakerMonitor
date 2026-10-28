@@ -1629,6 +1629,46 @@ void setup() {
   logHeap("server");
 }
 
+#ifdef SERIAL_SHOTS
+// Dev builds only (PLATFORMIO_BUILD_FLAGS=-DSERIAL_SHOTS): layout work over
+// USB when the panel isn't on the network. "show <page> [tab] [open]" goes to
+// a screen; "shot" sends the raw RGB565 framebuffer between SHOT and END.
+static void serialShotTick() {
+  static String line;
+  while (Serial.available()) {
+    char c = Serial.read();
+    if (c != '\n') {
+      if (line.length() < 96) line += c;
+      continue;
+    }
+    line.trim();
+    if (line.startsWith("show ")) {
+      String a[3];
+      int n = 0, from = 5;
+      while (n < 3 && from <= (int)line.length()) {
+        int sp = line.indexOf(' ', from);
+        if (sp < 0) sp = line.length();
+        a[n++] = line.substring(from, sp);
+        from = sp + 1;
+      }
+      char shown[64] = "";
+      bool ok = ui_show(a[0].c_str(), a[1].c_str(), a[2].c_str(), shown, sizeof(shown), false);
+      Serial.printf("SHOWN %s %s\n", ok ? "ok" : "fail", shown);
+    } else if (line == "shot") {
+      const uint16_t* fbp = display_framebuffer();
+      if (!fbp) {
+        Serial.println("SHOT none");
+      } else {
+        Serial.printf("SHOT %d %d\n", LCD_NATIVE_W, LCD_NATIVE_H);
+        Serial.write((const uint8_t*)fbp, LCD_NATIVE_W * LCD_NATIVE_H * 2);
+        Serial.println("END");
+      }
+    }
+    line = "";
+  }
+}
+#endif
+
 void loop() {
   static uint32_t lastNet = 0;
   static bool idleLogged = false;
@@ -1642,6 +1682,9 @@ void loop() {
   server.handleClient();
   if (netStarted) ArduinoOTA.handle();
 
+#ifdef SERIAL_SHOTS
+  serialShotTick();
+#endif
   if (!display_is_suspended()) {
     ui_input(knob_poll());
     ui_tick();
