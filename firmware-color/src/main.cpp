@@ -360,11 +360,12 @@ static bool otaNoteAtBoot = false;
 
 static bool xipActive();
 
-// Every update path. With XIP the display keeps running through the flash
-// writes, so it shows a progress screen; otherwise say so on screen, then
-// stop the panel scan before the first flash write. The speaker stops either way.
+// Every update path. With XIP (or a panel with its own GRAM) the display
+// keeps running through the flash writes, so it shows a progress screen;
+// otherwise say so on screen, then stop the panel scan before the first
+// flash write. The speaker stops either way.
 static void beforeFlashing() {
-  if (xipActive() && !display_is_suspended()) {
+  if ((xipActive() || display_survives_flash()) && !display_is_suspended()) {
     sound_stop();
     display_update_mode(true);
     ui_update_progress(0);

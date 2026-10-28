@@ -14,6 +14,8 @@
 #include "boards/crowpanel_70.h"
 #elif defined(BOARD_WAVESHARE_70)
 #include "boards/waveshare_70.h"
+#elif defined(BOARD_JC3248W535)
+#include "boards/jc3248w535.h"
 #else
 #include "boards/ws316.h"
 #endif
@@ -42,6 +44,9 @@
 #endif
 #ifndef LCD_ST7701
 #define LCD_ST7701 0
+#endif
+#ifndef LCD_QSPI_AXS15231B
+#define LCD_QSPI_AXS15231B 0
 #endif
 #ifndef LCD_CH422G
 #define LCD_CH422G 0

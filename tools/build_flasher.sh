@@ -5,7 +5,9 @@
 #   tools/build_flasher.sh [git-ref] [env ...]
 #
 # Builds from a clean export of git-ref (default HEAD), so uncommitted work in
-# firmware-color/ never ends up in a published image. Default envs: crowpanel_70 waveshare_70.
+# firmware-color/ never ends up in a published image. Default envs: crowpanel_70 waveshare_70 jc3248w535.
+# Each board's OTA app image (the asset name from its board header) also goes
+# to flasher/release/ for the GitHub release.
 #
 # pioarduino rebuilds one shared Arduino core (~/.platformio/packages/
 # framework-arduinoespressif32-libs) for whichever custom_sdkconfig built last.
@@ -18,7 +20,7 @@ REPO="$(cd "$(dirname "$0")/.." && pwd)"
 REF="${1:-HEAD}"
 shift || true
 ENVS=("$@")
-[ ${#ENVS[@]} -eq 0 ] && ENVS=(crowpanel_70 waveshare_70)
+[ ${#ENVS[@]} -eq 0 ] && ENVS=(crowpanel_70 waveshare_70 jc3248w535)
 
 PIO="${PIO:-$HOME/.platformio/penv/bin/pio}"
 ESPTOOL="${ESPTOOL:-$HOME/.platformio/penv/bin/esptool.py}"
@@ -31,6 +33,7 @@ board_name() {
     crowpanel_50) echo 'Elecrow CrowPanel 5.0"' ;;
     crowpanel_70) echo 'Elecrow CrowPanel 7.0"' ;;
     waveshare_70) echo 'Waveshare ESP32-S3-Touch-LCD-7' ;;
+    jc3248w535) echo 'Guition JC3248W535 3.5"' ;;
     *) echo "$1" ;;
   esac
 }
@@ -43,8 +46,9 @@ VERSION="$(sed -n 's/^#define FW_VERSION "\(.*\)"/\1/p' "$SRC/include/fw_version
 COMMIT="$(git -C "$REPO" rev-parse --short "$REF")"
 echo "Building v$VERSION ($COMMIT) for ${ENVS[*]}"
 
-rm -rf "$DIST"
-mkdir -p "$DIST/firmware"
+RELEASE="$REPO/flasher/release"
+rm -rf "$DIST" "$RELEASE"
+mkdir -p "$DIST/firmware" "$RELEASE"
 cp "$REPO/flasher/index.html" "$DIST/"
 boards_json=""
 
@@ -55,8 +59,10 @@ for env in "${ENVS[@]}"; do
   build="$SRC/.pio/build/$env"
 
   # A build linked against the stock core crashes on its first flash write.
-  want=(gdma_start gdma_reset gdma_append gdma_hal_append rgb_lcd_default_isr_handler gdma_default_tx_isr)
-  [ "$env" = crowpanel_70 ] && want+=(i2s_dma_tx_callback)
+  # The Guition's QSPI panel has no RGB ISR; its speaker's I2S one must be in IRAM.
+  want=(gdma_start gdma_reset gdma_append gdma_hal_append gdma_default_tx_isr)
+  [ "$env" = jc3248w535 ] || want+=(rgb_lcd_default_isr_handler)
+  case "$env" in crowpanel_70|jc3248w535) want+=(i2s_dma_tx_callback) ;; esac
   syms="$("$NM" "$build/firmware.elf")"
   for s in "${want[@]}"; do
     if ! grep -qE "^403[0-9a-f]{5} [tT] $s\$" <<<"$syms"; then
@@ -73,6 +79,9 @@ for env in "${ENVS[@]}"; do
     0x8000 "$build/partitions.bin" \
     0xe000 "$boot_app0" \
     0x10000 "$build/firmware.bin"
+
+  asset="$(sed -n 's/^#define BOARD_OTA_ASSET *"\(.*\)"/\1/p' "$SRC/include/boards/$env.h")"
+  [ -n "$asset" ] && cp "$build/firmware.bin" "$RELEASE/$asset"
 
   name="$(board_name "$env")"
   name="${name//\"/\\\"}"

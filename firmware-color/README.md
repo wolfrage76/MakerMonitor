@@ -8,8 +8,11 @@ Color stats panel firmware. It shows today's Boosts, Likes, Collects, Downloads 
 | Elecrow CrowPanel ESP32-S3 HMI 5.0" | 800×480 | capacitive touch | `crowpanel_50` |
 | Elecrow CrowPanel ESP32-S3 HMI 7.0" | 800×480 | capacitive touch | `crowpanel_70` |
 | Waveshare ESP32-S3-Touch-LCD-7 | 800×480 | capacitive touch | `waveshare_70` |
+| Guition JC3248W535 (3.5") | 480×320 | capacitive touch | `jc3248w535` |
 
-**Every board has the same features.** Only the layout differs: 800×480 gets taller cards (Today adds 7D/30D rows, an hourly chart and a Recent activity card), 480×272 smaller type and fewer columns. Each board's pins, timings and controls are in `include/boards/`. The 7" CrowPanel is the panel this firmware is tested on; the other builds use the same code with their own board headers. The Waveshare 7" backlight is only on or off (through its CH422G expander), so it dims in software: pixels pass through a lookup table (down to 25%) as they are drawn, and brightness 0 switches the backlight off.
+**Every board has the same features.** Only the layout differs: 800×480 gets taller cards (Today adds 7D/30D rows, an hourly chart and a Recent activity card), 480×272 smaller type and fewer columns, and 480×320 (the Guition 3.5") the compact layout with the 7D/30D rows and average lines on Today and a Ratings / Followers strip under the tiles. Each board's pins, timings and controls are in `include/boards/`. The 7" CrowPanel is the panel this firmware is tested on; the other builds use the same code with their own board headers. The Waveshare 7" backlight is only on or off (through its CH422G expander), so it dims in software: pixels pass through a lookup table (down to 25%) as they are drawn, and brightness 0 switches the backlight off.
+
+The Guition 3.5" is a QSPI panel (AXS15231B) with its own frame memory instead of an RGB bus: the firmware keeps a 480×320 landscape framebuffer in PSRAM and sends each frame whole, turned to the portrait glass (the panel ignores a start row in QSPI mode), with polling SPI transfers and no interrupt. Its touch is the same chip on I2C, and it needs three workarounds in `src/touch.cpp`: it never reports "no finger" (a lift is all-0xFF bytes or the lift event), a read within 20 ms of the last returns junk (LVGL polls it every 25 ms), and a missed lift shows up as a new touch-down while the finger is still held.
 
 It is a thin client: the Python poller does all MakerWorld work and pushes stats to it. The e-ink panel keeps working alongside (its firmware is on hold; it doesn't get creator stats).
 
@@ -34,15 +37,15 @@ Current captures of every page are in [`../docs/screens/`](../docs/screens/) (se
     | grep -E ' [tT] (gdma_start|gdma_reset|gdma_append|gdma_hal_append|rgb_lcd_default_isr_handler|gdma_default_tx_isr|i2s_dma_tx_callback)$'
   ```
 
-  On the 7" also check `i2s_dma_tx_callback` (the speaker). Every line must be present with an address starting `0x403` or `0x4037`. `0x42…` (flash) or a missing symbol means the fix is not in that image.
+  On the 7" and the Guition also check `i2s_dma_tx_callback` (the speaker); the Guition has no RGB panel, so `rgb_lcd_default_isr_handler` is not in its image. Every other line must be present with an address starting `0x403` or `0x4037`. `0x42…` (flash) or a missing symbol means the fix is not in that image.
 - **The 7" panels run code from PSRAM (XIP).** `crowpanel_70` and `waveshare_70` set `SPIRAM_XIP_FROM_PSRAM` (plus `SPIRAM_FETCH_INSTRUCTIONS`, `SPIRAM_RODATA`) and `LCD_RGB_RESTART_IN_VSYNC`; `/diagnostics` reports `"xip": true` when it is active. It costs about 1.7 MB of PSRAM and nothing measurable in page slides (23 fps either way).
 - **Bump the version before every flash.** Raise the patch number of `FW_VERSION` in `include/fw_version.h` (0.4.17 → 0.4.18) before each USB or OTA flash, so the version at the bottom right of the screen, the web console and `/v2/settings` always tell builds apart.
 - Don't add build flags through `PLATFORMIO_BUILD_FLAGS`; that also links the stock core. Put temporary defines in the source.
 
 ### USB, OTA and recovery
 
-- **Web flasher:** [wolfrage76.github.io/MakerMonitor](https://wolfrage76.github.io/MakerMonitor/) installs the CrowPanel 7" and Waveshare 7" builds from Chrome or Edge with no PlatformIO, as a full image, so it also recovers a panel stuck in a crash loop. See [`../flasher/README.md`](../flasher/README.md) to rebuild and publish it.
-- **USB:** `pio run -e <env> -t upload --upload-port /dev/ttyUSB0`. If the board doesn't show up (no CH340 in `lsusb`), use a data cable and a rear port, or hold **BOOT**, tap **RESET**, release BOOT for download mode. That also recovers a panel stuck in a crash loop. The Waveshare uses the ESP32-S3's native USB (`/dev/ttyACM0`, no CH340).
+- **Web flasher:** [wolfrage76.github.io/MakerMonitor](https://wolfrage76.github.io/MakerMonitor/) installs the CrowPanel 7", Waveshare 7" and Guition 3.5" builds from Chrome or Edge with no PlatformIO, as a full image, so it also recovers a panel stuck in a crash loop. See [`../flasher/README.md`](../flasher/README.md) to rebuild and publish it.
+- **USB:** `pio run -e <env> -t upload --upload-port /dev/ttyUSB0`. If the board doesn't show up (no CH340 in `lsusb`), use a data cable and a rear port, or hold **BOOT**, tap **RESET**, release BOOT for download mode. That also recovers a panel stuck in a crash loop. The Waveshare and the Guition use the ESP32-S3's native USB (`/dev/ttyACM0`, no CH340).
 - **OTA:** the `<env>_ota` environments, or espota directly:
 
   ```bash
@@ -50,7 +53,7 @@ Current captures of every page are in [`../docs/screens/`](../docs/screens/) (se
     -i <panel-ip-or-name> -p 3232 -f .pio/build/<env>/firmware.bin
   ```
 
-  OTA is sometimes refused while the panel is busy (Wi-Fi scan, a redraw, the GitHub check about 2 minutes after boot); retry once it settles. Wi-Fi power saving is off from 0.4.3: with it on, LAN round trips ran 60–800 ms and uploads (one acknowledgement per 1.4 KB) crawled and failed part way. On the 7" panels (built with `SPIRAM_XIP_FROM_PSRAM`, so flash writes leave the cache on) an update shows a full-screen **Updating firmware** page with a percentage and progress bar while the display keeps running; the pixel clock is halved meanwhile so flash writes don't starve the PSRAM scan-out, and the screen only goes dark for the final boot-partition switch. Other panels stop the speaker and switch the display off for the whole update (their scan-out would fault during flash writes) and stay dark until they restart. If an update stalls, or the screen is left off or on the update page with no update running for 20 s, the panel restarts itself on the old firmware; the next boot logs the reset reason and why the update ended, and shows a toast. Every path (ArduinoOTA, web upload, GitHub) ends in one wrapped `esp_ota_set_boot_partition`, which logs the switch and restarts on the old firmware if it fails. A boot splash ("MakerMonitor / starting") shows about 0.2 s after power-on, before the pages are built. Set `upload_port` for the `_ota` envs in gitignored `platformio_override.ini`. There is no firmware password in the repo; the web console can set one (leave it blank for LAN uploads).
+  OTA is sometimes refused while the panel is busy (Wi-Fi scan, a redraw, the GitHub check about 2 minutes after boot); retry once it settles. Wi-Fi power saving is off from 0.4.3: with it on, LAN round trips ran 60–800 ms and uploads (one acknowledgement per 1.4 KB) crawled and failed part way. On the 7" panels (built with `SPIRAM_XIP_FROM_PSRAM`, so flash writes leave the cache on) an update shows a full-screen **Updating firmware** page with a percentage and progress bar while the display keeps running; the pixel clock is halved meanwhile so flash writes don't starve the PSRAM scan-out, and the screen only goes dark for the final boot-partition switch. The Guition 3.5" shows the same page without XIP: its panel keeps its own picture and the firmware feeds it without interrupts, so flash writes don't disturb it. Other panels stop the speaker and switch the display off for the whole update (their scan-out would fault during flash writes) and stay dark until they restart. If an update stalls, or the screen is left off or on the update page with no update running for 20 s, the panel restarts itself on the old firmware; the next boot logs the reset reason and why the update ended, and shows a toast. Every path (ArduinoOTA, web upload, GitHub) ends in one wrapped `esp_ota_set_boot_partition`, which logs the switch and restarts on the old firmware if it fails. A boot splash ("MakerMonitor / starting") shows about 0.2 s after power-on, before the pages are built. Set `upload_port` for the `_ota` envs in gitignored `platformio_override.ini`. There is no firmware password in the repo; the web console can set one (leave it blank for LAN uploads).
 - **HTTP:** `POST /update` with a `.bin` (also from the web console's Firmware tab).
 - **GitHub releases:** the console and the on-screen Update page check `wolfrage76/MakerMonitor` for release assets named in each board header (`firmware-crowpanel-70.bin`, `firmware-waveshare-70.bin`, …). If the check gets HTTP 404 (no public release), automatic checks pause (remembered across reboots) until a manual *Check now* succeeds, so the failing TLS request doesn't run every hour. When a newer release is known, the footer version turns into an accent "v0.4.x → v0.4.y" chip that opens the update page.
 
@@ -91,7 +94,7 @@ The poller works out which panels are color and which are e-paper, so one list h
 | Back from Settings/Status/detail pages | Back button or long press |
 | Banner | Tap or swipe up to dismiss |
 
-Empty background does nothing when tapped. The first touch on a dimmed or dark screen only wakes it.
+Empty background does nothing when tapped. The first touch on a dimmed or dark screen only wakes it. Sliding more than 24 px off a button before lifting cancels the tap, as on a phone, and a swipe that started on a button never taps it.
 
 **Swipes:** a horizontal drag moves the page with your finger and shows the neighbour beside it. It changes page past 80 px (10% of the width on narrower panels), on a quick swipe (25 px within 400 ms of moving, timed from when the finger starts to move, not from touch-down) or when fast (≥ 0.3 px/ms and at least 25 px, taking the larger of the average speed over the movement and the peak over its last ~50 ms); the position at release counts too, since touch is read only once per frame during a slide; otherwise it snaps back. A move counts as horizontal unless |dx| is under 0.8 × |dy|. Slides are drawn by a compositor from pre-rendered neighbour pages in PSRAM, so they stay smooth. Build with `-DDEBUG_SWIPE=1` (in the source, see Build notes) to print each swipe to Serial (`swipe dx -96 180ms avg -0.53 peak -0.71: commit (quick)`) for tuning; the device log no longer records swipes. Page slides log their frame rate (`slide 7 frames in 308 ms (23 fps)`).
 
@@ -101,8 +104,8 @@ Today, Live feed, Top models, 7-day trend, Points, Reach (30 days), Comments, **
 
 - **Today header:** the title and date on the left, the 12-hour clock centred and the hamburger on the right. The points chip (tap: Points page) sits centred between the clock and the hamburger, placed from its real width, on the title's centre line; where that gap is too narrow it hides. Unanswered comments are on the Creator page's Reply tab.
 - **Footer** (every page, on the line of the page segments): a **status dot** at the bottom left (green = synced, amber = cookie needed or MakerWorld data stale, red = cookie expired or an error; tap for Status) and the firmware version at the bottom right, which becomes an update chip when a newer release is known.
-- **Ratings:** on 800×480 the Today page shows the ratings count, average stars and today's new ratings next to the followers in Recent activity. A new rating gets its own banner and chime ("+1 Rating - 4 stars"); *Notify on* covers it.
-- **Followers:** on 800×480 the Today page shows the follower count and today's gain at the top right of Recent activity; every panel has the Creator page's Followers tab.
+- **Ratings:** on 800×480 (and in the 3.5"'s bottom strip) the Today page shows the ratings count, average stars and today's new ratings next to the followers in Recent activity. A new rating gets its own banner and chime ("+1 Rating - 4 stars"); *Notify on* covers it.
+- **Followers:** on 800×480 (and in the 3.5"'s bottom strip) the Today page shows the follower count and today's gain at the top right of Recent activity; every panel has the Creator page's Followers tab.
 - **Today (800×480):** each tile has today's number, yesterday, **7D** (white) and **30D** (cyan) totals, an hourly chart in 2-hour bars with white 7-day and cyan 30-day average lines, and the lifetime total; a **Recent activity** card below lists the newest events.
 - **Best times:** activity by hour of day (24 bars) and by weekday over the last 30 days, for downloads, prints or boosts, with the best hour and day highlighted. Shows "Collecting data (N of 7 days)" until a week of history exists.
 - **Model detail:** from Top models. 7- and 30-day totals per stat and daily download bars, fetched from the poller when opened. With creator stats, a second line adds downloads per view, prints per download, engagement per 100 downloads, yesterday against the 7-day average (rising / stalled), points and followers for 7 and 30 days, and unanswered comments.
@@ -156,7 +159,7 @@ Most of these are one-line changes in the board's header in `include/boards/`:
 
 ## Speaker
 
-The 7" CrowPanel has an NS4168 I2S amplifier on its SPK connector (passive 8 Ω speaker) for event chimes; the boot log prints `I2S OK`. The other boards in this tree have no speaker.
+The 7" CrowPanel has an NS4168 I2S amplifier on its SPK connector (passive 8 Ω speaker) for event chimes, and the Guition 3.5" has an I2S amplifier on its speaker connector; the boot log prints `I2S OK`. The other boards in this tree have no speaker.
 
 ## Screenshots
 
@@ -169,8 +172,8 @@ The 7" CrowPanel has an NS4168 I2S amplifier on its SPK connector (passive 8 Ω 
 | `include/boards/*.h` | Per-board pins, timings and controls |
 | `include/lv_conf.h` | LVGL options (PSRAM heap, enabled widgets and fonts, snapshot) |
 | `include/fw_version.h` | Firmware version |
-| `src/display.cpp` | RGB panel + LVGL driver, page-slide compositor, framebuffer for screenshots, half pixel clock during updates |
-| `src/touch.cpp` | GT911 / XPT2046 touch as an LVGL pointer (a waking touch is swallowed) |
+| `src/display.cpp` | RGB panel (QSPI AXS15231B on the Guition) + LVGL driver, page-slide compositor, framebuffer for screenshots, half pixel clock during updates |
+| `src/touch.cpp` | GT911 / XPT2046 / AXS15231B touch as an LVGL pointer (a waking touch is swallowed, a tap slid off its button is cancelled) |
 | `src/model.cpp` | JSON → `State` / `Event` (incl. health, insights, creator stats, model ids), parsed in PSRAM |
 | `src/ui.cpp` | All screens (incl. Creator), banners, Wi-Fi page, phone setup, Settings page and its sheets, first-run guide, boot splash, update progress screen, `/v2/ui/show` page switching; layout adapts to the screen size |
 | `src/settings.cpp` | Saved settings in one typed struct (menu options, quiet window, hostname, mDNS, update preferences, install stamp), NVS |

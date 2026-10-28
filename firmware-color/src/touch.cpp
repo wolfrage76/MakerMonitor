@@ -1,6 +1,7 @@
 // Touchscreen drivers for the CrowPanels, read by LVGL as a pointer device:
 // GT911 (capacitive, I2C) on the 5" and 7", XPT2046 (resistive, SPI) on the
-// 4.3". ui.cpp turns swipes, taps and long presses into navigation.
+// 4.3", the AXS15231B's own touch (I2C) on the Guition 3.5". ui.cpp turns
+// swipes, taps and long presses into navigation.
 #include "touch.h"
 
 #include <Arduino.h>
@@ -148,6 +149,94 @@ static bool hwInit() {
   return gtAddr != 0;
 }
 
+#elif TOUCH_AXS15231B
+#include <Wire.h>
+
+static bool axsFound = false;
+// LVGL polls at this rate instead of the global 10 ms. A call inside the
+// 20 ms read gap repeats the last point, and LVGL's gesture detection takes
+// a zero move as the finger stopping and starts counting again, so up/down
+// swipes often never reached the gesture limit.
+#define TOUCH_READ_MS 25
+
+#ifndef DEBUG_SWIPE
+#define DEBUG_SWIPE 0
+#endif
+
+// One read: an 11-byte request, then gesture, point count and the first
+// point (event in the top 2 bits of x high: 0 down, 1 lift, 2 contact; 12-bit
+// x and y in portrait panel coordinates). Same rules as the SpoolmanScale
+// port for this board:
+//  - The chip never sends a clean "no finger". A lift is eight 0xFF bytes,
+//    a frame of one repeated byte, a nonzero gesture byte, no points, or the
+//    lift event; any of those releases at once.
+//  - A read sooner than 20 ms after the last comes back malformed, so the bus
+//    is read at most every 20 ms and calls in between repeat the last answer.
+//  - The next tap reuses the same slot, moved. When a lift was missed, the
+//    new finger still arrives as a touch-down event (0): that is a release
+//    on this read and a new press on the next, so LVGL sees two touches
+//    instead of a slide across whatever lies between them. Distance alone
+//    can't tell: a quick page swipe moves 60+ px between reads.
+//  - A failed I2C read keeps the last state.
+static void readCb(lv_indev_drv_t*, lv_indev_data_t* d) {
+  static lv_indev_data_t last = {};
+  static uint32_t lastMs = 0;
+  static bool arm = false;
+  static lv_point_t next = {};
+  static const uint8_t REQ[11] = {0xB5, 0xAB, 0xA5, 0x5A, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00};
+  *d = last;
+  if (!axsFound) return;
+  if (arm) {  // the release for a jump went out on the previous call
+    arm = false;
+    d->point = next;
+    d->state = LV_INDEV_STATE_PR;
+    last = *d;
+    return;
+  }
+  uint32_t now = millis();
+  if (now - lastMs < 20) return;
+  lastMs = now;
+  uint8_t b[8];
+  Wire.beginTransmission(TOUCH_ADDR);
+  Wire.write(REQ, sizeof(REQ));
+  if (Wire.endTransmission() != 0 || Wire.requestFrom((uint8_t)TOUCH_ADDR, (uint8_t)8) != 8) return;
+  for (uint8_t& v : b) v = Wire.read();
+  bool same = true;
+  for (uint8_t v : b) same = same && v == b[0];
+  int rx = ((b[2] & 0x0F) << 8) | b[3], ry = ((b[4] & 0x0F) << 8) | b[5];
+  bool lifted = same || b[0] != 0 || b[1] == 0 || (b[2] >> 6) == 1 || rx >= LCD_NATIVE_H || ry >= LCD_NATIVE_W;
+  if (lifted) {
+    d->state = LV_INDEV_STATE_REL;
+  } else {
+    lv_indev_data_t p = {};
+    mapPoint(rx, ry, &p);
+    if (last.state == LV_INDEV_STATE_PR && (b[2] >> 6) == 0) {
+      arm = true;
+      next = p.point;
+      d->state = LV_INDEV_STATE_REL;
+    } else {
+      d->point = p.point;
+      d->state = LV_INDEV_STATE_PR;
+    }
+  }
+#if DEBUG_SWIPE
+  if (d->state != last.state)
+    Serial.printf("touch %s [%02X %02X %02X %02X %02X %02X]%s -> %d,%d\n", d->state == LV_INDEV_STATE_PR ? "down" : "up",
+                  b[0], b[1], b[2], b[3], b[4], b[5], arm ? " jump" : "", d->point.x, d->point.y);
+#endif
+  last = *d;
+}
+
+static bool hwInit() {
+  pinMode(TOUCH_INT, INPUT_PULLUP);
+  Wire.begin(TOUCH_SDA, TOUCH_SCL, 400000);
+  Wire.setTimeOut(10);  // a stuck read must not stall the UI loop
+  Wire.beginTransmission(TOUCH_ADDR);
+  axsFound = Wire.endTransmission() == 0;
+  Serial.printf("AXS15231B touch %s (0x%02X)\n", axsFound ? "found" : "not found", TOUCH_ADDR);
+  return axsFound;
+}
+
 #elif TOUCH_XPT2046
 #include <SPI.h>
 
@@ -191,11 +280,42 @@ static bool hwInit() {
 }
 #endif
 
+// LVGL keeps a pressed object pressed wherever the finger goes and clicks it
+// on release. A lift more than SLIDE_OFF_PX outside it cancels instead, as on
+// a phone, and so does the end of a page drag that started on a button:
+// wait_release turns the release into PRESS_LOST, which still ends the drag.
+// Scrolls already send no click, and controls that follow the finger
+// (slider, roller, keyboard) end as usual.
+static const int SLIDE_OFF_PX = 24;
+
+static void cancelIfSlidOff(const lv_point_t& p) {
+  lv_indev_t* indev = lv_indev_get_act();
+  if (!indev || indev->proc.wait_until_release) return;
+  lv_obj_t* o = indev->proc.types.pointer.act_obj;
+  if (!o || indev->proc.types.pointer.scroll_obj) return;
+  if (ui_dragging()) {
+    lv_indev_wait_release(indev);
+    return;
+  }
+  if (lv_obj_check_type(o, &lv_slider_class) || lv_obj_check_type(o, &lv_roller_class) ||
+      lv_obj_check_type(o, &lv_btnmatrix_class) || lv_obj_check_type(o, &lv_keyboard_class))
+    return;
+  lv_area_t a;
+  lv_obj_get_coords(o, &a);
+  if (p.x >= a.x1 - SLIDE_OFF_PX && p.x <= a.x2 + SLIDE_OFF_PX && p.y >= a.y1 - SLIDE_OFF_PX &&
+      p.y <= a.y2 + SLIDE_OFF_PX)
+    return;
+  lv_indev_wait_release(indev);
+}
+
 // A touch on a dimmed screen only wakes it: the whole press is reported as
 // released, so it can't tap, swipe or open anything.
 static void wakeFilter(lv_indev_drv_t* drv, lv_indev_data_t* d) {
   static bool swallow = false;
+  static bool wasDown = false;
   readCb(drv, d);
+  if (wasDown && d->state == LV_INDEV_STATE_REL && !swallow) cancelIfSlidOff(d->point);
+  wasDown = d->state == LV_INDEV_STATE_PR;
   if (d->state == LV_INDEV_STATE_PR) {
     if (!swallow && ui_wake()) swallow = true;
   } else {
@@ -212,7 +332,12 @@ void touch_init() {
   // A finger moves a bit while tapping; keep swipes deliberate.
   indevDrv.gesture_limit = 60;
   indevDrv.gesture_min_velocity = 3;
-  lv_indev_drv_register(&indevDrv);
+  lv_indev_t* indev = lv_indev_drv_register(&indevDrv);
+#ifdef TOUCH_READ_MS
+  lv_timer_set_period(indev->driver->read_timer, TOUCH_READ_MS);
+#else
+  (void)indev;
+#endif
 }
 
 #else

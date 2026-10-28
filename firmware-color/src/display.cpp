@@ -1,6 +1,8 @@
 // ESP32-S3 RGB panel driver + LVGL display driver for every board. The
 // Waveshare 3.16" first needs its ST7701 init over bit-banged 3-wire SPI and
-// is rotated to 820x320 landscape; the CrowPanels are landscape already.
+// is rotated to 820x320 landscape; the CrowPanels are landscape already. The
+// Guition 3.5" is a QSPI panel with its own GRAM instead: frames are kept in
+// a PSRAM framebuffer and sent to the panel whole.
 #include "display.h"
 
 #include <Arduino.h>
@@ -13,6 +15,9 @@
 #include "ch422g.h"
 #if LCD_CH422G
 #include <Wire.h>
+#endif
+#if LCD_QSPI_AXS15231B
+#include <driver/spi_master.h>
 #endif
 
 static esp_lcd_panel_handle_t panel = nullptr;
@@ -123,9 +128,177 @@ static void st7701Init() {
 }
 #endif
 
+#if LCD_QSPI_AXS15231B
+// ---- AXS15231B over QSPI ---------------------------------------------------
+// Commands go out single-line as 0x02 + (cmd << 8); pixels as 0x32 + 0x3C00
+// with quad data. The panel ignores RASET in this mode, so every frame is
+// sent whole from row 0, rotated from the landscape framebuffer to the
+// portrait glass and byte-swapped on the way. Polling transfers only: no
+// completion callback has to stay out of flash while flash is written.
+
+static spi_device_handle_t qspi = nullptr;
+static uint16_t* txBuf[2] = {nullptr, nullptr};
+static const int TX_ROWS = 16;  // panel rows per DMA chunk
+static uint16_t* qspiFb = nullptr;
+
+struct AxsCmd {
+  uint8_t cmd;
+  uint8_t len;
+  uint8_t data[31];
+  uint16_t delayMs;
+};
+
+// Arduino_GFX's table for this panel (proven on the JC3248W535).
+static const AxsCmd AXS_INIT[] = {
+  {0xBB, 8, {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x5A, 0xA5}, 0},
+  {0xA0, 17, {0xC0, 0x10, 0x00, 0x02, 0x00, 0x00, 0x04, 0x3F, 0x20, 0x05, 0x3F, 0x3F, 0x00, 0x00, 0x00, 0x00, 0x00}, 0},
+  {0xA2, 31, {0x30, 0x3C, 0x24, 0x14, 0xD0, 0x20, 0xFF, 0xE0, 0x40, 0x19, 0x80, 0x80, 0x80, 0x20, 0xF9, 0x10, 0x02, 0xFF, 0xFF, 0xF0, 0x90, 0x01, 0x32, 0xA0, 0x91, 0xE0, 0x20, 0x7F, 0xFF, 0x00, 0x5A}, 0},
+  {0xD0, 30, {0xE0, 0x40, 0x51, 0x24, 0x08, 0x05, 0x10, 0x01, 0x20, 0x15, 0xC2, 0x42, 0x22, 0x22, 0xAA, 0x03, 0x10, 0x12, 0x60, 0x14, 0x1E, 0x51, 0x15, 0x00, 0x8A, 0x20, 0x00, 0x03, 0x3A, 0x12}, 0},
+  {0xA3, 22, {0xA0, 0x06, 0xAA, 0x00, 0x08, 0x02, 0x0A, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x00, 0x55, 0x55}, 0},
+  {0xC1, 30, {0x31, 0x04, 0x02, 0x02, 0x71, 0x05, 0x24, 0x55, 0x02, 0x00, 0x41, 0x00, 0x53, 0xFF, 0xFF, 0xFF, 0x4F, 0x52, 0x00, 0x4F, 0x52, 0x00, 0x45, 0x3B, 0x0B, 0x02, 0x0D, 0x00, 0xFF, 0x40}, 0},
+  {0xC3, 11, {0x00, 0x00, 0x00, 0x50, 0x03, 0x00, 0x00, 0x00, 0x01, 0x80, 0x01}, 0},
+  {0xC4, 29, {0x00, 0x24, 0x33, 0x80, 0x00, 0xEA, 0x64, 0x32, 0xC8, 0x64, 0xC8, 0x32, 0x90, 0x90, 0x11, 0x06, 0xDC, 0xFA, 0x00, 0x00, 0x80, 0xFE, 0x10, 0x10, 0x00, 0x0A, 0x0A, 0x44, 0x50}, 0},
+  {0xC5, 23, {0x18, 0x00, 0x00, 0x03, 0xFE, 0x3A, 0x4A, 0x20, 0x30, 0x10, 0x88, 0xDE, 0x0D, 0x08, 0x0F, 0x0F, 0x01, 0x3A, 0x4A, 0x20, 0x10, 0x10, 0x00}, 0},
+  {0xC6, 20, {0x05, 0x0A, 0x05, 0x0A, 0x00, 0xE0, 0x2E, 0x0B, 0x12, 0x22, 0x12, 0x22, 0x01, 0x03, 0x00, 0x3F, 0x6A, 0x18, 0xC8, 0x22}, 0},
+  {0xC7, 20, {0x50, 0x32, 0x28, 0x00, 0xA2, 0x80, 0x8F, 0x00, 0x80, 0xFF, 0x07, 0x11, 0x9C, 0x67, 0xFF, 0x24, 0x0C, 0x0D, 0x0E, 0x0F}, 0},
+  {0xC9, 4, {0x33, 0x44, 0x44, 0x01}, 0},
+  {0xCF, 27, {0x2C, 0x1E, 0x88, 0x58, 0x13, 0x18, 0x56, 0x18, 0x1E, 0x68, 0x88, 0x00, 0x65, 0x09, 0x22, 0xC4, 0x0C, 0x77, 0x22, 0x44, 0xAA, 0x55, 0x08, 0x08, 0x12, 0xA0, 0x08}, 0},
+  {0xD5, 30, {0x40, 0x8E, 0x8D, 0x01, 0x35, 0x04, 0x92, 0x74, 0x04, 0x92, 0x74, 0x04, 0x08, 0x6A, 0x04, 0x46, 0x03, 0x03, 0x03, 0x03, 0x82, 0x01, 0x03, 0x00, 0xE0, 0x51, 0xA1, 0x00, 0x00, 0x00}, 0},
+  {0xD6, 30, {0x10, 0x32, 0x54, 0x76, 0x98, 0xBA, 0xDC, 0xFE, 0x93, 0x00, 0x01, 0x83, 0x07, 0x07, 0x00, 0x07, 0x07, 0x00, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x00, 0x84, 0x00, 0x20, 0x01, 0x00}, 0},
+  {0xD7, 19, {0x03, 0x01, 0x0B, 0x09, 0x0F, 0x0D, 0x1E, 0x1F, 0x18, 0x1D, 0x1F, 0x19, 0x40, 0x8E, 0x04, 0x00, 0x20, 0xA0, 0x1F}, 0},
+  {0xD8, 12, {0x02, 0x00, 0x0A, 0x08, 0x0E, 0x0C, 0x1E, 0x1F, 0x18, 0x1D, 0x1F, 0x19}, 0},
+  {0xD9, 12, {0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F}, 0},
+  {0xDD, 12, {0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F}, 0},
+  {0xDF, 8, {0x44, 0x73, 0x4B, 0x69, 0x00, 0x0A, 0x02, 0x90}, 0},
+  {0xE0, 17, {0x3B, 0x28, 0x10, 0x16, 0x0C, 0x06, 0x11, 0x28, 0x5C, 0x21, 0x0D, 0x35, 0x13, 0x2C, 0x33, 0x28, 0x0D}, 0},
+  {0xE1, 17, {0x37, 0x28, 0x10, 0x16, 0x0B, 0x06, 0x11, 0x28, 0x5C, 0x21, 0x0D, 0x35, 0x14, 0x2C, 0x33, 0x28, 0x0F}, 0},
+  {0xE2, 17, {0x3B, 0x07, 0x12, 0x18, 0x0E, 0x0D, 0x17, 0x35, 0x44, 0x32, 0x0C, 0x14, 0x14, 0x36, 0x3A, 0x2F, 0x0D}, 0},
+  {0xE3, 17, {0x37, 0x07, 0x12, 0x18, 0x0E, 0x0D, 0x17, 0x35, 0x44, 0x32, 0x0C, 0x14, 0x14, 0x36, 0x32, 0x2F, 0x0F}, 0},
+  {0xE4, 17, {0x3B, 0x07, 0x12, 0x18, 0x0E, 0x0D, 0x17, 0x39, 0x44, 0x2E, 0x0C, 0x14, 0x14, 0x36, 0x3A, 0x2F, 0x0D}, 0},
+  {0xE5, 17, {0x37, 0x07, 0x12, 0x18, 0x0E, 0x0D, 0x17, 0x39, 0x44, 0x2E, 0x0C, 0x14, 0x14, 0x36, 0x3A, 0x2F, 0x0F}, 0},
+  {0xA4, 16, {0x85, 0x85, 0x95, 0x82, 0xAF, 0xAA, 0xAA, 0x80, 0x10, 0x30, 0x40, 0x40, 0x20, 0xFF, 0x60, 0x30}, 0},
+  {0xA4, 4, {0x85, 0x85, 0x95, 0x85}, 0},
+  {0xBB, 8, {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, 0},
+  {0x11, 1, {0x00}, 120},
+  {0x29, 1, {0x00}, 100},
+  {0x2C, 4, {0x00, 0x00, 0x00, 0x00}, 0},
+};
+
+static inline void csLow() { digitalWrite(LCD_PIN_CS, LOW); }
+static inline void csHigh() { digitalWrite(LCD_PIN_CS, HIGH); }
+
+static void axsCmd(uint8_t cmd, const uint8_t* data = nullptr, size_t len = 0) {
+  spi_transaction_t t = {};
+  t.cmd = 0x02;
+  t.addr = (uint32_t)cmd << 8;
+  if (len && len <= 4) {
+    t.flags = SPI_TRANS_USE_TXDATA;
+    memcpy(t.tx_data, data, len);
+  } else if (len) {
+    t.tx_buffer = data;
+  }
+  t.length = len * 8;
+  csLow();
+  spi_device_polling_transmit(qspi, &t);
+  csHigh();
+}
+
+// Panel rows [py0, py0 + TX_ROWS) from the landscape framebuffer. Read
+// landscape row by landscape row so each pass stays within a cache line.
+static void axsFill(uint16_t* out, int py0) {
+  const int W = LCD_NATIVE_W, PW = LCD_PANEL_W;
+  for (int px = 0; px < PW; px++) {
+#if LCD_FLIP
+    const uint16_t* src = qspiFb + px * W + (W - 1 - py0);
+    for (int k = 0; k < TX_ROWS; k++) out[k * PW + px] = __builtin_bswap16(src[-k]);
+#else
+    const uint16_t* src = qspiFb + (PW - 1 - px) * W + py0;
+    for (int k = 0; k < TX_ROWS; k++) out[k * PW + px] = __builtin_bswap16(src[k]);
+#endif
+  }
+}
+
+static void axsPush() {
+  if (!qspi || displaySuspended) return;
+  static const uint8_t caset[4] = {0, 0, (LCD_PANEL_W - 1) >> 8, (LCD_PANEL_W - 1) & 0xFF};
+  static const uint8_t raset[4] = {0, 0, (LCD_PANEL_H - 1) >> 8, (LCD_PANEL_H - 1) & 0xFF};
+  axsCmd(0x2A, caset, 4);
+  axsCmd(0x2B, raset, 4);
+  axsCmd(0x2C);
+  static spi_transaction_ext_t t[2];
+  csLow();
+  for (int c = 0; c < LCD_PANEL_H / TX_ROWS; c++) {
+    uint16_t* buf = txBuf[c & 1];
+    axsFill(buf, c * TX_ROWS);
+    if (c) spi_device_polling_end(qspi, portMAX_DELAY);
+    spi_transaction_ext_t& x = t[c & 1];
+    x = {};
+    if (c == 0) {
+      x.base.flags = SPI_TRANS_MODE_QIO;
+      x.base.cmd = 0x32;
+      x.base.addr = 0x003C00;
+    } else {
+      // Same CS-low run: the rest of the frame has no command or address.
+      x.base.flags = SPI_TRANS_MODE_QIO | SPI_TRANS_VARIABLE_CMD | SPI_TRANS_VARIABLE_ADDR | SPI_TRANS_VARIABLE_DUMMY;
+    }
+    x.base.tx_buffer = buf;
+    x.base.length = TX_ROWS * LCD_PANEL_W * 16;
+    spi_device_polling_start(qspi, &x.base, portMAX_DELAY);
+  }
+  spi_device_polling_end(qspi, portMAX_DELAY);
+  csHigh();
+}
+
+static void axsInit() {
+  pinMode(LCD_PIN_CS, OUTPUT);
+  csHigh();
+  spi_bus_config_t bus = {};
+  bus.data0_io_num = LCD_PIN_D0;
+  bus.data1_io_num = LCD_PIN_D1;
+  bus.sclk_io_num = LCD_PIN_SCK;
+  bus.data2_io_num = LCD_PIN_D2;
+  bus.data3_io_num = LCD_PIN_D3;
+  bus.data4_io_num = bus.data5_io_num = bus.data6_io_num = bus.data7_io_num = -1;
+  bus.max_transfer_sz = TX_ROWS * LCD_PANEL_W * 2 + 8;
+  bus.flags = SPICOMMON_BUSFLAG_MASTER | SPICOMMON_BUSFLAG_GPIO_PINS;
+  ESP_ERROR_CHECK(spi_bus_initialize(SPI2_HOST, &bus, SPI_DMA_CH_AUTO));
+  spi_device_interface_config_t dev = {};
+  dev.command_bits = 8;
+  dev.address_bits = 24;
+  dev.mode = 0;
+  dev.clock_speed_hz = LCD_SPI_HZ;
+  dev.spics_io_num = -1;  // CS stays low across a whole frame
+  dev.flags = SPI_DEVICE_HALFDUPLEX;
+  dev.queue_size = 1;
+  ESP_ERROR_CHECK(spi_bus_add_device(SPI2_HOST, &dev, &qspi));
+  spi_device_acquire_bus(qspi, portMAX_DELAY);
+  for (auto& b : txBuf)
+    b = (uint16_t*)heap_caps_aligned_alloc(16, TX_ROWS * LCD_PANEL_W * 2, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
+
+  axsCmd(0x01);  // no reset line: software reset
+  delay(200);
+  for (const AxsCmd& c : AXS_INIT) {
+    axsCmd(c.cmd, c.data, c.len);
+    if (c.delayMs) delay(c.delayMs);
+  }
+  axsCmd(0x20);  // INVOFF
+  const uint8_t madctl = 0x00;
+  axsCmd(0x36, &madctl, 1);
+}
+#endif
+
 // ---- RGB panel + LVGL ------------------------------------------------------
 
 static bool composing = false;
+
+// RGB boards have a panel handle; the QSPI board has its own framebuffer.
+static bool panelLive() {
+#if LCD_QSPI_AXS15231B
+  return qspiFb != nullptr;
+#else
+  return panel != nullptr;
+#endif
+}
 
 // ---- software dimming (on/off backlights) ------------------------------------
 // A lookup table per 5- and 6-bit channel, scaled from 100% down to a floor
@@ -151,8 +324,17 @@ void display_dim_pixels(uint16_t* px, size_t n) {
 
 static void flushCb(lv_disp_drv_t* drv, const lv_area_t* a, lv_color_t* px) {
   if (dimOn) display_dim_pixels((uint16_t*)px, (size_t)(a->x2 - a->x1 + 1) * (a->y2 - a->y1 + 1));
+#if LCD_QSPI_AXS15231B
+  if (qspiFb && !displaySuspended && !composing) {
+    const int w = a->x2 - a->x1 + 1;
+    for (int y = a->y1; y <= a->y2; y++)
+      memcpy(qspiFb + y * LCD_NATIVE_W + a->x1, (const uint16_t*)px + (y - a->y1) * w, w * 2);
+    if (lv_disp_flush_is_last(drv)) axsPush();
+  }
+#else
   if (panel && !displaySuspended && !composing)
     esp_lcd_panel_draw_bitmap(panel, a->x1, a->y1, a->x2 + 1, a->y2 + 1, px);
+#endif
   lv_disp_flush_ready(drv);
 }
 
@@ -160,6 +342,7 @@ void display_suspend() {
   if (displaySuspended) return;
   displaySuspended = true;
   display_set_brightness(0);
+  // The QSPI panel holds its own picture; just stop sending frames.
   if (!panel) return;
   esp_lcd_panel_handle_t dying = panel;
   panel = nullptr;
@@ -168,13 +351,19 @@ void display_suspend() {
 
 bool display_is_suspended() { return displaySuspended; }
 
+bool display_survives_flash() { return LCD_QSPI_AXS15231B; }
+
 void deviceLogf(const char* fmt, ...);
 
 void display_update_mode(bool on) {
+#if LCD_QSPI_AXS15231B
+  (void)on;  // no pixel clock: the panel refreshes from its own GRAM
+#else
   if (!panel) return;
   uint32_t hz = on ? LCD_PCLK_HZ / 2 : LCD_PCLK_HZ;
   esp_err_t err = esp_lcd_rgb_panel_set_pclk(panel, hz);  // applied at the next VSYNC
   deviceLogf("Pixel clock %lu Hz for %s: %s", (unsigned long)hz, on ? "update" : "normal", esp_err_to_name(err));
+#endif
 }
 
 // ---- page-slide compositor -------------------------------------------------
@@ -185,9 +374,9 @@ static uint16_t* pages[2] = {nullptr, nullptr};
 
 static uint16_t* fbAny = nullptr;  // framebuffer on every panel, rotated or not
 
-const uint16_t* display_framebuffer() { return panel && !displaySuspended ? fbAny : nullptr; }
+const uint16_t* display_framebuffer() { return panelLive() && !displaySuspended ? fbAny : nullptr; }
 
-bool display_can_compose() { return fb && capture && pages[0] && pages[1] && panel && !displaySuspended; }
+bool display_can_compose() { return fb && capture && pages[0] && pages[1] && panelLive() && !displaySuspended; }
 
 uint16_t* display_page_buf(int slot) { return pages[slot]; }
 
@@ -218,8 +407,12 @@ void display_compose(const uint16_t* nb, int dx, const lv_area_t* keep, int nkee
     for (int y = max<int>(0, k.y1); y <= min<int>(H - 1, k.y2) && x2 >= x1; y++)
       memcpy(fb + y * W + x1, capture + y * W + x1, (x2 - x1 + 1) * 2);
   }
+#if LCD_QSPI_AXS15231B
+  axsPush();
+#else
   // The RGB DMA reads PSRAM directly; push the CPU cache out.
   esp_cache_msync(fb, W * H * 2, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+#endif
 }
 
 void display_compose_end() { composing = false; }
@@ -266,6 +459,13 @@ void display_init() {
   st7701Init();
 #endif
 
+#if LCD_QSPI_AXS15231B
+  axsInit();
+  qspiFb = (uint16_t*)heap_caps_calloc(LCD_NATIVE_W * LCD_NATIVE_H, 2, MALLOC_CAP_SPIRAM);
+  void* fbp = qspiFb;
+  fbAny = qspiFb;
+  axsPush();  // clear whatever the panel's GRAM held
+#else
   esp_lcd_rgb_panel_config_t cfg = {};
   cfg.clk_src = LCD_CLK_SRC_DEFAULT;
   cfg.timings.pclk_hz = LCD_PCLK_HZ;
@@ -302,6 +502,7 @@ void display_init() {
   // be composed directly (3 extra full frames, all in PSRAM).
   void* fbp = nullptr;
   if (esp_lcd_rgb_panel_get_frame_buffer(panel, 1, &fbp) == ESP_OK) fbAny = (uint16_t*)fbp;
+#endif
   if (LCD_ROTATION == LV_DISP_ROT_NONE && fbAny) {
     fb = (uint16_t*)fbp;
     const size_t sz = LCD_NATIVE_W * LCD_NATIVE_H * 2;

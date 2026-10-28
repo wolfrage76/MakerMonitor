@@ -58,6 +58,8 @@ void ui_pages_json(String& out);
 bool ui_overlay_open();             // true when Settings, Status, About, or Update page is open
 // Wakes a dimmed screen; true if it was dimmed (the caller drops that input).
 bool ui_wake();
+// True while a finger is dragging the page sideways (touch boards).
+bool ui_dragging();
 
 // GitHub OTA helpers implemented in main.cpp, used by both the web console and
 // the on-screen Firmware Update page.
