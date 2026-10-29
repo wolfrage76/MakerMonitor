@@ -381,7 +381,11 @@ static bool otaAuth = false;        // password verified before the file arrived
 static int otaPctShown = -10;
 
 // ---- diagnostics log --------------------------------------------------------
+#if DEBUG_SWIPE
+static const int LOG_N = 160, LOG_W = 128;  // room for a run of touch traces
+#else
 static const int LOG_N = 32, LOG_W = 128;
+#endif
 static char logLines[LOG_N][LOG_W] = {};
 static int logNext = 0, logCount = 0;
 

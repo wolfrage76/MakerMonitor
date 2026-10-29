@@ -11,6 +11,8 @@
 #include "board.h"
 #include "ui.h"
 
+void deviceLogf(const char* fmt, ...);
+
 #if INPUT_TOUCH
 
 static lv_indev_drv_t indevDrv;
@@ -250,6 +252,15 @@ static bool hwInit() {
 //  - Polled at the chip's own report rate: a read that repeats the last
 //    point looks to LVGL like the finger stopped, which restarts its gesture
 //    count (same as the AXS15231B above).
+//  - During a quick swipe the chip often holds the touch-down point and only
+//    the lift report carries where the finger ended (100+ px away). That end
+//    point goes out as one more press before the release, so the swipe
+//    changes page instead of ending as a tap where it started.
+//  - Now and then the chip reports a ghost touch: every point on one exact
+//    raw row while x jumps back and forth 30-90 px per report, which swiped
+//    pages to and fro by itself. A touch that stays on one row and reverses
+//    twice is dropped: it goes back to where it began (so a drag snaps back)
+//    and is ignored until the chip reports the lift.
 #define TOUCH_READ_MS 20
 static const int CST_MISSES = 3;
 static bool cstFound = false;
@@ -264,24 +275,83 @@ static bool cstWrite(uint8_t reg, uint8_t val) {
 static void readCb(lv_indev_drv_t*, lv_indev_data_t* d) {
   static lv_indev_data_t last = {};
   static int misses = 0;
+  static bool liftNext = false;
+  // Ghost check for the current touch: its first raw row, whether every
+  // report since kept it, x direction reversals, and where it began.
+  static int row0 = -1, dir = 0, flips = 0, lastX = 0;
+  static bool oneRow = true, ghost = false;
+  static lv_point_t start = {};
   *d = last;
-  uint8_t b[5];
+  if (liftNext) {  // the end point went out on the previous call
+    liftNext = false;
+    d->state = LV_INDEV_STATE_REL;
+    last = *d;
+    return;
+  }
+  uint8_t g = 0, b[5] = {};  // gesture (0x01), then finger count and point
   bool got = false;
   Wire.beginTransmission(TOUCH_ADDR);
-  Wire.write(0x02);
-  if (Wire.endTransmission(false) == 0 && Wire.requestFrom((uint8_t)TOUCH_ADDR, (uint8_t)5) == 5) {
+  Wire.write(0x01);
+  if (Wire.endTransmission(false) == 0 && Wire.requestFrom((uint8_t)TOUCH_ADDR, (uint8_t)6) == 6) {
+    g = Wire.read();
     for (uint8_t& v : b) v = Wire.read();
     got = true;
   }
   const int rx = ((b[1] & 0x0F) << 8) | b[2], ry = ((b[3] & 0x0F) << 8) | b[4];
   const bool lift = got && (b[1] >> 6) == 1;
-  if (got && !lift && (b[0] & 0x0F) && rx < LCD_NATIVE_H && ry < LCD_NATIVE_W) {
+  const bool inRange = rx < LCD_NATIVE_H && ry < LCD_NATIVE_W;
+  if (got && !lift && (b[0] & 0x0F) && inRange) {
     misses = 0;
     mapPoint(rx, ry, d);
+    if (last.state != LV_INDEV_STATE_PR && !ghost) {
+      row0 = rx;
+      oneRow = true;
+      dir = flips = 0;
+      lastX = d->point.x;
+      start = d->point;
+    } else if (!ghost) {
+      oneRow = oneRow && rx == row0;
+      int step = d->point.x - lastX;
+      if (abs(step) >= 6) {
+        int nd = step > 0 ? 1 : -1;
+        if (dir && nd != dir) flips++;
+        dir = nd;
+        lastX = d->point.x;
+      }
+      if (oneRow && flips >= 2) {
+        ghost = true;
+#if DEBUG_SWIPE
+        deviceLogf("cst ghost on row %d", row0);
+#endif
+      }
+    }
+    if (ghost) {
+      // Back to the start, then released (and held off) until the lift.
+      d->point = start;
+      d->state = last.point.x == start.x && last.point.y == start.y ? LV_INDEV_STATE_REL : LV_INDEV_STATE_PR;
+    } else {
+      d->state = LV_INDEV_STATE_PR;
+    }
+  } else if (ghost) {
+    if (lift || ++misses >= CST_MISSES) ghost = false;
+    d->state = LV_INDEV_STATE_REL;
+  } else if (lift && last.state == LV_INDEV_STATE_PR && inRange) {
+    mapPoint(rx, ry, d);
     d->state = LV_INDEV_STATE_PR;
+    if (d->point.x == last.point.x && d->point.y == last.point.y) d->state = LV_INDEV_STATE_REL;
+    else liftNext = true;
   } else if (lift || ++misses >= CST_MISSES) {
     d->state = LV_INDEV_STATE_REL;
   }
+#if DEBUG_SWIPE
+  if (d->state != last.state)
+    deviceLogf("cst %s %d,%d g%02X [%02X %02X %02X %02X %02X]%s", d->state == LV_INDEV_STATE_PR ? "down" : "up",
+               d->point.x, d->point.y, g, b[0], b[1], b[2], b[3], b[4], !got ? " nack" : lift ? " lift" : "");
+  else if (d->state == LV_INDEV_STATE_PR && (d->point.x != last.point.x || d->point.y != last.point.y))
+    deviceLogf("cst %s %d,%d g%02X", liftNext ? "end" : "move", d->point.x, d->point.y, g);
+  else if (d->state == LV_INDEV_STATE_PR && got && (b[0] & 0x0F) == 0)
+    deviceLogf("cst miss %d [%02X %02X]", misses, b[0], b[1]);
+#endif
   last = *d;
 }
 
@@ -389,9 +459,10 @@ void touch_init() {
   lv_indev_drv_init(&indevDrv);
   indevDrv.type = LV_INDEV_TYPE_POINTER;
   indevDrv.read_cb = wakeFilter;
-  // A finger moves a bit while tapping; keep swipes deliberate.
-  indevDrv.gesture_limit = 60;
-  indevDrv.gesture_min_velocity = 3;
+  // A finger moves a bit while tapping; keep swipes deliberate. 60 px is a
+  // quarter of a 240 px tall screen, where up/down swipes run 30-60 px.
+  indevDrv.gesture_limit = LCD_NATIVE_H < 300 ? 30 : 60;
+  indevDrv.gesture_min_velocity = LCD_NATIVE_H < 300 ? 2 : 3;
   lv_indev_t* indev = lv_indev_drv_register(&indevDrv);
 #ifdef TOUCH_READ_MS
   lv_timer_set_period(indev->driver->read_timer, TOUCH_READ_MS);

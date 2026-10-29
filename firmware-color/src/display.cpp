@@ -536,11 +536,18 @@ void display_compose(const uint16_t* nb, int dx, const lv_area_t* keep, int nkee
 void display_compose_end() { composing = false; }
 
 void display_set_brightness(uint8_t pct) {
-#if LCD_CH422G
-  // The expander can only switch the backlight on or off; levels in between
-  // darken the picture instead, and the whole screen is drawn again.
+#if LCD_CH422G || LCD_BL_ONOFF
+  // The expander can only switch the backlight on or off, and PWM on the 2"
+  // backlight makes ghost touches; levels in between darken the picture
+  // instead, and the whole screen is drawn again.
   static int last = -1;
-  if ((pct > 0) != (last > 0) || last < 0) ch422g_write(CH422G_BACKLIGHT, pct > 0);
+  if ((pct > 0) != (last > 0) || last < 0) {
+#if LCD_CH422G
+    ch422g_write(CH422G_BACKLIGHT, pct > 0);
+#else
+    digitalWrite(LCD_PIN_BL, (pct > 0) == LCD_BL_ACTIVE_HIGH);
+#endif
+  }
   if (pct > 0 && pct != last) {
     bool was = dimOn;
     dimBuild(pct);
@@ -564,6 +571,8 @@ void display_init() {
   if (!ch422g_begin(0x00)) Serial.println("CH422G does not answer");
   ch422g_write(CH422G_LCD_RST, true);
   delay(20);
+#elif LCD_BL_ONOFF
+  pinMode(LCD_PIN_BL, OUTPUT);
 #else
   ledcAttach(LCD_PIN_BL, 20000, 8);
 #endif

@@ -56,6 +56,9 @@
 // Panels that keep their own picture: frames go from a PSRAM framebuffer
 // over SPI, and the screen survives flash writes.
 #define LCD_HAS_GRAM (LCD_QSPI_AXS15231B || LCD_SPI_ST7789)
+#ifndef LCD_BL_ONOFF
+#define LCD_BL_ONOFF 0
+#endif
 #ifndef LCD_CH422G
 #define LCD_CH422G 0
 #endif

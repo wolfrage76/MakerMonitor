@@ -143,7 +143,8 @@ static void chipStyle(lv_obj_t* l, uint32_t bg, uint32_t fg) {
   lv_obj_set_style_border_width(l, 1, 0);
   lv_obj_set_style_border_color(l, C(C_EDGE), 0);
   lv_obj_set_style_pad_hor(l, 10, 0);
-  lv_obj_set_style_pad_ver(l, 3, 0);
+  // 2": tappable chips (Top, Best, Trend) get taller; 21 px is under 3 mm.
+  lv_obj_set_style_pad_ver(l, TINY && lv_obj_has_flag(l, LV_OBJ_FLAG_CLICKABLE) ? 7 : 3, 0);
 }
 
 static lv_obj_t* icon(lv_obj_t* parent, int kind, bool big, int x, int y) {
@@ -336,7 +337,7 @@ static Header header(lv_obj_t* root, const char* title, const char* sub) {
     dotLabel(h.sub, COMPACT ? 168 : (W * 2) / 5);
   }
   h.right = row(root, 14);
-  lv_obj_align(h.right, LV_ALIGN_TOP_RIGHT, -PAD - HB_W - (COMPACT ? 14 : 24), COMPACT ? 7 : (TALL ? 16 : 12));
+  lv_obj_align(h.right, LV_ALIGN_TOP_RIGHT, -PAD - HB_W - (COMPACT ? 14 : 24), TINY ? 2 : COMPACT ? 7 : (TALL ? 16 : 12));
   return h;
 }
 
@@ -420,7 +421,7 @@ void deviceLogf(const char* fmt, ...);  // main.cpp: serial + web console log
 #endif
 #define swipeLog(...)                         \
   do {                                        \
-    if (DEBUG_SWIPE) Serial.printf(__VA_ARGS__); \
+    if (DEBUG_SWIPE) deviceLogf(__VA_ARGS__);   \
   } while (0)
 
 static void runSlide(int slot, int fromDx, int toDx, uint32_t ms) {
@@ -1213,7 +1214,7 @@ static void buildTrend() {
   // Compact: five chips don't fit beside the title, so they get their own
   // row across the content width under the header.
   lv_obj_t* chipRow = trendHdr.right;
-  const int chipRowH = COMPACT ? lineH(F14) + 8 : 0;
+  const int chipRowH = TINY ? lineH(F14) + 16 : COMPACT ? lineH(F14) + 8 : 0;
   if (COMPACT) {
     chipRow = row(s, 0);
     lv_obj_set_size(chipRow, CW, chipRowH);
@@ -1865,7 +1866,7 @@ static void buildCreator() {
     lv_obj_t* l = crSeg[i] = label(seg, F14, C_MUTED, 0, 0, TINY ? CV_SHORT[i] : CV_NAME[i]);
     lv_obj_set_style_radius(l, 4, 0);
     lv_obj_set_style_pad_hor(l, TINY ? 1 : COMPACT ? 4 : 12, 0);
-    lv_obj_set_style_pad_ver(l, TALL ? 6 : 4, 0);
+    lv_obj_set_style_pad_ver(l, TALL ? 6 : TINY ? 8 : 4, 0);
     lv_obj_set_style_bg_color(l, C(C_ACCENT), 0);
     lv_obj_set_style_text_align(l, LV_TEXT_ALIGN_CENTER, 0);
     if (COMPACT) lv_obj_set_flex_grow(l, 1);
@@ -4677,7 +4678,10 @@ static void buildHamburger() {
   lv_obj_add_event_cb(hbBackdrop, hbBackdropCb, LV_EVENT_CLICKED, nullptr);
   lv_obj_move_foreground(hbBtn);
 
-  const int dw = COMPACT ? 196 : (TALL ? 248 : 220), ih = COMPACT ? max(36, TOUCH_PX) : (TALL ? max(52, TOUCH_PX) : 48);
+  int ih = COMPACT ? max(36, TOUCH_PX) : (TALL ? max(52, TOUCH_PX) : 48);
+  // 2": four 52 px rows would run off the bottom; share what's below the button.
+  if (TINY) ih = min(ih, (H - (by + bh + 6) - 4) / NHB - 1);
+  const int dw = COMPACT ? 196 : (TALL ? 248 : 220);
   hbDrop = card(top, W - PAD - dw, by + bh + 6, dw, NHB * ih + NHB);
   lv_obj_set_style_border_color(hbDrop, C(C_ACCENT), 0);
   static const char* const ICONS[NHB] = {LV_SYMBOL_SETTINGS, LV_SYMBOL_LIST, LV_SYMBOL_HOME, LV_SYMBOL_REFRESH};
@@ -4969,6 +4973,7 @@ static lv_point_t dragStart;
 static int dragDx = 0;
 static uint32_t pressT = 0;  // when the finger went down
 static uint32_t moveT = 0;   // when it had moved far enough to count as a drag
+static uint32_t dragSeen = 0;  // last finger report during a drag
 // Recent (time, x) samples: the release speed is measured over the last
 // ~100 ms, which catches quick flicks even when frames are slow.
 static uint32_t sampT[6];
@@ -5000,6 +5005,7 @@ static void dragMove(const lv_point_t& p) {
     sampN = 0;
   }
   if (!dragging) return;
+  dragSeen = now;
   dragDx = constrain(dx, -W, W);
   // Changing direction past the start needs the other neighbor too.
   int slot = dragDx < 0 ? 1 : 0, nb = dragDx < 0 ? (cur + 1) % NCAR : (cur + NCAR - 1) % NCAR;
@@ -5104,6 +5110,10 @@ static void pageStep(int d) {
 static void touchEvent(lv_event_t* e) {
   switch (lv_event_get_code(e)) {
     case LV_EVENT_PRESSED:
+      if (dragging) {  // the last drag's release never arrived
+        swipeLog("drag had no release; settling it\n");
+        dragRelease(nullptr);
+      }
       swiped = false;
       dragDecided = dragging = false;
       dragDx = 0;
@@ -5181,6 +5191,16 @@ void ui_tick() {
   static uint32_t lastSec = 0;
   uint32_t now = millis();
   lv_timer_handler();
+  // A drag whose release never reached touchEvent leaves the compositor in
+  // charge, and nothing is drawn again (the 2" froze this way). Once the
+  // finger is up, settle it like a release.
+  if (dragging && now - dragSeen > 300) {
+    lv_indev_t* in = lv_indev_get_next(nullptr);
+    if (in && in->proc.state == LV_INDEV_STATE_RELEASED) {
+      swipeLog("drag lost its release; settling it\n");
+      dragRelease(nullptr);
+    }
+  }
 
   if (bannerUp && now - bannerShownAt > (uint32_t)setting_value(SET_BANNER) * 1000) bannerNext();
   if (toastUntil && now > toastUntil) {

@@ -25,6 +25,10 @@
 #define LCD_SPI_HZ    (80 * 1000 * 1000)
 #define LCD_PIN_BL    1
 #define LCD_BL_ACTIVE_HIGH 1
+// Backlight PWM (any duty below 100%) couples into the CST816D as ghost
+// touches along the middle row, so the backlight is only on or off and
+// brightness levels dim the pixels instead (as on the Waveshare 7").
+#define LCD_BL_ONOFF  1
 
 // CST816D touch on I2C (shared with the QMI8658 IMU). Raw points are in
 // portrait panel coordinates.
