@@ -26,11 +26,11 @@
 #define LCD_PIN_SCK   2
 #define LCD_PIN_SDA   1
 #define LCD_PIN_BL    6
-#define LCD_BL_ACTIVE_HIGH 1
+#define LCD_BL_ACTIVE_HIGH 0   // duty 0 = full brightness (Waveshare demo)
 
 #define LCD_NATIVE_W  320
 #define LCD_NATIVE_H  820
-#define LCD_PCLK_HZ   (18 * 1000 * 1000)
+#define LCD_PCLK_HZ   (12 * 1000 * 1000)   // 18 MHz flickered: PSRAM can't keep up without a bounce buffer
 #define LCD_HSYNC_BP  30
 #define LCD_HSYNC_FP  30
 #define LCD_HSYNC_PW  6
@@ -46,10 +46,10 @@
 #define INPUT_KNOB    1
 
 // KY-040 knob. CLK/DT on the UART header (Serial goes over USB instead).
-// SW shares the BOOT button: holding the knob while powering up = flash mode.
+// SW on the I2C port's SCL: the onboard IMU and RTC never drive SCL.
 #define KNOB_PIN_A    43
 #define KNOB_PIN_B    44
-#define KNOB_PIN_SW   0
+#define KNOB_PIN_SW   7
 #define KNOB_STEPS_PER_DETENT 4   // try 2 if one click moves two screens
 #define KNOB_REVERSE  0           // 1 if turning right goes backwards
 

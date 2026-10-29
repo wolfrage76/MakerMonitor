@@ -5,7 +5,7 @@
 #   tools/build_flasher.sh [git-ref] [env ...]
 #
 # Builds from a clean export of git-ref (default HEAD), so uncommitted work in
-# firmware-color/ never ends up in a published image. Default envs: crowpanel_70 waveshare_70 jc3248w535 ws_lcd2.
+# firmware-color/ never ends up in a published image. Default envs: crowpanel_70 waveshare_70 jc3248w535 ws_lcd2 ws316.
 # Each board's OTA app image (the asset name from its board header) also goes
 # to flasher/release/ for the GitHub release.
 #
@@ -20,7 +20,7 @@ REPO="$(cd "$(dirname "$0")/.." && pwd)"
 REF="${1:-HEAD}"
 shift || true
 ENVS=("$@")
-[ ${#ENVS[@]} -eq 0 ] && ENVS=(crowpanel_70 waveshare_70 jc3248w535 ws_lcd2)
+[ ${#ENVS[@]} -eq 0 ] && ENVS=(crowpanel_70 waveshare_70 jc3248w535 ws_lcd2 ws316)
 
 PIO="${PIO:-$HOME/.platformio/penv/bin/pio}"
 ESPTOOL="${ESPTOOL:-$HOME/.platformio/penv/bin/esptool.py}"
@@ -35,6 +35,7 @@ board_name() {
     waveshare_70) echo 'Waveshare ESP32-S3-Touch-LCD-7' ;;
     jc3248w535) echo 'Guition JC3248W535 3.5"' ;;
     ws_lcd2) echo 'Waveshare ESP32-S3-Touch-LCD-2' ;;
+    ws316) echo 'Waveshare ESP32-S3-LCD-3.16 (knob)' ;;
     *) echo "$1" ;;
   esac
 }

@@ -10,12 +10,25 @@ Color stats panel firmware. It shows today's Boosts, Likes, Collects, Downloads 
 | Waveshare ESP32-S3-Touch-LCD-7 | 800×480 | capacitive touch | `waveshare_70` |
 | Guition JC3248W535 (3.5") | 480×320 | capacitive touch | `jc3248w535` |
 | Waveshare ESP32-S3-Touch-LCD-2 (2") | 320×240 | capacitive touch | `ws_lcd2` |
+| Waveshare ESP32-S3-LCD-3.16 (3.16") | 820×320 | rotary knob (KY-040) | `ws316` |
 
-**Every board has the same features.** Only the layout differs: 800×480 gets taller cards (Today adds 7D/30D rows, an hourly chart and a Recent activity card), 480×272 smaller type and fewer columns, and 480×320 (the Guition 3.5") the compact layout with the 7D/30D rows and average lines on Today and a Ratings / Followers strip under the tiles, and 320×240 (the Waveshare 2") the compact layout trimmed to fit: Today tiles show the stat icon instead of its name, headers drop their hints, and Points, Creator, Top and Best use shorter labels. Each board's pins, timings and controls are in `include/boards/`. The 7" CrowPanel is the panel this firmware is tested on; the other builds use the same code with their own board headers. The Waveshare 7" backlight is only on or off (through its CH422G expander), so it dims in software: pixels pass through a lookup table (down to 25%) as they are drawn, and brightness 0 switches the backlight off.
+**Every board has the same features.** Only the layout differs: 800×480 gets taller cards (Today adds 7D/30D rows, an hourly chart and a Recent activity card), 480×272 smaller type and fewer columns, and 480×320 (the Guition 3.5") the compact layout with the 7D/30D rows and average lines on Today and a Ratings / Followers strip under the tiles, and 320×240 (the Waveshare 2") the compact layout trimmed to fit: Today is four tiles over three (an icon, a short name, and today's number, with downloads labeled DLs), headers drop their hints, and Points, Creator, Top, Reach and Best use shorter labels, and 820×320 (the Waveshare 3.16") a wide strip layout with type one size up (its 278 ppi glass makes the usual sizes tiny): Today drops the hourly bars and lifetime totals for bigger yesterday, 7D and 30D figures and a Ratings / Followers strip, Feed shows 6 events, Top models 3 rows and Comments 2 cards. Each board's pins, timings and controls are in `include/boards/`. The 7" CrowPanel is the panel this firmware is tested on; the other builds use the same code with their own board headers. The Waveshare 7" backlight is only on or off (through its CH422G expander), so it dims in software: pixels pass through a lookup table (down to 25%) as they are drawn, and brightness 0 switches the backlight off.
 
 The Guition 3.5" is a QSPI panel (AXS15231B) with its own frame memory instead of an RGB bus: the firmware keeps a 480×320 landscape framebuffer in PSRAM and sends each frame whole, turned to the portrait glass (the panel ignores a start row in QSPI mode), with polling SPI transfers and no interrupt. Its touch is the same chip on I2C, and it needs three workarounds in `src/touch.cpp`: it never reports "no finger" (a lift is all-0xFF bytes or the lift event), a read within 20 ms of the last returns junk (LVGL polls it every 25 ms), and a missed lift shows up as a new touch-down while the finger is still held.
 
 The Waveshare 2" is an ST7789T3 on plain 4-wire SPI, also with its own frame memory: the panel turns itself to 320×240 landscape (MADCTL), and each LVGL flush sends just its window from a PSRAM framebuffer with polling transfers, so it keeps its picture through flash writes like the Guition. Its CST816D touch has auto-sleep switched off at start-up, is read every 20 ms, and only a lift event or three empty reads in a row end a touch (it sometimes reports no finger for one read mid-swipe). On a quick swipe the chip often reports only the touch-down and the lift, so the lift's position goes out as a last move before the release. Backlight PWM makes the chip report ghost touches along the middle row, so the 2" backlight is only on or off and brightness dims the pixels instead (like the Waveshare 7"); a touch that stays on one exact row while jumping back and forth is still dropped as a ghost. Up/down swipes need 30 px here instead of 60. The battery divider on GPIO 5 is 1/3. The board's PCB antenna is weak; place it where the Status page shows a good signal.
+
+The Waveshare 3.16" is an ST7701 RGB panel (320×820, shown landscape) that first needs its register sequence over a bit-banged 3-wire SPI bus, then runs like the CrowPanels. Its backlight (GPIO 6) is active low, and its pixel clock is 12 MHz: at 18 MHz, with no bounce buffer, PSRAM fell behind and the picture flickered. It has no touch; a KY-040 rotary encoder module does all the navigation (see [Controls](#controls)). Wire it to the two small 4-pin ports:
+
+| KY-040 | 3.16" board |
+|---|---|
+| CLK | UART port TX (GPIO 43) |
+| DT | UART port RX (GPIO 44) |
+| SW | I2C port SCL (GPIO 7) |
+| + | 3V3 (not 5V: the module's pull-ups would put 5 V on the ESP32 pins) |
+| GND | GND |
+
+If turning right goes backwards, swap CLK and DT (or set `KNOB_REVERSE 1` in `include/boards/ws316.h`); if one click moves two pages, set `KNOB_STEPS_PER_DETENT 2`. SW sits on SCL because the onboard IMU and clock chips on that bus never drive it, and the firmware doesn't use them.
 
 It is a thin client: the Python poller does all MakerWorld work and pushes stats to it. The e-ink panel keeps working alongside (its firmware is on hold; it doesn't get creator stats).
 
@@ -47,7 +60,7 @@ Current captures of every page are in [`../docs/screens/`](../docs/screens/) (se
 
 ### USB, OTA and recovery
 
-- **Web flasher:** [wolfrage76.github.io/MakerMonitor](https://wolfrage76.github.io/MakerMonitor/) installs the CrowPanel 7", Waveshare 7", Waveshare 2" and Guition 3.5" builds from Chrome or Edge with no PlatformIO, as a full image, so it also recovers a panel stuck in a crash loop. See [`../flasher/README.md`](../flasher/README.md) to rebuild and publish it.
+- **Web flasher:** [wolfrage76.github.io/MakerMonitor](https://wolfrage76.github.io/MakerMonitor/) installs the CrowPanel 7", Waveshare 7", Waveshare 2", Waveshare 3.16" and Guition 3.5" builds from Chrome or Edge with no PlatformIO, as a full image, so it also recovers a panel stuck in a crash loop. See [`../flasher/README.md`](../flasher/README.md) to rebuild and publish it.
 - **USB:** `pio run -e <env> -t upload --upload-port /dev/ttyUSB0`. If the board doesn't show up (no CH340 in `lsusb`), use a data cable and a rear port, or hold **BOOT**, tap **RESET**, release BOOT for download mode. That also recovers a panel stuck in a crash loop. The Waveshare boards and the Guition use the ESP32-S3's native USB (`/dev/ttyACM0`, no CH340).
 - **OTA:** the `<env>_ota` environments, or espota directly:
 
@@ -97,6 +110,16 @@ The poller works out which panels are color and which are e-paper, so one list h
 | Back from Settings/Status/detail pages | Back button or long press |
 | Banner | Tap or swipe up to dismiss |
 
+On the knob board (Waveshare 3.16"):
+
+| | Knob |
+|---|---|
+| Change page | Turn; the page switches at once, with no slide |
+| More on the page | Press: Feed filter, Trend stat, Best-times metric, Creator view, next Comments page; on Today it opens Status, on Top it selects a mode chip or a model (press again for its detail) |
+| Menu | Hold (0.8 s) |
+| Menus, Settings, Update, Wi-Fi | Turn moves the highlight, press picks, hold goes back |
+| Banner | Turn for the next one, press to dismiss |
+
 Empty background does nothing when tapped. The first touch on a dimmed or dark screen only wakes it. Sliding more than 24 px off a button before lifting cancels the tap, as on a phone, and a swipe that started on a button never taps it.
 
 **Swipes:** a horizontal drag moves the page with your finger and shows the neighbour beside it. It changes page past 80 px (10% of the width on narrower panels), on a quick swipe (25 px within 400 ms of moving, timed from when the finger starts to move, not from touch-down) or when fast (≥ 0.3 px/ms and at least 25 px, taking the larger of the average speed over the movement and the peak over its last ~50 ms); the position at release counts too, since touch is read only once per frame during a slide; otherwise it snaps back. A move counts as horizontal unless |dx| is under 0.8 × |dy|. Slides are drawn by a compositor from pre-rendered neighbour pages in PSRAM, so they stay smooth. Build with `-DDEBUG_SWIPE=1` (in the source, see Build notes) to print each swipe to Serial (`swipe dx -96 180ms avg -0.53 peak -0.71: commit (quick)`) for tuning; the device log no longer records swipes. Page slides log their frame rate (`slide 7 frames in 308 ms (23 fps)`).
@@ -105,7 +128,7 @@ Empty background does nothing when tapped. The first touch on a dimmed or dark s
 
 Today, Live feed, Top models, 7-day trend, Points, Reach (30 days), Comments, **Best times**, **Creator**, and (from the menu) Status, Settings, About and Update. Page segments at the bottom show where you are.
 
-- **Today header:** the title and date on the left, the 12-hour clock centred and the hamburger on the right. The points chip (tap: Points page) sits centred between the clock and the hamburger, placed from its real width, on the title's centre line; where that gap is too narrow it hides. Unanswered comments are on the Creator page's Reply tab.
+- **Today header:** the title on the left, the 12-hour clock centred and the hamburger on the right. The points chip (tap: Points page) sits centred between the clock and the hamburger, placed from its real width, on the title's centre line; where that gap is too narrow it hides. Unanswered comments are on the Creator page's Reply tab.
 - **Footer** (every page, on the line of the page segments): a **status dot** at the bottom left (green = synced, amber = cookie needed or MakerWorld data stale, red = cookie expired or an error; tap for Status) and the firmware version at the bottom right, which becomes an update chip when a newer release is known.
 - **Ratings:** on 800×480 (and in the 3.5"'s bottom strip) the Today page shows the ratings count, average stars and today's new ratings next to the followers in Recent activity. A new rating gets its own banner and chime ("+1 Rating - 4 stars"); *Notify on* covers it.
 - **Followers:** on 800×480 (and in the 3.5"'s bottom strip) the Today page shows the follower count and today's gain at the top right of Recent activity; every panel has the Creator page's Followers tab.
