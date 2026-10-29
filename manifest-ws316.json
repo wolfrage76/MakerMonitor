@@ -1,0 +1,8 @@
+{
+  "name": "MakerMonitor for the Waveshare ESP32-S3-LCD-3.16 (knob)",
+  "version": "0.4.110",
+  "new_install_prompt_erase": true,
+  "builds": [
+    { "chipFamily": "ESP32-S3", "parts": [{ "path": "firmware/makermonitor-ws316-0.4.110.bin", "offset": 0 }] }
+  ]
+}
