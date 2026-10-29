@@ -1,8 +1,8 @@
 {
   "name": "MakerMonitor for the Elecrow CrowPanel 7.0\"",
-  "version": "0.4.61",
+  "version": "0.4.70",
   "new_install_prompt_erase": true,
   "builds": [
-    { "chipFamily": "ESP32-S3", "parts": [{ "path": "firmware/makermonitor-crowpanel-70-0.4.61.bin", "offset": 0 }] }
+    { "chipFamily": "ESP32-S3", "parts": [{ "path": "firmware/makermonitor-crowpanel-70-0.4.70.bin", "offset": 0 }] }
   ]
 }
