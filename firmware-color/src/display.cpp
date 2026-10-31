@@ -558,6 +558,9 @@ void display_set_brightness(uint8_t pct) {
   }
   last = pct;
 #else
+  // Some backlight drivers stay dark below a minimum duty: spread 1-100%
+  // over LCD_BL_MIN_PCT-100% so the dim levels (3-10%) still light up.
+  if (pct > 0 && LCD_BL_MIN_PCT > 0) pct = LCD_BL_MIN_PCT + (uint32_t)min<uint8_t>(pct, 100) * (100 - LCD_BL_MIN_PCT) / 100;
   uint32_t duty = (uint32_t)pct * 255 / 100;
   ledcWrite(LCD_PIN_BL, LCD_BL_ACTIVE_HIGH ? duty : 255 - duty);
 #endif

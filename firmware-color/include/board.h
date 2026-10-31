@@ -59,6 +59,9 @@
 #ifndef LCD_BL_ONOFF
 #define LCD_BL_ONOFF 0
 #endif
+#ifndef LCD_BL_MIN_PCT
+#define LCD_BL_MIN_PCT 0  // PWM backlights: lowest duty that still lights (see ws316.h)
+#endif
 #ifndef LCD_CH422G
 #define LCD_CH422G 0
 #endif

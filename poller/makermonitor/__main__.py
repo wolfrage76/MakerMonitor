@@ -39,6 +39,10 @@ def main() -> None:
         host=settings.listen_host,
         port=settings.listen_port,
         log_level="info",
+        # Plain asyncio, not uvloop: uvloop resolves names on libuv's 4-thread
+        # pool, and a few offline panels' .local lookups (about 5 s each) fill
+        # it, so every other .local panel timed out and stopped getting pushes.
+        loop="asyncio",
     )
 
 

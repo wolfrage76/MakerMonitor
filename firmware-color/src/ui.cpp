@@ -1370,8 +1370,10 @@ static void refreshFeed() {
 
 // ---- 3. Top models ----------------------------------------------------------
 struct TopUi {
-  lv_obj_t *card, *rank, *name, *fill, *chips[NSTAT], *ics[NSTAT];  // ics: 7" only
+  lv_obj_t *card, *rank, *name, *fill, *share, *chips[NSTAT], *ics[NSTAT];  // share: 7" only
 };
+// Podium colours for ranks 1-3 (gold, silver, bronze); the fourth row is plain.
+static const uint32_t PODIUM[4] = {0xF2C14E, 0xB9C6D3, 0xC98B4F, C_IDLE};
 static TopUi topUi[4];
 static Header topHdr;
 static lv_obj_t *topChips[3], *topEmpty;
@@ -1417,16 +1419,19 @@ static void buildTop() {
   const int chipR = TINY ? 6 : ROOMY ? 10 : 16;  // chip row's right margin
   const int chipGap = TINY ? 3 : SEVEN ? 8 : 6;
   const int nameX = TINY ? 20 : ROOMY ? 32 : COMPACT ? 32 : SEVEN ? 52 : 48;
-  // 7": the chip row starts under the name.
-  const int chipL = TINY ? chipR : SEVEN ? nameX : 32;
+  // 7": the chip row starts under the name (after the podium numeral).
+  const int chipL = TINY ? chipR : SEVEN ? 70 : 32;
+  // Every chip carries its stat's 20 px icon at the left; the number takes the rest.
   const int chipW = stack ? (CW - chipR - chipL - (topChipN - 1) * chipGap) / topChipN
-                          : COMPACT ? 34 : (TALL ? 52 : STRIP ? 64 : 46);
+                          : COMPACT ? 50 : (TALL ? 68 : STRIP ? 72 : 62);
   const int chipH = SEVEN ? 44 : TALL || STRIP || ROOMY ? 34 : TINY ? 26 : 28;
   const int chipStep = chipW + (stack ? chipGap : COMPACT ? 4 : 6);
-  // 7": a 20 px stat icon at the chip's left; the number takes the rest.
-  topChipTextW = chipW - 8 - (SEVEN ? 28 : 0);
+  const int icoX = TINY ? 3 : SEVEN ? 10 : 6;  // icon's left margin inside the chip
+  topChipTextW = chipW - icoX - 20 - 6;
   // Small panels: the counts are the point of the page, so they get the bigger type.
   const lv_font_t* nf = SEVEN ? &lv_font_montserrat_26 : TALL || STRIP ? F20 : ROOMY ? &lv_font_montserrat_22 : TINY ? &lv_font_montserrat_16 : F16;
+  // 7": the rank is a 40 px podium numeral down the left; the name starts after it.
+  const int nameX7 = 70;
   const lv_font_t* cf = topChipF = SEVEN ? &lv_font_montserrat_26 : TINY || ROOMY || STRIP ? &lv_font_montserrat_20 : F14;
   const int nameGap = SEVEN ? 10 : ROOMY ? 6 : 2;  // name to chip row
   const int barH = TALL ? 8 : TINY ? 2 : STRIP ? 6 : 5;
@@ -1444,21 +1449,47 @@ static void buildTop() {
     lv_obj_set_style_border_color(t.card, C(C_ACCENT), LV_STATE_PRESSED);
     lv_obj_add_event_cb(t.card, topRowCb, LV_EVENT_SHORT_CLICKED, (void*)(intptr_t)i);
 #endif
-    const lv_font_t* rf = TINY ? F14 : STRIP || SEVEN ? F26 : F22;
-    t.rank = label(t.card, rf, C_IDLE, TINY ? 7 : COMPACT ? 10 : 16, stack ? nameY + (lineH(nf) - lineH(rf)) / 2 : (rowH - lineH(rf)) / 2, "");
+    // Podium: a rule down the card's left edge and the rank numeral in the
+    // same colour (gold, silver, bronze); on the 7" the numeral is 40 px.
+    const uint32_t pod = PODIUM[min(i, 3)];
+    lv_obj_t* rule = box(t.card, 0, 0, TINY ? 3 : 4, rowH, pod, 0);
+    lv_obj_set_style_radius(rule, COMPACT ? 4 : 6, 0);
+    lv_obj_set_style_clip_corner(t.card, true, 0);
+    const lv_font_t* rf = TINY ? F14 : SEVEN ? &lv_font_montserrat_40 : STRIP ? F26 : F22;
+    const int nx = SEVEN ? nameX7 : nameX;
+    t.rank = label(t.card, rf, pod, TINY ? 8 : COMPACT ? 12 : SEVEN ? 22 : 18,
+                   SEVEN ? (rowH - lineH(rf)) / 2 : stack ? nameY + (lineH(nf) - lineH(rf)) / 2 : (rowH - lineH(rf)) / 2, "");
     lv_label_set_text_fmt(t.rank, "%d", i + 1);
-    t.name = label(t.card, nf, C_TXT, nameX, nameY, "");
-    dotLabel(t.name, stack ? CW - nameX - (SEVEN ? chipR : 8) : TOP_BAR_W);
-    lv_obj_t* track = box(t.card, nameX, nameY + lineH(nf) + 8, TOP_BAR_W, barH, C_TRACK, 3);
-    t.fill = box(track, 0, 0, TOP_BAR_W, barH, C_TXT, 3);
-    if (stack) show(track, false);  // no room for a score bar under the chips
+    t.name = label(t.card, nf, C_TXT, nx, nameY, "");
+    // 7": the model's share of the page's activity sits at the end of the name line.
+    t.share = nullptr;
+    int shareW = 0;
+    if (SEVEN) {
+      t.share = label(t.card, F16, C_MUTED, 0, 0, "");
+      shareW = lv_txt_get_width("100%", 4, F16, 0, LV_TEXT_FLAG_NONE) + 14;
+      lv_obj_set_width(t.share, shareW - 14);
+      lv_obj_set_style_text_align(t.share, LV_TEXT_ALIGN_RIGHT, 0);
+      lv_obj_align(t.share, LV_ALIGN_TOP_RIGHT, -chipR, nameY + lineH(nf) - lineH(F16) - 2);
+    }
+    dotLabel(t.name, stack ? CW - nx - (SEVEN ? chipR + shareW : 8) : TOP_BAR_W);
+    // Score bar: under the name on wide layouts; on the 7" a thin podium-
+    // coloured bar along the bottom edge; the other stacked panels skip it.
+    lv_obj_t* track = SEVEN ? box(t.card, 0, rowH - 3, CW, 3, C_TRACK, 0)
+                            : box(t.card, nameX, nameY + lineH(nf) + 8, TOP_BAR_W, barH, C_TRACK, 3);
+    t.fill = box(track, 0, 0, TOP_BAR_W, SEVEN ? 3 : barH, SEVEN ? pod : C_TXT, SEVEN ? 0 : 3);
+    if (SEVEN) {
+      lv_obj_set_style_bg_opa(track, LV_OPA_TRANSP, 0);
+      lv_obj_set_style_bg_opa(t.fill, LV_OPA_70, 0);
+    } else if (stack) {
+      show(track, false);  // no room for a score bar under the chips
+    }
     const int chipY = stack ? nameY + lineH(nf) + nameGap : (rowH - chipH) / 2;
     for (int s = 0; s < topChipN; s++) {
       int k = topChipKind[s];
       lv_obj_t* c = box(t.card, CW - chipR - (topChipN - s) * chipStep + (stack ? chipGap : 6), chipY, chipW, chipH, COLBG[k], TINY ? 5 : 8);
-      t.ics[s] = SEVEN ? icon(c, k, false, 10, (chipH - 20) / 2) : nullptr;
+      t.ics[s] = icon(c, k, false, icoX, (chipH - 20) / 2);
       t.chips[s] = label(c, cf, COL[k], 0, 0, "");
-      lv_obj_align(t.chips[s], LV_ALIGN_CENTER, SEVEN ? 14 : 0, 0);
+      lv_obj_align(t.chips[s], LV_ALIGN_CENTER, (icoX + 20) / 2, 0);
     }
   }
   topEmpty = label(s, F20, C_MUTED, 0, 0, "No model activity yet");
@@ -1479,16 +1510,32 @@ static void refreshTop() {
     const TopRow& r = st.top[topMode][i];
     lv_label_set_text(t.name, r.name);
     lv_obj_set_width(t.fill, max(4, TOP_BAR_W * r.score / mx));
+    if (t.share) {
+      long sum = 0;
+      for (int j = 0; j < n; j++) sum += max(0, st.top[topMode][j].score);
+      if (sum > 0 && r.score > 0) lv_label_set_text_fmt(t.share, "%ld%%", (long)r.score * 100 / sum);
+      else lv_label_set_text(t.share, "");
+    }
     for (int s = 0; s < topChipN; s++) {
       int k = topChipKind[s];
-      if (TINY || ROOMY || STRIP || SEVEN) fmtFit(a, sizeof(a), r.v[k], topMode != 2, topChipTextW, topChipF);
-      else if (topMode == 2) fmtInt(a, sizeof(a), r.v[k]);
-      else fmtSigned(a, sizeof(a), r.v[k]);
+      // Fit the number beside the icon: 1.2k for thousands, then without the
+      // sign (these are gains anyway), then one font size down.
+      const lv_font_t* f = topChipF;
+      fmtFit(a, sizeof(a), r.v[k], topMode != 2, topChipTextW, f);
+      if (lv_txt_get_width(a, strlen(a), f, 0, LV_TEXT_FLAG_NONE) > topChipTextW && a[0] == '+') memmove(a, a + 1, strlen(a));
+      if (lv_txt_get_width(a, strlen(a), f, 0, LV_TEXT_FLAG_NONE) > topChipTextW)
+        f = f == &lv_font_montserrat_26 ? &lv_font_montserrat_20 : f == &lv_font_montserrat_20 ? &lv_font_montserrat_16 : &lv_font_montserrat_12;
+      lv_obj_set_style_text_font(t.chips[s], f, 0);
       lv_label_set_text(t.chips[s], a);
-      lv_obj_align(t.chips[s], LV_ALIGN_CENTER, SEVEN ? 14 : 0, 0);
+      lv_obj_align(t.chips[s], LV_ALIGN_CENTER, (TINY ? 23 : SEVEN ? 30 : 26) / 2, 0);
       if (t.ics[s]) lv_obj_set_style_img_recolor(t.ics[s], C(r.v[k] ? COL[k] : C_IDLE), 0);
-      // A zero chip steps back so the live counts stand out.
-      lv_obj_set_style_bg_color(lv_obj_get_parent(t.chips[s]), C(r.v[k] ? COLBG[k] : C_CARD2), 0);
+      // A zero chip steps back so the live counts stand out, but keeps its
+      // box: a hairline outline on the chip tone, so the row still reads as
+      // five separate counters.
+      lv_obj_t* box = lv_obj_get_parent(t.chips[s]);
+      lv_obj_set_style_bg_color(box, C(r.v[k] ? COLBG[k] : C_CHIP), 0);
+      lv_obj_set_style_border_width(box, 1, 0);
+      lv_obj_set_style_border_color(box, C(r.v[k] ? COLBG[k] : C_EDGE), 0);
       lv_obj_set_style_text_color(t.chips[s], C(r.v[k] ? COL[k] : C_IDLE), 0);
     }
   }

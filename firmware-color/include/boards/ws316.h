@@ -27,6 +27,7 @@
 #define LCD_PIN_SDA   1
 #define LCD_PIN_BL    6
 #define LCD_BL_ACTIVE_HIGH 0   // duty 0 = full brightness (Waveshare demo)
+#define LCD_BL_MIN_PCT    25   // ~15-19% duty is still dark; ~30% lights (Wofl, 2026-10-30)
 
 #define LCD_NATIVE_W  320
 #define LCD_NATIVE_H  820
