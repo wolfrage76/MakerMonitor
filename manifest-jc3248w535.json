@@ -1,8 +1,8 @@
 {
   "name": "MakerMonitor for the Guition JC3248W535 3.5\"",
-  "version": "0.4.114",
+  "version": "0.4.121",
   "new_install_prompt_erase": true,
   "builds": [
-    { "chipFamily": "ESP32-S3", "parts": [{ "path": "firmware/makermonitor-jc3248w535-0.4.114.bin", "offset": 0 }] }
+    { "chipFamily": "ESP32-S3", "parts": [{ "path": "firmware/makermonitor-jc3248w535-0.4.121.bin", "offset": 0 }] }
   ]
 }
