@@ -1436,9 +1436,11 @@ static void buildTop() {
   const int nameGap = SEVEN ? 10 : ROOMY ? 6 : 2;  // name to chip row
   const int barH = TALL ? 8 : TINY ? 2 : STRIP ? 6 : 5;
   TOP_BAR_W = stack ? CW - 2 : CW - nameX - chipR - topChipN * chipStep - 10;
-  const int nameY = TALL || STRIP ? (rowH - lineH(nf) - barH - 10) / 2
-                    : stack ? (rowH - lineH(nf) - chipH - nameGap) / 2
-                            : (rowH - lineH(F16) - 13) / 2;
+  // Stacked rows first: the 7" is TALL too, and the name-over-bar formula
+  // pushed its chip row down against the card's bottom edge.
+  const int nameY = stack ? (rowH - lineH(nf) - chipH - nameGap) / 2
+                    : TALL || STRIP ? (rowH - lineH(nf) - barH - 10) / 2
+                                    : (rowH - lineH(F16) - 13) / 2;
   for (int i = 0; i < topRows; i++) {
     TopUi& t = topUi[i];
     t.card = card(s, PAD, TOP + i * (rowH + gap), CW, rowH);
