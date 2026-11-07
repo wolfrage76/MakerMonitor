@@ -2962,6 +2962,7 @@ static const MenuDef MENU[] = {
   {MK_HEAD, 0, "DISPLAY"},
   {MK_CHOICE, SET_BRIGHTNESS, nullptr},
   {MK_CHOICE, SET_DIM, nullptr},
+  {MK_TOGGLE, SET_FLIP, nullptr},
   {MK_CHOICE, SET_AUTOCYCLE, nullptr},
   {MK_CHOICE, SET_IDLE, nullptr},
   {MK_HEAD, 0, "QUIET HOURS"},
@@ -2990,6 +2991,7 @@ static const MenuDef MENU[] = {
 
 // One-line explanation under a row's label (the two settings people ask about).
 static const char* menuHint(int i) {
+  if (MENU[i].kind == MK_TOGGLE && MENU[i].id == SET_FLIP) return "If the panel is mounted upside down";
   if (MENU[i].kind != MK_CHOICE) return nullptr;
   if (MENU[i].id == SET_NOTIFY) return "Banner and chime for these events";
   if (MENU[i].id == SET_NIGHT) return "Once idle in quiet hours";
@@ -3281,8 +3283,11 @@ static void choiceRefresh() {
   if (!INPUT_TOUCH) lv_obj_scroll_to_view(sheetOpt[sheetSel], LV_ANIM_ON);
 }
 
+static void applyFlip() { display_set_upside_down(setting_value(SET_FLIP) != 0); }
+
 static void applySetting(SettingId id) {
   if (id == SET_BRIGHTNESS) applyBrightness();
+  if (id == SET_FLIP) applyFlip();
   if (id == SET_POLL) ui_toast("Poller picks this up within 15 s");
 #if AUDIO_I2S
   if (id == SET_VOLUME || id == SET_SOUND) sound_test();
@@ -3505,6 +3510,7 @@ static void resetBtnCb(lv_event_t* e) {
   if (!yes) return;
   settings_reset_defaults();
   applyBrightness();
+  applyFlip();
   refreshMenu();
   refreshStatus();
   ui_toast("Settings reset to defaults");
@@ -3543,6 +3549,7 @@ static void sheetInput(const KnobInput& in) {
       sheetClose();
       settings_reset_defaults();
       applyBrightness();
+      applyFlip();
       refreshMenu();
       ui_toast("Settings reset to defaults");
     }
@@ -5217,6 +5224,7 @@ const State& ui_get_state() { return st; }
 
 void ui_refresh_from_web() {
   applyBrightness();
+  applyFlip();
   if (menuOpen) refreshMenu();
   if (statusOpen) refreshStatus();
   refreshUpdate();

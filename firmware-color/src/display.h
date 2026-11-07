@@ -28,9 +28,18 @@ bool display_survives_flash();
 // memory copies instead of re-rendering every widget each frame. All buffers
 // are in PSRAM. Unavailable while the display is suspended.
 bool display_can_compose();
-// The panel's RGB565 framebuffer in native orientation (LCD_NATIVE_W x
-// LCD_NATIVE_H), for /screenshot.png. nullptr while suspended.
+// The panel's RGB565 framebuffer. On a rotated panel this is the glass's
+// scan order, which is not the picture a person sees. nullptr while suspended.
 const uint16_t* display_framebuffer();
+// Size of that picture, and one pixel of it. /screenshot.png uses these so
+// the file matches the glass, including a 180 degree mount flip.
+void display_view_size(int& w, int& h);
+uint16_t display_view_pixel(const uint16_t* fb, int x, int y);
+
+// Turn the picture and touch 180 degrees. The caller saves it. No-op until
+// the panel is up; display_init reads the saved value itself.
+void display_set_upside_down(bool on);
+bool display_upside_down();
 uint16_t* display_page_buf(int slot);  // 2 full-screen RGB565 buffers
 void display_compose_begin();          // capture the visible frame
 // Current page shifted by dx (neighbor fills the gap: right of it when dx < 0,

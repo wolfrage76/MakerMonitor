@@ -40,7 +40,7 @@
 #define LCD_VSYNC_PW  40
 #define LCD_PCLK_NEG  0   // try 1 if the image shimmers or colors are shifted
 
-// Landscape. If the picture is upside down, switch to LV_DISP_ROT_270.
+// Landscape. Settings → Flip display turns this to ROT_270 for an upside-down mount.
 #define LCD_ROTATION  LV_DISP_ROT_90
 
 // No touch: a KY-040 knob does all navigation.

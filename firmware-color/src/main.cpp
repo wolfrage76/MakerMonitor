@@ -782,8 +782,8 @@ static void handleDiagnostics() {
 }
 
 // PNG of what the panel shows, built in PSRAM with the ROM's deflate
-// (Huffman only: small and quick). Native orientation, so a rotated panel's
-// picture comes out sideways.
+// (Huffman only: small and quick). Oriented the way the glass reads, so a
+// panel LVGL rotates (the 3.16") is not saved on its side.
 struct PngBuf {
   uint8_t* data = nullptr;
   size_t len = 0, cap = 0;
@@ -835,25 +835,25 @@ static void handleScreenshot() {
     server.send(503, "text/plain", "Display is off");
     return;
   }
-  const int W = LCD_NATIVE_W, H = LCD_NATIVE_H;
-  const size_t rowBytes = 1 + W * 3;
+  int W = 0, H = 0;
+  display_view_size(W, H);
+  const size_t rowBytes = 1 + (size_t)W * 3;
   auto* comp = (tdefl_compressor*)heap_caps_malloc(sizeof(tdefl_compressor), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
   auto* row = (uint8_t*)heap_caps_malloc(rowBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
   PngBuf png;
   bool ok = comp && row;
   static const uint8_t SIG[8] = {137, 80, 78, 71, 13, 10, 26, 10};
   uint8_t ihdr[13] = {};
-  putBe32(ihdr, W);
-  putBe32(ihdr + 4, H);
+  putBe32(ihdr, (uint32_t)W);
+  putBe32(ihdr + 4, (uint32_t)H);
   ihdr[8] = 8;  // 8-bit RGB
   ihdr[9] = 2;
   ok = ok && pngAppend(png, SIG, 8) && pngChunk(png, "IHDR", ihdr, 13);
   ok = ok && tdefl_init(comp, pngIdat, &png, TDEFL_WRITE_ZLIB_HEADER | TDEFL_HUFFMAN_ONLY) == TDEFL_STATUS_OKAY;
   for (int y = 0; ok && y < H; y++) {
     row[0] = 0;  // filter: none
-    const uint16_t* src = fbp + (size_t)y * W;
     for (int x = 0; x < W; x++) {
-      uint16_t px = src[x];
+      uint16_t px = display_view_pixel(fbp, x, y);
       row[1 + x * 3] = ((px >> 11) & 0x1F) * 255 / 31;
       row[2 + x * 3] = ((px >> 5) & 0x3F) * 255 / 63;
       row[3 + x * 3] = (px & 0x1F) * 255 / 31;
@@ -1036,6 +1036,7 @@ static void handleConsole() {
   p += F("<div class=card><h2>Display</h2>");
   sel(SET_BRIGHTNESS, nullptr, nullptr);
   sel(SET_DIM, nullptr, nullptr);
+  sel(SET_FLIP, nullptr, "Turns the picture and touch around if the panel is mounted upside down.");
   sel(SET_AUTOCYCLE, nullptr, nullptr);
   sel(SET_IDLE, nullptr, nullptr);
   char hm[8];
@@ -1636,7 +1637,7 @@ void setup() {
 #ifdef SERIAL_SHOTS
 // Dev builds only (PLATFORMIO_BUILD_FLAGS=-DSERIAL_SHOTS): layout work over
 // USB when the panel isn't on the network. "show <page> [tab] [open]" goes to
-// a screen; "shot" sends the raw RGB565 framebuffer between SHOT and END.
+// a screen; "shot" sends the RGB565 picture as it reads on the glass, between SHOT and END.
 static void serialShotTick() {
   static String line;
   while (Serial.available()) {
@@ -1663,8 +1664,19 @@ static void serialShotTick() {
       if (!fbp) {
         Serial.println("SHOT none");
       } else {
-        Serial.printf("SHOT %d %d\n", LCD_NATIVE_W, LCD_NATIVE_H);
-        Serial.write((const uint8_t*)fbp, LCD_NATIVE_W * LCD_NATIVE_H * 2);
+        int W = 0, H = 0;
+        display_view_size(W, H);
+        Serial.printf("SHOT %d %d\n", W, H);
+        auto* row = (uint16_t*)malloc((size_t)W * 2);
+        if (!row) {
+          Serial.println("SHOT none");
+        } else {
+          for (int y = 0; y < H; y++) {
+            for (int x = 0; x < W; x++) row[x] = display_view_pixel(fbp, x, y);
+            Serial.write((const uint8_t*)row, (size_t)W * 2);
+          }
+          free(row);
+        }
         Serial.println("END");
       }
     }

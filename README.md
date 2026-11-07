@@ -4,9 +4,80 @@
 
 I publish models on [MakerWorld](https://makerworld.com/en/@Wofl) and kept refreshing my profile to see what was moving. MakerMonitor does that for me: a small poller on my home network checks MakerWorld every few minutes and puts the numbers wherever I want them. On a phone, in Discord, or on a little touchscreen on my desk.
 
-![Today on the 7" color panel](docs/screens/today.png)
-
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+## Quick setup
+
+The poller is the part that has to stay running. The dashboard, notifications, and a desk panel are optional, and you can add them later.
+
+### 1. Run the poller
+
+Pick one. Both read the same `config.yaml`.
+
+**Docker (compose)**
+
+```bash
+cd poller
+mkdir -p docker-data
+cp config.example.yaml docker-data/config.yaml   # set your handle and api_token
+MM_UID=$(id -u) MM_GID=$(id -g) docker compose up -d --build
+```
+
+**Python (pip)**
+
+```bash
+cd poller
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp config.example.yaml config.yaml                 # set your handle and api_token
+python -m makermonitor
+```
+
+The systemd unit, the Docker details, and the rest of the poller options are in [`poller/README.md`](poller/README.md).
+
+### 2. Open the dashboard
+
+Visit `http://<poller-host>:8787/?token=<api_token>` once. Your browser remembers it after that.
+
+### 3. Install the browser extension
+
+Load [`extension/`](extension/) as an unpacked extension in Chrome, Edge or Brave, set the poller URL (`http://<poller-host>:8787`) and the same `api_token`, then visit MakerWorld. Steps are in [`extension/README.md`](extension/README.md).
+
+### 4. Optional: notifications
+
+Add channels under `notifications:` in `config.yaml` (or in the dashboard's Settings tab) and send a test:
+
+```bash
+.venv/bin/python -m makermonitor --test-notify
+```
+
+[`poller/NOTIFICATIONS.md`](poller/NOTIFICATIONS.md) covers every service and option.
+
+### 5. Optional: a panel
+
+Plug in a [supported board](#supported-boards), open the **[web flasher](https://wolfrage76.github.io/MakerMonitor/)** in Chrome or Edge, pick that board, and press **Connect and install**.
+
+Join it to your Wi-Fi on the screen. Until the poller knows about it, the panel shows a **Connect the poller** page with the line to add to `config.yaml` (`panels: ["makermonitor.local"]`), or add it in the dashboard's Settings tab.
+
+## More than the quick setup
+
+USB flashing, building from source, wireless updates, and recovery are in [`firmware-color/README.md`](firmware-color/README.md#flash). The e-ink panel (on hold) is in [`firmware-eink/README.md`](firmware-eink/README.md). How the pieces fit is in [`docs/architecture.md`](docs/architecture.md).
+
+## What the panels look like
+
+Today, captured from the panels. The 7″ is the Elecrow CrowPanel. The 3.16″ and the 2″ are Waveshare boards. The same pages are on each; the layout changes to fit the glass.
+
+| 7″ (800×480) | 3.16″ (820×320) |
+|---|---|
+| ![Today on the 7 inch panel](docs/screens/boards/7-inch.png) | ![Today on the 3.16 inch panel](docs/screens/boards/3.16-inch.png) |
+
+| 2″ (320×240) |
+|---|
+| ![Today on the 2 inch panel](docs/screens/boards/2-inch.png) |
+
+The Guition 3.5″ (480×320) uses the compact layout: Today keeps the 7-day and 30-day rows, and a Ratings / Followers strip sits under the tiles. It was not powered when these were captured.
+
+More pages from the 7″ (Creator, Settings, and the rest) are in [Screenshots](#screenshots).
 
 ## Pick your setup
 
@@ -78,72 +149,13 @@ Every color board gets the same pages and features; only the layout changes to f
 
 The CrowPanel 5" and 4.3" builds share the same code but haven't been tested on real hardware yet. The Elecrow CrowPanel 2.13" e-paper panel is covered separately (see setup 4 above).
 
-## Quick start
-
-### 1. Run the poller
-
-Pick one. Both read the same `config.yaml`.
-
-**Docker (compose)**
-
-```bash
-cd poller
-mkdir -p docker-data
-cp config.example.yaml docker-data/config.yaml   # set your handle and api_token
-MM_UID=$(id -u) MM_GID=$(id -g) docker compose up -d --build
-```
-
-**Python (pip, optionally as a systemd service)**
-
-```bash
-cd poller
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cp config.example.yaml config.yaml                 # set your handle and api_token
-python -m makermonitor
-```
-
-[`poller/README.md`](poller/README.md) has the systemd unit, the Docker details and everything else.
-
-### 2. Open the dashboard
-
-Visit `http://<poller-host>:8787/?token=<api_token>` once. Your browser remembers it after that.
-
-### 3. Install the browser extension
-
-Load [`extension/`](extension/) as an unpacked extension in Chrome, Edge or Brave, set the poller URL (`http://<poller-host>:8787`) and the same `api_token`, then visit MakerWorld. Steps in [`extension/README.md`](extension/README.md).
-
-### 4. Optional: notifications
-
-Add channels under `notifications:` in `config.yaml` (or in the dashboard's Settings tab) and send a test:
-
-```bash
-.venv/bin/python -m makermonitor --test-notify
-```
-
-[`poller/NOTIFICATIONS.md`](poller/NOTIFICATIONS.md) covers every service and option.
-
-### 5. Optional: a panel
-
-The quickest way onto any board marked ✅ under [Supported boards](#supported-boards) is the **[web flasher](https://wolfrage76.github.io/MakerMonitor/)**: plug the panel in over USB, open the page in Chrome or Edge, pick the board and press **Connect and install**.
-
-Or build and flash it with PlatformIO:
-
-```bash
-cd firmware-color
-rm -f sdkconfig.defaults
-pio run -e crowpanel_70 -t upload      # or waveshare_70, ws_lcd2, ws316, jc3248w535, crowpanel_50, crowpanel_43
-```
-
-Join it to your Wi-Fi on the screen. Until the poller knows about it, the panel shows a **Connect the poller** page with the line to add to `config.yaml` (`panels: ["makermonitor.local"]`), or add it in the dashboard's Settings tab. Build notes, controls and the full feature list are in [`firmware-color/README.md`](firmware-color/README.md); the e-ink panel is in [`firmware-eink/README.md`](firmware-eink/README.md).
-
 ## Configuration
 
 Everything lives in `poller/config.yaml`; start from the commented [`config.example.yaml`](poller/config.example.yaml). The essentials are your MakerWorld `handle` and an `api_token` you make up. Panels go in one `panels:` list of IPs or `.local` names, color and e-paper alike (the poller works out which is which). The panel list, the poll interval (10 minutes by default) and notification channels are all optional.
 
 Most of it can also be changed from the dashboard's **Settings** tab, which checks your changes before saving, keeps a backup of the previous file and applies them right away. Secrets can come from environment variables (`"${DISCORD_WEBHOOK}"`).
 
-Panel settings (brightness, quiet hours, which events to show, the poll interval) are set on the panel itself or in its web console.
+Panel settings (brightness, flip display, quiet hours, which events to show, the poll interval) are set on the panel itself or in its web console.
 
 ## Privacy and being polite to MakerWorld
 
@@ -154,7 +166,7 @@ Panel settings (brightness, quiet hours, which events to show, the poll interval
 
 ## Screenshots
 
-From the 7" color panel (captured with `tools/capture_screens.sh`; the full set is in [`docs/screens/`](docs/screens/)):
+More pages from the 7″ panel (captured with `tools/capture_screens.sh`; the full set is in [`docs/screens/`](docs/screens/)). The board sizes are in [What the panels look like](#what-the-panels-look-like).
 
 | | | |
 |---|---|---|

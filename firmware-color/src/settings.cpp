@@ -40,6 +40,7 @@ const SettingDef SETTINGS[NSET] = {
   {"banner", "Notification time", 4, BANNER_N, BANNER_V, 1},
   {"dim", "Dim after", 5, DIM_N, DIM_V, 2},
   {"night", "Night mode", 2, NIGHT_N, NIGHT_V, 0},
+  {"flip", "Flip display", 2, ONOFF_N, ONOFF_V, 0},
 #if AUDIO_I2S
   {"sound", "Sound", 2, ONOFF_N, ONOFF_V, 1},
   {"volume", "Volume", 3, VOLUME_N, VOLUME_V, 1},

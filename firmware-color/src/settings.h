@@ -14,6 +14,7 @@ enum SettingId {
   SET_BANNER,
   SET_DIM,
   SET_NIGHT,
+  SET_FLIP,
 #if AUDIO_I2S
   SET_SOUND,
   SET_VOLUME,

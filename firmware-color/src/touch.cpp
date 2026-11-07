@@ -9,6 +9,7 @@
 #include <lvgl.h>
 
 #include "board.h"
+#include "display.h"
 #include "ui.h"
 
 void deviceLogf(const char* fmt, ...);
@@ -19,8 +20,18 @@ static lv_indev_drv_t indevDrv;
 
 static void mapPoint(int rx, int ry, lv_indev_data_t* d) {
   int x = TOUCH_SWAP_XY ? ry : rx, y = TOUCH_SWAP_XY ? rx : ry;
-  if (TOUCH_FLIP_X) x = LCD_NATIVE_W - 1 - x;
-  if (TOUCH_FLIP_Y) y = LCD_NATIVE_H - 1 - y;
+  // Points leaving here are widget coordinates on every touch board.
+  bool flipX = TOUCH_FLIP_X;
+  bool flipY = TOUCH_FLIP_Y;
+  // Every touch board reports widget coordinates. Landscape panels (the
+  // CrowPanels, the Waveshare 7" and 2", the Guition 3.5") turn a 180 mount
+  // here. The 3.16" turns inside LVGL and has no touch, so it is not here.
+  if (display_upside_down() && LCD_ROTATION == LV_DISP_ROT_NONE) {
+    flipX = !flipX;
+    flipY = !flipY;
+  }
+  if (flipX) x = LCD_NATIVE_W - 1 - x;
+  if (flipY) y = LCD_NATIVE_H - 1 - y;
   d->point.x = constrain(x, 0, LCD_NATIVE_W - 1);
   d->point.y = constrain(y, 0, LCD_NATIVE_H - 1);
 }
@@ -438,13 +449,35 @@ static void cancelIfSlidOff(const lv_point_t& p) {
   lv_indev_wait_release(indev);
 }
 
+// readCb reports widget coordinates on today's touch boards. If a board ever
+// turns the picture inside LVGL (as the knob-only 3.16" does), this matches
+// that turn so the slid-off check still sees the same point as the button.
+// Comparing glass coordinates to widget coordinates cancels every tap.
+static lv_point_t logicalPoint(lv_point_t p) {
+  lv_disp_t* disp = lv_disp_get_default();
+  if (!disp || !disp->driver) return p;
+  const auto rot = static_cast<lv_disp_rot_t>(disp->driver->rotated);
+  const lv_coord_t hor = disp->driver->hor_res;
+  const lv_coord_t ver = disp->driver->ver_res;
+  if (rot == LV_DISP_ROT_180 || rot == LV_DISP_ROT_270) {
+    p.x = hor - p.x - 1;
+    p.y = ver - p.y - 1;
+  }
+  if (rot == LV_DISP_ROT_90 || rot == LV_DISP_ROT_270) {
+    lv_coord_t tmp = p.y;
+    p.y = p.x;
+    p.x = ver - tmp - 1;
+  }
+  return p;
+}
+
 // A touch on a dimmed screen only wakes it: the whole press is reported as
 // released, so it can't tap, swipe or open anything.
 static void wakeFilter(lv_indev_drv_t* drv, lv_indev_data_t* d) {
   static bool swallow = false;
   static bool wasDown = false;
   readCb(drv, d);
-  if (wasDown && d->state == LV_INDEV_STATE_REL && !swallow) cancelIfSlidOff(d->point);
+  if (wasDown && d->state == LV_INDEV_STATE_REL && !swallow) cancelIfSlidOff(logicalPoint(d->point));
   wasDown = d->state == LV_INDEV_STATE_PR;
   if (d->state == LV_INDEV_STATE_PR) {
     if (!swallow && ui_wake()) swallow = true;

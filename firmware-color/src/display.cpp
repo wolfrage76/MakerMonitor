@@ -7,6 +7,8 @@
 #include "display.h"
 
 #include <Arduino.h>
+#include "settings.h"
+#include <algorithm>
 #include <esp_cache.h>
 #include <esp_heap_caps.h>
 #include <esp_lcd_panel_ops.h>
@@ -23,6 +25,55 @@
 
 static esp_lcd_panel_handle_t panel = nullptr;
 static bool displaySuspended = false;
+static bool glassUpsideDown = false;
+
+// The board's built-in orientation, plus 180 when the panel is mounted
+// upside down. Panels with their own GRAM keep LVGL unrotated and turn the
+// glass instead, so their framebuffer stays the picture a person sees.
+#if !LCD_HAS_GRAM
+static lv_disp_rot_t rotAdd180(lv_disp_rot_t r) {
+  switch (r) {
+    case LV_DISP_ROT_90: return LV_DISP_ROT_270;
+    case LV_DISP_ROT_180: return LV_DISP_ROT_NONE;
+    case LV_DISP_ROT_270: return LV_DISP_ROT_90;
+    default: return LV_DISP_ROT_180;
+  }
+}
+#endif
+
+#if LCD_HAS_GRAM
+static bool panelMadctlFlip() {
+#if defined(LCD_FLIP)
+  return (LCD_FLIP != 0) ^ glassUpsideDown;
+#else
+  return glassUpsideDown;
+#endif
+}
+#endif
+
+static lv_disp_rot_t activeRotation() {
+#if LCD_HAS_GRAM
+  return LV_DISP_ROT_NONE;
+#else
+  return glassUpsideDown ? rotAdd180(LCD_ROTATION) : LCD_ROTATION;
+#endif
+}
+
+// Rotation LVGL itself applies. Touch boards keep this equal to the points
+// they report, so a tap and a widget are the same numbers on every board.
+// The 180 mount flip is done beside LVGL (pixels on the way out, touch on
+// the way in). The 3.16" is the exception: it has no touch and is already
+// turned 90 inside LVGL, so its flip is the other 90 (270).
+static lv_disp_rot_t lvglRotation() {
+#if LCD_HAS_GRAM
+  return LV_DISP_ROT_NONE;
+#else
+  if (LCD_ROTATION == LV_DISP_ROT_NONE) return LV_DISP_ROT_NONE;
+  return activeRotation();
+#endif
+}
+
+bool display_upside_down() { return glassUpsideDown; }
 static lv_disp_draw_buf_t drawBuf;
 static lv_disp_drv_t dispDrv;
 // LVGL draw buffers (internal RAM, two of them): 40 lines of 320 px.
@@ -209,13 +260,13 @@ static void axsCmd(uint8_t cmd, const uint8_t* data = nullptr, size_t len = 0) {
 static void axsFill(uint16_t* out, int py0) {
   const int W = LCD_NATIVE_W, PW = LCD_PANEL_W;
   for (int px = 0; px < PW; px++) {
-#if LCD_FLIP
-    const uint16_t* src = qspiFb + px * W + (W - 1 - py0);
-    for (int k = 0; k < TX_ROWS; k++) out[k * PW + px] = __builtin_bswap16(src[-k]);
-#else
-    const uint16_t* src = qspiFb + (PW - 1 - px) * W + py0;
-    for (int k = 0; k < TX_ROWS; k++) out[k * PW + px] = __builtin_bswap16(src[k]);
-#endif
+    if (panelMadctlFlip()) {
+      const uint16_t* src = qspiFb + px * W + (W - 1 - py0);
+      for (int k = 0; k < TX_ROWS; k++) out[k * PW + px] = __builtin_bswap16(src[-k]);
+    } else {
+      const uint16_t* src = qspiFb + (PW - 1 - px) * W + py0;
+      for (int k = 0; k < TX_ROWS; k++) out[k * PW + px] = __builtin_bswap16(src[k]);
+    }
   }
 }
 
@@ -353,6 +404,13 @@ static void stPush(int x1, int y1, int x2, int y2) {
 
 static void stPushAll() { stPush(0, 0, LCD_NATIVE_W - 1, LCD_NATIVE_H - 1); }
 
+static void stApplyFlip() {
+  if (!lspi) return;
+  const uint8_t madctl = panelMadctlFlip() ? 0xA0 : 0x60;  // MV + MY or MX: landscape
+  stCmd(0x36, &madctl, 1);
+  stPushAll();
+}
+
 static void stInit() {
   pinMode(LCD_PIN_CS, OUTPUT);
   pinMode(LCD_PIN_DC, OUTPUT);
@@ -384,7 +442,7 @@ static void stInit() {
   delay(120);
   const uint8_t colmod = 0x55;  // RGB565
   stCmd(0x3A, &colmod, 1);
-  const uint8_t madctl = LCD_FLIP ? 0xA0 : 0x60;  // MV + MY or MX: landscape
+  const uint8_t madctl = panelMadctlFlip() ? 0xA0 : 0x60;  // MV + MY or MX: landscape
   stCmd(0x36, &madctl, 1);
   stCmd(0x21);  // INVON: IPS glass
   stCmd(0x13);  // NORON
@@ -448,8 +506,18 @@ static void flushCb(lv_disp_drv_t* drv, const lv_area_t* a, lv_color_t* px) {
     stPush(a->x1, a->y1, a->x2, a->y2);
   }
 #else
-  if (panel && !displaySuspended && !composing)
-    esp_lcd_panel_draw_bitmap(panel, a->x1, a->y1, a->x2 + 1, a->y2 + 1, px);
+  if (panel && !displaySuspended && !composing) {
+    int x = a->x1, y = a->y1;
+    const int w = a->x2 - a->x1 + 1, h = a->y2 - a->y1 + 1;
+    // Landscape RGB panels (CrowPanels, Waveshare 7"): turn a 180 mount
+    // here, not in LVGL, so touch stays in widget coordinates.
+    if (glassUpsideDown && LCD_ROTATION == LV_DISP_ROT_NONE) {
+      std::reverse(reinterpret_cast<uint16_t*>(px), reinterpret_cast<uint16_t*>(px) + (size_t)w * h);
+      x = LCD_NATIVE_W - 1 - a->x2;
+      y = LCD_NATIVE_H - 1 - a->y2;
+    }
+    esp_lcd_panel_draw_bitmap(panel, x, y, x + w, y + h, px);
+  }
 #endif
   lv_disp_flush_ready(drv);
 }
@@ -492,7 +560,79 @@ static uint16_t* fbAny = nullptr;  // framebuffer on every panel, rotated or not
 
 const uint16_t* display_framebuffer() { return panelLive() && !displaySuspended ? fbAny : nullptr; }
 
-bool display_can_compose() { return fb && capture && pages[0] && pages[1] && panelLive() && !displaySuspended; }
+void display_view_size(int& w, int& h) {
+  // LVGL's 90/270 rotation swaps the driver's native axes. 180 keeps them.
+  // GRAM boards report NONE here: their framebuffer is already the view.
+  const lv_disp_rot_t r = activeRotation();
+  if (r == LV_DISP_ROT_90 || r == LV_DISP_ROT_270) {
+    w = LCD_NATIVE_H;
+    h = LCD_NATIVE_W;
+  } else {
+    w = LCD_NATIVE_W;
+    h = LCD_NATIVE_H;
+  }
+}
+
+uint16_t display_view_pixel(const uint16_t* fb, int x, int y) {
+  // Inverse of LVGL's software rotation (lv_refr.c draw_buf_rotate), so a
+  // screenshot is the picture on the glass. ROT_90 was checked against a
+  // 3.16" capture: native (px, py) = (ly, native_h - 1 - lx).
+  const int NW = LCD_NATIVE_W, NH = LCD_NATIVE_H;
+  int px = x, py = y;
+  switch (activeRotation()) {
+    case LV_DISP_ROT_90:
+      px = y;
+      py = NH - 1 - x;
+      break;
+    case LV_DISP_ROT_270:
+      px = NW - 1 - y;
+      py = x;
+      break;
+    case LV_DISP_ROT_180:
+      px = NW - 1 - x;
+      py = NH - 1 - y;
+      break;
+    default:
+      break;
+  }
+  return fb[(size_t)py * NW + px];
+}
+
+void display_set_upside_down(bool on) {
+  if (glassUpsideDown == on) return;
+  glassUpsideDown = on;
+#if LCD_SPI_ST7789
+  stApplyFlip();
+#endif
+#if LCD_HAS_GRAM
+  if (lv_disp_get_default()) {
+    lv_obj_invalidate(lv_scr_act());
+    lv_obj_invalidate(lv_layer_top());
+  }
+#else
+  if (LCD_ROTATION == LV_DISP_ROT_NONE) {
+    // Mirror happens in the flush. A full redraw picks it up.
+    if (lv_disp_get_default()) {
+      lv_obj_invalidate(lv_scr_act());
+      lv_obj_invalidate(lv_layer_top());
+    }
+  } else {
+    // 3.16": no touch, and the picture is already turned inside LVGL.
+    lv_disp_rot_t rot = lvglRotation();
+    dispDrv.sw_rotate = rot != LV_DISP_ROT_NONE;
+    if (lv_disp_get_default()) lv_disp_set_rotation(nullptr, rot);
+    else dispDrv.rotated = rot;
+  }
+#endif
+}
+
+bool display_can_compose() {
+  // A flipped landscape RGB panel mirrors in the flush. Composing straight
+  // into the scan-out buffer would skip that, so slides fall back to LVGL.
+  // The 3.16" is turned inside LVGL and never composes.
+  return fb && capture && pages[0] && pages[1] && panelLive() && !displaySuspended &&
+         activeRotation() == LV_DISP_ROT_NONE;
+}
 
 uint16_t* display_page_buf(int slot) { return pages[slot]; }
 
@@ -567,6 +707,7 @@ void display_set_brightness(uint8_t pct) {
 }
 
 void display_init() {
+  glassUpsideDown = setting_value(SET_FLIP) != 0;
 #if LCD_CH422G
   // Everything held low (panel and touch in reset, backlight off), then the
   // LCD out of reset before the RGB driver starts.
@@ -654,8 +795,8 @@ void display_init() {
   lv_disp_drv_init(&dispDrv);
   dispDrv.hor_res = LCD_NATIVE_W;
   dispDrv.ver_res = LCD_NATIVE_H;
-  dispDrv.sw_rotate = LCD_ROTATION != LV_DISP_ROT_NONE;
-  dispDrv.rotated = LCD_ROTATION;
+  dispDrv.rotated = lvglRotation();
+  dispDrv.sw_rotate = dispDrv.rotated != LV_DISP_ROT_NONE;
   dispDrv.flush_cb = flushCb;
   dispDrv.draw_buf = &drawBuf;
   lv_disp_drv_register(&dispDrv);
