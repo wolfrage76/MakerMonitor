@@ -22,7 +22,13 @@ shift || true
 ENVS=("$@")
 [ ${#ENVS[@]} -eq 0 ] && ENVS=(crowpanel_70 waveshare_70 jc3248w535 ws_lcd2 ws316 jc4880p443)
 
-PIO="${PIO:-$HOME/.platformio/penv/bin/pio}"
+# The same PlatformIO as `platformio` on PATH: a custom_sdkconfig build runs a
+# second pass through that one, and a different core version swaps SCons,
+# wipes the build dir and links the stock linker script (the IRAM check fails).
+PIO="${PIO:-$(command -v platformio)}"
+# The ESP32-P4 board builds in its own PlatformIO home: its platform swaps the
+# shared framework packages the S3 boards rebuild their core from.
+P4_CORE_DIR="${P4_CORE_DIR:-$HOME/.platformio-p4}"
 ESPTOOL="${ESPTOOL:-$HOME/.platformio/penv/bin/esptool.py}"
 NM="$HOME/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32s3-elf-nm"
 DIST="$REPO/flasher/dist"
@@ -58,7 +64,11 @@ boards_json=""
 for env in "${ENVS[@]}"; do
   # A stale hash here links the core built for another env.
   rm -f "$SRC/sdkconfig.defaults" "$SRC/sdkconfig.$env"
-  "$PIO" run -d "$SRC" -e "$env"
+  if [ "$env" = jc4880p443 ]; then
+    PLATFORMIO_CORE_DIR="$P4_CORE_DIR" "$PIO" run -d "$SRC" -e "$env"
+  else
+    "$PIO" run -d "$SRC" -e "$env"
+  fi
   build="$SRC/.pio/build/$env"
 
   # The Guition 4.3" is an ESP32-P4 (RISC-V, stock core, DSI glass): no RGB
@@ -82,7 +92,9 @@ for env in "${ENVS[@]}"; do
   done
   fi
 
-  boot_app0="$(find "$HOME/.platformio/packages" -path '*arduinoespressif32*/tools/partitions/boot_app0.bin' | head -1)"
+  pkgs="$HOME/.platformio/packages"
+  [ "$env" = jc4880p443 ] && pkgs="$P4_CORE_DIR/packages"
+  boot_app0="$(find "$pkgs" -path '*arduinoespressif32*/tools/partitions/boot_app0.bin' | head -1)"
   image="makermonitor-${env//_/-}-$VERSION.bin"
   "$ESPTOOL" --chip "$chip" merge_bin -o "$DIST/firmware/$image" \
     --flash_mode keep --flash_freq keep --flash_size keep \
