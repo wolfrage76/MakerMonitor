@@ -153,6 +153,14 @@ static bool hwInit() {
   pinMode(TOUCH_INT, INPUT);
   delay(60);
   findGt911();
+#elif defined(TOUCH_RST)
+  // Plain GPIO reset; INT floats, so either address can come up.
+  pinMode(TOUCH_RST, OUTPUT);
+  digitalWrite(TOUCH_RST, LOW);
+  delay(10);
+  digitalWrite(TOUCH_RST, HIGH);
+  delay(60);
+  findGt911();
 #else
   if (!findGt911()) {
     releaseViaPca9557();

@@ -18,6 +18,8 @@
 #include "boards/jc3248w535.h"
 #elif defined(BOARD_WS_LCD2)
 #include "boards/ws_lcd2.h"
+#elif defined(BOARD_JC4880P443)
+#include "boards/jc4880p443.h"
 #else
 #include "boards/ws316.h"
 #endif
@@ -53,9 +55,14 @@
 #ifndef LCD_SPI_ST7789
 #define LCD_SPI_ST7789 0
 #endif
+#ifndef LCD_MIPI_P4
+#define LCD_MIPI_P4 0
+#endif
 // Panels that keep their own picture: frames go from a PSRAM framebuffer
-// over SPI, and the screen survives flash writes.
-#define LCD_HAS_GRAM (LCD_QSPI_AXS15231B || LCD_SPI_ST7789)
+// over SPI, and the screen survives flash writes. The P4's DSI glass is
+// treated the same: a landscape PSRAM frame, turned onto the glass by the PPA
+// and scanned by DMA that keeps running through flash writes.
+#define LCD_HAS_GRAM (LCD_QSPI_AXS15231B || LCD_SPI_ST7789 || LCD_MIPI_P4)
 #ifndef LCD_BL_ONOFF
 #define LCD_BL_ONOFF 0
 #endif

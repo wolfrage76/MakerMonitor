@@ -3,7 +3,9 @@
 // is rotated to 820x320 landscape; the CrowPanels are landscape already. The
 // Guition 3.5" is a QSPI panel with its own GRAM instead: frames are kept in
 // a PSRAM framebuffer and sent to the panel whole. The Waveshare 2" ST7789
-// also keeps its picture; it takes dirty windows over plain SPI.
+// also keeps its picture; it takes dirty windows over plain SPI. The Guition
+// 4.3" (ESP32-P4) keeps the same landscape PSRAM framebuffer and hands each
+// whole frame to the PPA, which turns it onto the portrait DSI glass.
 #include "display.h"
 
 #include <Arduino.h>
@@ -19,8 +21,11 @@
 #if LCD_CH422G
 #include <Wire.h>
 #endif
-#if LCD_HAS_GRAM
+#if LCD_QSPI_AXS15231B || LCD_SPI_ST7789
 #include <driver/spi_master.h>
+#endif
+#if LCD_MIPI_P4
+#include "p4_dsi.h"
 #endif
 
 static esp_lcd_panel_handle_t panel = nullptr;
@@ -452,6 +457,26 @@ static void stInit() {
 }
 #endif
 
+#if LCD_MIPI_P4
+// ---- Guition 4.3" (ESP32-P4, MIPI-DSI) --------------------------------------
+// The PPA reads p4Fb by DMA, so the CPU cache is written back first. Presents
+// are at least P4_GAP_US apart: back-to-back full-frame rotates on the PSRAM
+// bus the glass is scanning froze the picture on the Digital Swatch port.
+static uint16_t* p4Fb = nullptr;
+static bool p4Stopped = false;
+static uint32_t p4LastUs = 0;
+static const uint32_t P4_GAP_US = 16000;
+
+static void p4Push() {
+  if (!p4Fb || p4Stopped) return;
+  esp_cache_msync(p4Fb, LCD_NATIVE_W * LCD_NATIVE_H * 2, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+  uint32_t since = micros() - p4LastUs;
+  if (p4LastUs && since < P4_GAP_US) delayMicroseconds(P4_GAP_US - since);
+  p4LastUs = micros();
+  p4_dsi_present(p4Fb, LCD_NATIVE_W, LCD_NATIVE_H, panelMadctlFlip());
+}
+#endif
+
 // ---- RGB panel + LVGL ------------------------------------------------------
 
 static bool composing = false;
@@ -462,6 +487,8 @@ static bool panelLive() {
   return qspiFb != nullptr;
 #elif LCD_SPI_ST7789
   return stFb != nullptr;
+#elif LCD_MIPI_P4
+  return p4Fb != nullptr && !p4Stopped;
 #else
   return panel != nullptr;
 #endif
@@ -505,6 +532,13 @@ static void flushCb(lv_disp_drv_t* drv, const lv_area_t* a, lv_color_t* px) {
       memcpy(stFb + y * LCD_NATIVE_W + a->x1, (const uint16_t*)px + (y - a->y1) * w, w * 2);
     stPush(a->x1, a->y1, a->x2, a->y2);
   }
+#elif LCD_MIPI_P4
+  if (p4Fb && !displaySuspended && !composing) {
+    const int w = a->x2 - a->x1 + 1;
+    for (int y = a->y1; y <= a->y2; y++)
+      memcpy(p4Fb + y * LCD_NATIVE_W + a->x1, (const uint16_t*)px + (y - a->y1) * w, w * 2);
+    if (lv_disp_flush_is_last(drv)) p4Push();
+  }
 #else
   if (panel && !displaySuspended && !composing) {
     int x = a->x1, y = a->y1;
@@ -526,6 +560,12 @@ void display_suspend() {
   if (displaySuspended) return;
   displaySuspended = true;
   display_set_brightness(0);
+#if LCD_MIPI_P4
+  // Called from the OTA boot switch too: DPI DMA must be quiet before the
+  // flash is remapped.
+  p4Stopped = true;
+  p4_dsi_stop();
+#endif
   // The QSPI panel holds its own picture; just stop sending frames.
   if (!panel) return;
   esp_lcd_panel_handle_t dying = panel;
@@ -558,7 +598,16 @@ static uint16_t* pages[2] = {nullptr, nullptr};
 
 static uint16_t* fbAny = nullptr;  // framebuffer on every panel, rotated or not
 
-const uint16_t* display_framebuffer() { return panelLive() && !displaySuspended ? fbAny : nullptr; }
+const uint16_t* display_framebuffer() {
+  if (!panelLive() || displaySuspended) return nullptr;
+#if LCD_MIPI_P4
+  // Every frame was written back before the PPA read it, so dropping the
+  // cached copy is safe; screenshots then read what the PPA rotated (the
+  // Digital Swatch port saw a stale band without this).
+  esp_cache_msync(fbAny, LCD_NATIVE_W * LCD_NATIVE_H * 2, ESP_CACHE_MSYNC_FLAG_DIR_M2C);
+#endif
+  return fbAny;
+}
 
 void display_view_size(int& w, int& h) {
   // LVGL's 90/270 rotation swaps the driver's native axes. 180 keeps them.
@@ -667,6 +716,8 @@ void display_compose(const uint16_t* nb, int dx, const lv_area_t* keep, int nkee
   axsPush();
 #elif LCD_SPI_ST7789
   stPushAll();
+#elif LCD_MIPI_P4
+  p4Push();
 #else
   // The RGB DMA reads PSRAM directly; push the CPU cache out.
   esp_cache_msync(fb, W * H * 2, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
@@ -742,6 +793,13 @@ void display_init() {
   void* fbp = stFb;
   fbAny = stFb;
   stPushAll();  // clear whatever the panel's GRAM held
+#elif LCD_MIPI_P4
+  if (p4_dsi_init() != ESP_OK) Serial.println("P4 DSI panel did not start");
+  // 64-byte aligned: the cache write-back before each PPA rotate works in lines.
+  p4Fb = (uint16_t*)heap_caps_aligned_calloc(64, LCD_NATIVE_W * LCD_NATIVE_H, 2, MALLOC_CAP_SPIRAM);
+  void* fbp = p4Fb;
+  fbAny = p4Fb;
+  p4Push();
 #else
   esp_lcd_rgb_panel_config_t cfg = {};
   cfg.clk_src = LCD_CLK_SRC_DEFAULT;

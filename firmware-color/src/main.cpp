@@ -36,6 +36,16 @@
 static char HOSTNAME[33] = "makermonitor";
 static const char* AP_NAME = BOARD_AP;
 
+// The Wi-Fi station MAC. The P4 has no radio of its own: asking for the
+// Wi-Fi MAC aborts until the C6 co-processor is up, so read the factory
+// address from eFuse there.
+static void staMac(uint8_t mac[6]) {
+#if CONFIG_IDF_TARGET_ESP32P4
+  if (esp_efuse_mac_get_default(mac) == ESP_OK) return;
+#endif
+  esp_read_mac(mac, ESP_MAC_WIFI_STA);
+}
+
 // makermonitor- plus the last 5 hex digits of the STA MAC, e.g. makermonitor-e3b7d.
 static void makeHostname() {
   const char* custom = settings_hostname();
@@ -43,7 +53,7 @@ static void makeHostname() {
     strlcpy(HOSTNAME, custom, sizeof(HOSTNAME));
   } else {
     uint8_t mac[6] = {};
-    esp_read_mac(mac, ESP_MAC_WIFI_STA);
+    staMac(mac);
     snprintf(HOSTNAME, sizeof(HOSTNAME), "makermonitor-%01x%02x%02x", mac[3] & 0x0f, mac[4], mac[5]);
   }
   strlcpy(g_net.host, HOSTNAME, sizeof(g_net.host));
@@ -222,7 +232,7 @@ static void logHeap(const char* where);
 bool net_ap_start(char* ssid, size_t ssidCap, char* pass, size_t passCap) {
   if (!apOn) {
     uint8_t mac[6] = {};
-    esp_read_mac(mac, ESP_MAC_WIFI_STA);
+    staMac(mac);
     snprintf(apSsid, sizeof(apSsid), "MakerMonitor-%02X%02X", mac[4], mac[5]);
     static const char CH[] = "abcdefghjkmnpqrstuvwxyz23456789";  // no 0/O, 1/l/i
     for (int i = 0; i < 8; i++) apPass[i] = CH[esp_random() % (sizeof(CH) - 1)];
@@ -1531,11 +1541,22 @@ void setup() {
   WiFi.setHostname(HOSTNAME);
   // Join the saved network in the background; a failed join keeps retrying
   // and the UI offers the Wi-Fi page (never a hotspot).
+#if CONFIG_IDF_TARGET_ESP32P4
+  WiFi.setSleep(false);  // stored first, so starting the station keeps it off
+#endif
   WiFi.mode(WIFI_STA);
   WiFi.setAutoReconnect(false);  // netRetryTick() paces reconnects
   WiFi.onEvent([](arduino_event_id_t, arduino_event_info_t info) {
     lastDiscReason = info.wifi_sta_disconnected.reason;
   }, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
+#if CONFIG_IDF_TARGET_ESP32P4
+  // The C6 radio turns modem sleep back on after it associates; switch it off
+  // again on every join (only the plain driver call is safe on the event task).
+  WiFi.onEvent([](arduino_event_id_t, arduino_event_info_t) { esp_wifi_set_ps(WIFI_PS_NONE); },
+               ARDUINO_EVENT_WIFI_STA_CONNECTED);
+  WiFi.onEvent([](arduino_event_id_t, arduino_event_info_t) { esp_wifi_set_ps(WIFI_PS_NONE); },
+               ARDUINO_EVENT_WIFI_STA_GOT_IP);
+#endif
   char saved[33];
   if (net_saved_ssid(saved, sizeof(saved))) WiFi.begin();
   else ui_wifi_page(true);  // first boot: choose a network
