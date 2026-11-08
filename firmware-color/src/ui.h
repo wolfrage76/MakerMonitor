@@ -67,6 +67,13 @@ int ota_compare_versions(const char* a, const char* b);
 bool ota_is_prerelease(const char* version);
 bool ota_check_github_update(char* latestVer, size_t verCap, char* downloadUrl, size_t urlCap,
                              char* errOut, size_t errCap);
+// Background check: returns false if one is already running or an update is
+// in progress. The result reaches the log, settings and screen from loop(),
+// which then calls ui_github_check_done().
+bool ota_check_github_async(bool automatic);
+bool ota_check_running();
+void ui_github_check_started();  // main loop only, like ui_github_check_done
+void ui_github_check_done(bool ok, const char* err);
 bool ota_install_github_update(const char* downloadUrl, void (*onProgress)(int pct),
                                char* errOut, size_t errCap);
 bool ota_update_available();

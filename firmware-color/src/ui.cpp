@@ -3582,6 +3582,7 @@ static void sheetInput(const KnobInput& in) {
 static void openMenu(bool open);
 static void openAbout(bool open);
 static void openUpdate(bool open);
+static void updQrClose();
 static void openStatus(bool open);
 
 static void menuActivate(int i) {
@@ -3648,6 +3649,7 @@ static void openStatus(bool open) {
     if (aboutRoot) show(aboutRoot, false);
     updOpen = false;
     if (updRoot) show(updRoot, false);
+    updQrClose();
   } else {
     cur = SC_TODAY;
   }
@@ -3670,6 +3672,7 @@ static void openMenu(bool open) {
     if (aboutRoot) show(aboutRoot, false);
     updOpen = false;
     if (updRoot) show(updRoot, false);
+    updQrClose();
   } else {
     cur = SC_TODAY;
   }
@@ -3693,6 +3696,7 @@ static void openAbout(bool open) {
     updOpen = false;
     show(menuRoot, false);
     if (updRoot) show(updRoot, false);
+    updQrClose();
   } else {
     cur = SC_TODAY;
   }
@@ -3747,18 +3751,39 @@ static void buildAbout() {
 }
 
 // ---- firmware update (OTA) --------------------------------------------------
-enum { UPD_CHECK, UPD_INSTALL, UPD_AUTO, UPD_BETA, NUPD };
+enum { UPD_CHECK, UPD_INSTALL, UPD_AUTO, UPD_BETA, UPD_WEB, NUPD };
 static Header updHdr;
 static lv_obj_t *updRemCell, *updRemEye, *updRemVer, *updRemSub;
-static lv_obj_t *updBar, *updUrl;
+static lv_obj_t* updBar;
 static lv_obj_t *updCard[NUPD], *updLbl[NUPD], *updVal[NUPD];
 static lv_obj_t *hbBadge, *hbUpdLbl;
+static lv_obj_t* updQrRoot = nullptr;  // web console QR overlay (top layer)
 static int updSel = 0;
+
+// Compact and knob headers have room for a few words only.
+static bool updShort() { return COMPACT || !INPUT_TOUCH; }
+
+// Install shows one label on compact panels, no separate value on the right.
+static bool updOneLabel() { return COMPACT; }
+
+// Long text when it fits the label's width, else the short form.
+static void fitText(lv_obj_t* l, const char* lng, const char* shrt) {
+  const lv_font_t* f = lv_obj_get_style_text_font(l, 0);
+  bool fits = lv_txt_get_width(lng, strlen(lng), f, 0, LV_TEXT_FLAG_NONE) <= lv_obj_get_width(l);
+  lv_label_set_text(l, fits ? lng : shrt);
+}
 
 static void setUpdStatus(const char* txt, uint32_t col) {
   if (!updHdr.sub) return;
   lv_label_set_text(updHdr.sub, txt);
   lv_obj_set_style_text_color(updHdr.sub, C(col), 0);
+}
+
+// The panel's own web console: mDNS name when it has one, else the IP.
+static void updConsoleUrl(char* a, size_t n) {
+  if (g_net.host[0]) snprintf(a, n, "http://%s.local/", g_net.host);
+  else if (g_net.connected) snprintf(a, n, "http://%s/", g_net.ip);
+  else snprintf(a, n, "connect Wi-Fi first");
 }
 
 static void refreshUpdateBadge() {
@@ -3788,6 +3813,10 @@ static void refreshUpdateBadge() {
   }
 }
 
+static void setUpdChecking() {
+  setUpdStatus(updShort() ? "Checking..." : "Checking GitHub for updates...", C_ACCENT);
+}
+
 static void refreshUpdate() {
   refreshUpdateBadge();
   if (!updRoot) return;
@@ -3796,21 +3825,23 @@ static void refreshUpdate() {
   bool newer = has && ota_compare_versions(lat, FW_VERSION) > 0;
   bool ahead = has && ota_compare_versions(lat, FW_VERSION) < 0;
   bool beta = has && ota_is_prerelease(lat);
+  const bool sh = updShort();
 
-  if (!has) {
-    // Knob boards: short, since the control hint shares the header row.
-    setUpdStatus(!INPUT_TOUCH ? (settings_auto_ota() ? "Hourly check on" : "Not checked yet")
+  if (ota_check_running()) {
+    setUpdChecking();
+  } else if (!has) {
+    setUpdStatus(sh ? (settings_auto_ota() ? "Hourly check on" : "Not checked yet")
                  : settings_auto_ota() ? "Hourly GitHub check enabled  -  tap Check to query now"
                                        : "Tap Check for updates to query GitHub Releases",
                  C_MUTED);
   } else if (newer) {
     char s[64];
-    snprintf(s, sizeof(s), "Update available on GitHub: v%s", lat);
+    snprintf(s, sizeof(s), sh ? "v%s available" : "Update available on GitHub: v%s", lat);
     setUpdStatus(s, C_OK);
   } else if (ahead) {
-    setUpdStatus("Ahead of GitHub release (local build)", C_MUTED);
+    setUpdStatus(sh ? "Ahead of GitHub" : "Ahead of GitHub release (local build)", C_MUTED);
   } else {
-    setUpdStatus("Up to date with latest GitHub release", C_MUTED);
+    setUpdStatus(sh ? "Up to date" : "Up to date with latest GitHub release", C_MUTED);
   }
 
   lv_obj_set_style_bg_color(updRemCell, C(newer ? 0x0D2622 : C_BG), 0);
@@ -3821,49 +3852,77 @@ static void refreshUpdate() {
     char v[40];
     snprintf(v, sizeof(v), "v%s", lat);
     lv_label_set_text(updRemVer, v);
-    lv_label_set_text(updRemSub, newer ? "ready to install" : (ahead ? "older than installed" : "current release"));
+    if (newer) fitText(updRemSub, "ready to install", "ready");
+    else if (ahead) fitText(updRemSub, "older than installed", "older");
+    else fitText(updRemSub, "current release", "current");
   } else {
-    lv_label_set_text(updRemVer, TINY ? "None" : "Not checked");
-    lv_label_set_text(updRemSub, PROJECT_GITHUB_REPO);
+    lv_label_set_text(updRemVer, COMPACT ? "None" : "Not checked");
+    const char* slash = strchr(PROJECT_GITHUB_REPO, '/');
+    fitText(updRemSub, PROJECT_GITHUB_REPO, slash ? slash + 1 : PROJECT_GITHUB_REPO);
   }
   lv_obj_set_style_text_color(updRemVer, C(newer ? C_OK : C_TXT), 0);
 
-  if (updUrl) {
-    char a[64];
-    if (g_net.host[0]) snprintf(a, sizeof(a), "http://%s.local/", g_net.host);
-    else if (g_net.connected) snprintf(a, sizeof(a), "http://%s/", g_net.ip);
-    else snprintf(a, sizeof(a), "connect Wi-Fi first");
-    lv_label_set_text(updUrl, a);
+  char instVal[40];
+  if (updOneLabel()) {
+    if (newer) snprintf(instVal, sizeof(instVal), LV_SYMBOL_DOWNLOAD " Install v%s", lat);
+    else snprintf(instVal, sizeof(instVal), LV_SYMBOL_DOWNLOAD "  %s", has ? "Reinstall" : "Install latest");
+    lv_label_set_text(updLbl[UPD_INSTALL], instVal);
+    instVal[0] = 0;
+  } else if (newer) {
+    snprintf(instVal, sizeof(instVal), "v%s", lat);
+  } else {
+    snprintf(instVal, sizeof(instVal), has ? "Reinstall" : "Latest");
   }
-
-  char instVal[36];
-  if (newer) snprintf(instVal, sizeof(instVal), "v%s", lat);
-  else if (has) snprintf(instVal, sizeof(instVal), "Reinstall");
-  else snprintf(instVal, sizeof(instVal), "Latest");
-  const char* vals[NUPD] = {"Query", instVal, settings_auto_ota() ? "On" : "Off", settings_beta_ota() ? "On" : "Off"};
+  const char* vals[NUPD] = {"", instVal, settings_auto_ota() ? "On" : "Off", settings_beta_ota() ? "On" : "Off",
+                            COMPACT ? "QR" : "Show QR"};
   for (int i = 0; i < NUPD; i++) {
     bool sel = !INPUT_TOUCH && i == updSel;
     bool hi = (i == UPD_INSTALL && newer);
     lv_obj_set_style_bg_color(updCard[i], C(sel ? C_RAISED : (hi ? 0x0D2622 : C_CARD)), 0);
     lv_obj_set_style_border_color(updCard[i], C(sel ? C_SEL : (hi ? C_OK : C_EDGE)), 0);
+    lv_obj_set_style_text_color(updLbl[i], C(hi ? C_OK : C_TXT), 0);
     lv_label_set_text(updVal[i], vals[i]);
-    uint32_t vc = sel ? C_SEL : (hi ? C_OK : ((i >= UPD_AUTO && vals[i][0] == 'O' && vals[i][1] == 'n') ? C_ACCENT : C_MUTED));
+    uint32_t vc = sel ? C_SEL : (hi ? C_OK : ((i == UPD_AUTO || i == UPD_BETA) && vals[i][1] == 'n' ? C_ACCENT : C_MUTED));
     lv_obj_set_style_text_color(updVal[i], C(vc), 0);
     lv_obj_align(updVal[i], LV_ALIGN_RIGHT_MID, COMPACT ? -10 : -16, 0);
   }
 }
 
+static bool updInstallAfterCheck = false;  // Install tapped before any check
+static bool updRecheck = false;            // Beta toggled during a check
+
 static void runGithubCheckUi() {
-  setUpdStatus("Checking GitHub for updates...", C_ACCENT);
-  lv_refr_now(nullptr);
-  char ver[32] = "", url[192] = "", err[96] = "";
-  if (ota_check_github_update(ver, sizeof(ver), url, sizeof(url), err, sizeof(err))) {
-    refreshUpdate();
-  } else {
-    char msg[128];
-    snprintf(msg, sizeof(msg), "Update check failed: %s", err[0] ? err : "error");
-    setUpdStatus(msg, C_ERR);
+  if (ota_check_running()) {
+    setUpdChecking();
+    return;
   }
+  if (!ota_check_github_async(false)) {
+    setUpdStatus(updShort() ? "Check failed" : "Update check could not start", C_ERR);
+  }
+}
+
+static void runGithubInstallUi();
+
+void ui_github_check_started() { refreshUpdate(); }
+
+void ui_github_check_done(bool ok, const char* err) {
+  if (updRecheck) {
+    updRecheck = false;
+    runGithubCheckUi();
+    return;
+  }
+  bool install = updInstallAfterCheck;
+  updInstallAfterCheck = false;
+  if (ok) {
+    refreshUpdate();
+    if (install && updRoot && !display_is_suspended()) runGithubInstallUi();
+    return;
+  }
+  if (!updRoot) return;
+  char msg[128];
+  if (updShort()) snprintf(msg, sizeof(msg), "Check failed");
+  else snprintf(msg, sizeof(msg), "Update check failed: %s", err && err[0] ? err : "error");
+  setUpdStatus(msg, C_ERR);
 }
 
 static void onGithubProgressUi(int pct) {
@@ -3873,33 +3932,32 @@ static void onGithubProgressUi(int pct) {
     lv_bar_set_value(updBar, pct, LV_ANIM_OFF);
   }
   char msg[64];
-  snprintf(msg, sizeof(msg), "Downloading & flashing... %d%%", pct);
+  snprintf(msg, sizeof(msg), updShort() ? "Downloading %d%%" : "Downloading & flashing... %d%%", pct);
   setUpdStatus(msg, C_ACCENT);
   lv_refr_now(nullptr);
 }
 
 static void runGithubInstallUi() {
+  if (ota_check_running()) {
+    setUpdChecking();
+    return;
+  }
   if (!ota_cached_latest_version()[0]) {
-    setUpdStatus("Checking GitHub release first...", C_ACCENT);
-    lv_refr_now(nullptr);
-    char ver[32] = "", url[192] = "", err[96] = "";
-    if (!ota_check_github_update(ver, sizeof(ver), url, sizeof(url), err, sizeof(err))) {
-      char msg[128];
-      snprintf(msg, sizeof(msg), "Update check failed: %s", err);
-      setUpdStatus(msg, C_ERR);
-      return;
-    }
-    refreshUpdate();
+    // Find the release first; ui_github_check_done() comes back here.
+    updInstallAfterCheck = true;
+    runGithubCheckUi();
+    if (!ota_check_running()) updInstallAfterCheck = false;
+    return;
   }
   if (updBar) {
     show(updBar, true);
     lv_bar_set_value(updBar, 0, LV_ANIM_OFF);
   }
-  setUpdStatus("Connecting to GitHub...", C_ACCENT);
+  setUpdStatus(updShort() ? "Connecting..." : "Connecting to GitHub...", C_ACCENT);
   lv_refr_now(nullptr);
   char err[96] = "";
   if (ota_install_github_update(ota_cached_download_url(), onGithubProgressUi, err, sizeof(err))) {
-    setUpdStatus("Update complete! Rebooting...", C_OK);
+    setUpdStatus(updShort() ? "Rebooting..." : "Update complete! Rebooting...", C_OK);
     lv_refr_now(nullptr);
     delay(700);
     ESP.restart();
@@ -3909,10 +3967,65 @@ static void runGithubInstallUi() {
   } else {
     if (updBar) show(updBar, false);
     char msg[128];
-    snprintf(msg, sizeof(msg), "Update failed: %s", err[0] ? err : "error");
+    if (updShort()) snprintf(msg, sizeof(msg), "Update failed");
+    else snprintf(msg, sizeof(msg), "Update failed: %s", err[0] ? err : "error");
     setUpdStatus(msg, C_ERR);
     lv_refr_now(nullptr);
   }
+}
+
+// Web console QR overlay: built on open, freed on close.
+static void updQrClose() {
+  if (!updQrRoot) return;
+  lv_obj_del_async(updQrRoot);
+  updQrRoot = nullptr;
+}
+
+static void updQrCloseCb(lv_event_t* e) {
+  (void)e;
+  lastInput = millis();
+  updQrClose();
+}
+
+static void updQrOpen() {
+  if (updQrRoot) return;
+  char url[64];
+  updConsoleUrl(url, sizeof(url));
+  updQrRoot = box(lv_layer_top(), 0, 0, W, H, C_BG);
+  Header h = header(updQrRoot, "WEB CONSOLE", COMPACT ? "" : "scan to open this panel's web console");
+  lv_obj_align(h.right, LV_ALIGN_TOP_RIGHT, -PAD, COMPACT ? 4 : (TALL ? 12 : 8));
+#if INPUT_TOUCH
+  // Tap anywhere closes; the Back chip is there for the obvious target.
+  lv_obj_add_flag(updQrRoot, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(updQrRoot, updQrCloseCb, LV_EVENT_CLICKED, nullptr);
+  headerBtn(h, LV_SYMBOL_CLOSE "  Back", C_TXT, updQrCloseCb, 0);
+#else
+  hint(h, "press or hold: back");
+#endif
+  const lv_font_t* uf = TINY ? F16 : (TALL ? F20 : F16);
+  const int urlH = lineH(uf) + (COMPACT ? 6 : 14);
+  const int quiet = TALL ? 16 : (COMPACT ? 8 : 12);
+  int qr = TH - urlH - 2 * quiet;
+  const int cap = TALL ? 300 : (COMPACT ? 160 : 200);
+  if (qr > cap) qr = cap;
+  if (qr < 96) qr = 96;
+  qr &= ~1;
+  const int plate = qr + 2 * quiet;
+  const int y0 = TOP + max(0, (TH - plate - urlH) / 2);
+  // White plate is the quiet zone; black on white scans off the glass.
+  lv_obj_t* pl = box(updQrRoot, (W - plate) / 2, y0, plate, plate, 0xFFFFFF, TALL ? 12 : 6);
+  if (g_net.connected || g_net.host[0]) {
+    lv_obj_t* code = lv_qrcode_create(pl, qr, lv_color_hex(0x000000), lv_color_hex(0xFFFFFF));
+    lv_qrcode_update(code, url, strlen(url));
+    lv_obj_center(code);
+    lv_obj_clear_flag(code, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+  }
+  lv_obj_t* u = label(updQrRoot, uf, C_ACCENT, 0, 0, url);
+  lv_obj_set_style_text_align(u, LV_TEXT_ALIGN_CENTER, 0);
+  lv_label_set_long_mode(u, LV_LABEL_LONG_DOT);
+  lv_obj_set_width(u, CW);
+  lv_obj_align(u, LV_ALIGN_TOP_MID, 0, y0 + plate + (COMPACT ? 4 : 10));
+  uiHeap("update qr");
 }
 
 static void updAction(int i) {
@@ -3929,12 +4042,16 @@ static void updAction(int i) {
     settings_set_beta_ota(!settings_beta_ota());
     ota_forget_latest();
     refreshUpdate();
+    if (ota_check_running()) updRecheck = true;  // that answer is for the old channel
     runGithubCheckUi();
+  } else if (i == UPD_WEB) {
+    updQrOpen();
   }
 }
 
 static void openUpdate(bool open) {
   updOpen = open;
+  updQrClose();
   if (open) {
     menuOpen = false;
     statusOpen = false;
@@ -3962,103 +4079,159 @@ static void updCardCb(lv_event_t* e) {
   updAction((int)(intptr_t)lv_event_get_user_data(e));
 }
 
+// One action button: label on the left, optional value on the right.
+static lv_obj_t* updButton(lv_obj_t* parent, int i, int x, int y, int w, int h, const char* txt,
+                           const lv_font_t* f) {
+  lv_obj_t* c = updCard[i] = card(parent, x, y, w, h);
+#if INPUT_TOUCH
+  lv_obj_add_flag(c, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_set_style_bg_color(c, C(C_RAISED), LV_STATE_PRESSED);
+  lv_obj_set_style_border_color(c, C(C_ACCENT), LV_STATE_PRESSED);
+  lv_obj_add_event_cb(c, updCardCb, LV_EVENT_SHORT_CLICKED, (void*)(intptr_t)i);
+#endif
+  const int px = COMPACT ? 10 : 16;
+  // Room for the value on the right: none for Check, On/Off for the toggles.
+  int valW = 0;
+  if (i == UPD_AUTO || i == UPD_BETA) valW = lv_txt_get_width("Off", 3, f, 0, LV_TEXT_FLAG_NONE) + 8;
+  else if (i == UPD_WEB) valW = lv_txt_get_width("Show QR", 7, f, 0, LV_TEXT_FLAG_NONE) + 8;
+  else if (i == UPD_INSTALL && !updOneLabel()) valW = COMPACT ? 78 : 108;
+  updLbl[i] = label(c, f, C_TXT, 0, 0, txt);
+  dotLabel(updLbl[i], w - 2 * px - valW);
+  lv_obj_align(updLbl[i], LV_ALIGN_LEFT_MID, px, 0);
+  updVal[i] = label(c, f, C_MUTED, 0, 0, "");
+  lv_obj_align(updVal[i], LV_ALIGN_RIGHT_MID, -px, 0);
+  return c;
+}
+
+// LOCAL / GITHUB version box: eyebrow, version number, one sub line.
+static lv_obj_t* updVerBox(lv_obj_t* parent, int x, int y, int w, int h, const char* eye, const char* ver,
+                           const char* sub, lv_obj_t** eyeOut, lv_obj_t** verOut, lv_obj_t** subOut) {
+  lv_obj_t* b = box(parent, x, y, w, h, C_BG, COMPACT ? 4 : 6);
+  lv_obj_set_style_border_width(b, 1, 0);
+  lv_obj_set_style_border_color(b, C(C_EDGE), 0);
+  const int px = COMPACT ? 8 : 10, py = COMPACT ? 4 : 10;
+  const lv_font_t* vf = TALL || TINY ? F26 : F20;
+  lv_obj_t* e = label(b, F12, C_MUTED, px, py, eye);
+  dotLabel(e, w - 2 * px);
+  const int sy = h - lineH(F12) - py;
+  // Version sits centred between the eyebrow and the sub line.
+  const int vy = py + lineH(F12) + (sy - py - lineH(F12) - lineH(vf)) / 2;
+  lv_obj_t* v = label(b, vf, C_TXT, px, vy, ver);
+  dotLabel(v, w - 2 * px);
+  lv_obj_t* s = label(b, F12, C_MUTED, px, sy, sub);
+  dotLabel(s, w - 2 * px);
+  if (eyeOut) *eyeOut = e;
+  if (verOut) *verOut = v;
+  if (subOut) *subOut = s;
+  return b;
+}
+
+static lv_obj_t* updMakeBar(lv_obj_t* parent, int x, int y, int w, int h) {
+  lv_obj_t* b = lv_bar_create(parent);
+  lv_obj_set_pos(b, x, y);
+  lv_obj_set_size(b, w, h);
+  lv_bar_set_range(b, 0, 100);
+  lv_bar_set_value(b, 0, LV_ANIM_OFF);
+  lv_obj_set_style_bg_color(b, C(C_TRACK), LV_PART_MAIN);
+  lv_obj_set_style_bg_opa(b, LV_OPA_COVER, LV_PART_MAIN);
+  lv_obj_set_style_bg_color(b, C(C_ACCENT), LV_PART_INDICATOR);
+  lv_obj_set_style_bg_opa(b, LV_OPA_COVER, LV_PART_INDICATOR);
+  lv_obj_set_style_radius(b, h / 2, LV_PART_MAIN);
+  lv_obj_set_style_radius(b, h / 2, LV_PART_INDICATOR);
+  show(b, false);
+  return b;
+}
+
 static void buildUpdate() {
   lv_obj_t* s = updRoot = newScreen();
-  updHdr = header(s, TINY || !INPUT_TOUCH ? "UPDATE" : "FIRMWARE UPDATE", TINY ? "Tap Check" : "Tap Check for updates to query GitHub");
-  // Knob boards: the right-hand hint is ~330 px, so the status stops short of it.
-  dotLabel(updHdr.sub, INPUT_TOUCH ? CW - (COMPACT ? 140 : 220) : CW - 330 - 160);
+  updHdr = header(s, COMPACT || !INPUT_TOUCH ? "UPDATE" : "FIRMWARE UPDATE", TINY ? "Tap Check" : "Tap Check for updates");
   lv_obj_align(updHdr.right, LV_ALIGN_TOP_RIGHT, -PAD, COMPACT ? 4 : (TALL ? 12 : 8));
 #if INPUT_TOUCH
   headerBtn(updHdr, LV_SYMBOL_CLOSE "  Back", C_TXT, updBtnCb, 0);
 #else
   hint(updHdr, COMPACT ? "turn / press / hold: back" : "turn: select  -  press: run  -  hold: back");
 #endif
+  // The status gets whatever the title leaves before the Back chip or hint.
+  lv_obj_update_layout(s);
+  {
+    lv_obj_t* left = lv_obj_get_parent(updHdr.sub);
+    const int subX = lv_obj_get_x(left) + lv_obj_get_x(updHdr.sub);
+    const int rightX = lv_obj_get_width(updHdr.right) > 0 ? lv_obj_get_x(updHdr.right) : W - PAD;
+    dotLabel(updHdr.sub, max(0, rightX - 8 - subX));
+  }
 
-  const int gap = COMPACT ? 6 : 12;
-  const int leftW = (CW - gap) * 52 / 100;
-  const int rightW = CW - gap - leftW;
-  const int mx = COMPACT ? 10 : 16;
-
-  // Left card: Installed vs GitHub version boxes, progress bar, web console URL.
-  lv_obj_t* lc = card(s, PAD, TOP, leftW, TH);
-  lv_obj_t* eye = label(lc, F12, C_ACCENT, mx, COMPACT ? 8 : 14, "VERSIONS");
-  lv_obj_set_style_text_letter_space(eye, 2, 0);
-
-  const int cellY = (COMPACT ? 8 : 14) + lineH(F12) + (COMPACT ? 6 : 10);
-  const int cellW = (leftW - 2 * mx - (COMPACT ? 6 : 10)) / 2;
-  const int cellH = COMPACT ? 66 : (TALL ? 118 : 88);
-
-  // Installed cell
-  lv_obj_t* cInst = box(lc, mx, cellY, cellW, cellH, C_BG, COMPACT ? 4 : 6);
-  lv_obj_set_style_border_width(cInst, 1, 0);
-  lv_obj_set_style_border_color(cInst, C(C_EDGE), 0);
-  lv_obj_t* instEye = label(cInst, F12, C_MUTED, 10, COMPACT ? 6 : 10, TINY ? "LOCAL" : "INSTALLED");
-  if (TINY) dotLabel(instEye, cellW - 16);
-  lv_obj_t* iv = label(cInst, TALL ? F26 : F20, C_TXT, 10, COMPACT ? 22 : (TALL ? 36 : 28), "v" FW_VERSION);
-  dotLabel(iv, cellW - 20);
-  lv_obj_t* ib = label(cInst, F12, C_MUTED, 10, cellH - lineH(F12) - (COMPACT ? 5 : 10), BOARD_NAME);
-  dotLabel(ib, cellW - 20);
-
-  // GitHub remote cell
-  updRemCell = box(lc, mx + cellW + (COMPACT ? 6 : 10), cellY, cellW, cellH, C_BG, COMPACT ? 4 : 6);
-  lv_obj_set_style_border_width(updRemCell, 1, 0);
-  lv_obj_set_style_border_color(updRemCell, C(C_EDGE), 0);
-  updRemEye = label(updRemCell, F12, C_MUTED, 10, COMPACT ? 6 : 10, "GITHUB");
-  updRemVer = label(updRemCell, TALL ? F26 : F20, C_TXT, 10, COMPACT ? 22 : (TALL ? 36 : 28), TINY ? "None" : "Not checked");
-  dotLabel(updRemVer, cellW - 20);
-  updRemSub = label(updRemCell, F12, C_MUTED, 10, cellH - lineH(F12) - (COMPACT ? 5 : 10), PROJECT_GITHUB_REPO);
-  dotLabel(updRemSub, cellW - 20);
-
-  // Progress bar for GitHub OTA download/flash
-  updBar = lv_bar_create(lc);
-  lv_obj_set_pos(updBar, mx, cellY + cellH + (COMPACT ? 8 : 14));
-  lv_obj_set_size(updBar, leftW - 2 * mx, COMPACT ? 8 : 12);
-  lv_bar_set_range(updBar, 0, 100);
-  lv_bar_set_value(updBar, 0, LV_ANIM_OFF);
-  lv_obj_set_style_bg_color(updBar, C(C_TRACK), LV_PART_MAIN);
-  lv_obj_set_style_bg_opa(updBar, LV_OPA_COVER, LV_PART_MAIN);
-  lv_obj_set_style_bg_color(updBar, C(C_ACCENT), LV_PART_INDICATOR);
-  lv_obj_set_style_bg_opa(updBar, LV_OPA_COVER, LV_PART_INDICATOR);
-  lv_obj_set_style_radius(updBar, 4, LV_PART_MAIN);
-  lv_obj_set_style_radius(updBar, 4, LV_PART_INDICATOR);
-  show(updBar, false);
-
-  // Web console info at the bottom of the left card
-  const int webY = TH - (COMPACT ? 44 : (TALL ? 78 : 58));
-  box(lc, mx, webY - (COMPACT ? 6 : 10), leftW - 2 * mx, 1, C_EDGE);
-  label(lc, F12, C_SUB, mx, webY, COMPACT ? "WEB CONSOLE" : "WEB CONSOLE & LOCAL .BIN UPLOAD");
-  updUrl = label(lc, TALL ? F20 : F16, C_ACCENT, mx, webY + lineH(F12) + (COMPACT ? 2 : 6), "http://.../");
-  dotLabel(updUrl, leftW - 2 * mx);
-
-  // Right column: 4 action cards (Check, Install, Auto-check, Beta channel)
   static const char* const LABELS[NUPD] = {
     LV_SYMBOL_REFRESH "  Check for updates",
     LV_SYMBOL_DOWNLOAD "  Install from GitHub",
     "Auto-check GitHub",
     "Include beta releases",
+    LV_SYMBOL_EYE_OPEN "  Web console",
   };
-  static const char* const LABELS_TINY[NUPD] = {
+  static const char* const LABELS_SHORT[NUPD] = {
     LV_SYMBOL_REFRESH "  Check",
     LV_SYMBOL_DOWNLOAD "  Install",
     "Auto-check",
     "Betas",
+    LV_SYMBOL_EYE_OPEN "  Web console",
   };
+
+  if (TINY) {
+    // 2": stacked, full width. Versions on top in big type, a 2x2 grid of
+    // actions, the web console button along the bottom.
+    const int g = 5;
+    const int vh = 64;
+    const int bw = (CW - g) / 2;
+    updVerBox(s, PAD, TOP, bw, vh, "LOCAL", "v" FW_VERSION, BOARD_NAME, nullptr, nullptr, nullptr);
+    updRemCell = updVerBox(s, PAD + bw + g, TOP, CW - bw - g, vh, "GITHUB", "None", PROJECT_GITHUB_REPO,
+                           &updRemEye, &updRemVer, &updRemSub);
+    // Progress runs in the strip under the versions during an install.
+    updBar = updMakeBar(s, PAD, TOP + vh + 2, CW, 5);
+    const int webH = 34;
+    const int gy = TOP + vh + 9;
+    const int rh = (BOT - webH - g - gy - g) / 2;
+    for (int i = 0; i < 4; i++)
+      updButton(s, i, PAD + (i % 2) * (bw + g), gy + (i / 2) * (rh + g), i % 2 ? CW - bw - g : bw, rh,
+                LABELS_SHORT[i], F16);
+    updButton(s, UPD_WEB, PAD, BOT - webH, CW, webH, LV_SYMBOL_EYE_OPEN "  Web console", F16);
+    return;
+  }
+
+  const int gap = COMPACT ? 6 : 12;
+  // Compact: the right-hand labels are short, so the version boxes get more.
+  const int leftW = (CW - gap) * (COMPACT ? 56 : 52) / 100;
+  const int rightW = CW - gap - leftW;
+  const int mx = COMPACT ? 10 : 16;
+
+  // Left card: Installed vs GitHub version boxes, progress bar, web console button.
+  lv_obj_t* lc = card(s, PAD, TOP, leftW, TH);
+  lv_obj_t* eye = label(lc, F12, C_ACCENT, mx, COMPACT ? 8 : 14, "VERSIONS");
+  lv_obj_set_style_text_letter_space(eye, 2, 0);
+
+  const int cellY = (COMPACT ? 8 : 14) + lineH(F12) + (COMPACT ? 6 : 10);
+  const int cg = COMPACT ? 6 : 10;
+  const int cellW = (leftW - 2 * mx - cg) / 2;
+  const int cellH = COMPACT ? (ROOMY ? 76 : 66) : (TALL ? 118 : 88);
+  updVerBox(lc, mx, cellY, cellW, cellH, "INSTALLED", "v" FW_VERSION, BOARD_NAME, nullptr, nullptr, nullptr);
+  updRemCell = updVerBox(lc, mx + cellW + cg, cellY, cellW, cellH, "GITHUB", "Not checked", PROJECT_GITHUB_REPO,
+                         &updRemEye, &updRemVer, &updRemSub);
+
+  // Progress bar for GitHub OTA download/flash
+  updBar = updMakeBar(lc, mx, cellY + cellH + (COMPACT ? 8 : 14), leftW - 2 * mx, COMPACT ? 8 : 12);
+
+  // Web console button at the foot of the left card: opens a QR code.
+  const int webH = COMPACT ? 38 : (TALL ? 60 : 48);
+  updButton(lc, UPD_WEB, mx, TH - mx - webH, leftW - 2 * mx, webH, LABELS[UPD_WEB], F16);
+
+  // Right column: 4 action cards (Check, Install, Auto-check, Beta channel)
+  const char* const* lbl = COMPACT ? LABELS_SHORT : LABELS;
   const int rowGap = COMPACT ? 6 : 8;
-  const int rowH = (TH - (NUPD - 1) * rowGap) / NUPD;
+  const int rowH = (TH - 3 * rowGap) / 4;
   const int rx = PAD + leftW + gap;
-  for (int i = 0; i < NUPD; i++) {
-    lv_obj_t* c = updCard[i] = card(s, rx, TOP + i * (rowH + rowGap), rightW, rowH);
-#if INPUT_TOUCH
-    lv_obj_add_flag(c, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_style_bg_color(c, C(C_RAISED), LV_STATE_PRESSED);
-    lv_obj_set_style_border_color(c, C(C_ACCENT), LV_STATE_PRESSED);
-    lv_obj_add_event_cb(c, updCardCb, LV_EVENT_SHORT_CLICKED, (void*)(intptr_t)i);
-#endif
-    updLbl[i] = label(c, F16, C_TXT, 0, 0, TINY ? LABELS_TINY[i] : LABELS[i]);
-    dotLabel(updLbl[i], rightW - (TINY ? 62 : COMPACT ? 78 : 108));
-    lv_obj_align(updLbl[i], LV_ALIGN_LEFT_MID, COMPACT ? 10 : 16, 0);
-    updVal[i] = label(c, F16, C_MUTED, 0, 0, "");
-    lv_obj_align(updVal[i], LV_ALIGN_RIGHT_MID, COMPACT ? -10 : -16, 0);
+  for (int i = 0; i < 4; i++) {
+    const char* t = lbl[i];
+    if (COMPACT && i == UPD_CHECK) t = LV_SYMBOL_REFRESH "  Check for updates";
+    if (COMPACT && i == UPD_BETA) t = "Beta releases";
+    updButton(s, i, rx, TOP + i * (rowH + rowGap), rightW, rowH, t, F16);
   }
 }
 
@@ -5112,7 +5285,7 @@ static void guideTick() {
 static const char* const PAGE_NAME[NCAR] = {"today", "points", "feed", "models", "trend",
                                             "reach", "comments", "best", "creator"};
 static const char* const CV_KEY[NCVIEW] = {"convert", "trend", "launch", "earn", "followers", "reply"};
-static const char* const OTHER_PAGES[] = {"status", "settings", "about", "update", "wifi", "guide"};
+static const char* const OTHER_PAGES[] = {"status", "settings", "about", "update", "webqr", "wifi", "guide"};
 
 void ui_pages_json(String& out) {
   out = F("{\"pages\":[");
@@ -5203,6 +5376,10 @@ bool ui_show(const char* page, const char* tab, const char* open, char* shown, s
   if (!strcmp(page, "status")) openStatus(true);
   else if (!strcmp(page, "about")) openAbout(true);
   else if (!strcmp(page, "update")) openUpdate(true);
+  else if (!strcmp(page, "webqr")) {
+    openUpdate(true);
+    updQrOpen();
+  }
   else if (!strcmp(page, "wifi")) ui_wifi_page(true);
   else if (!strcmp(page, "guide")) {
     if (!guideRoot) guideOpen();
@@ -5231,7 +5408,7 @@ void ui_refresh_from_web() {
 }
 
 static bool modelOpen = false;  // model detail page (touch)
-bool ui_overlay_open() { return updScr || guideRoot || menuOpen || statusOpen || aboutOpen || updOpen || hbIsOpen || wifiOpen || modelOpen; }
+bool ui_overlay_open() { return updScr || guideRoot || updQrRoot || menuOpen || statusOpen || aboutOpen || updOpen || hbIsOpen || wifiOpen || modelOpen; }
 
 // The poller sends the full state (counts, hours, feed) before the events of
 // the same poll, so an event only announces itself: tile pulse, banner, chime.
@@ -5409,6 +5586,10 @@ void ui_input(const KnobInput& in) {
   }
   if (aboutOpen && !bannerUp) {
     if (in.longPress || (in.click && !INPUT_TOUCH)) openAbout(false);
+    return;
+  }
+  if (updQrRoot && !bannerUp) {  // web console QR: press or hold returns
+    if (in.longPress || in.click) updQrClose();
     return;
   }
   if (updOpen && !bannerUp) {
@@ -5830,6 +6011,7 @@ static void touchEvent(lv_event_t* e) {
       else if (menuOpen) openMenu(false);
       else if (statusOpen) openStatus(false);
       else if (aboutOpen) openAbout(false);
+      else if (updQrRoot) updQrClose();
       else if (updOpen) openUpdate(false);
       return;
     default:

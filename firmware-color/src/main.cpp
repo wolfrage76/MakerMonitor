@@ -3,6 +3,7 @@
 // The poller pushes POST /v2/state (full stats) and /v2/event (one change);
 // GET /v2/settings tells the poller the chosen poll interval / "poll now".
 #include <Arduino.h>
+#include <atomic>
 #include <esp_heap_caps.h>
 #include <esp_rom_sys.h>
 #include <ArduinoJson.h>
@@ -527,6 +528,7 @@ static String logSnapshot() {
 static char latestVersion[32] = "";
 static char latestUrl[256] = "";
 static uint32_t lastGithubCheck = 0, wifiUpSince = 0;
+static uint8_t ghFails = 0;  // failed automatic checks in a row
 static bool otaDownloadActive = false;
 
 static String cleanVersion(const String& value) {
@@ -661,17 +663,27 @@ static ReleaseParse parseRelease(Stream& body, bool list, String& ver, String& u
   return found ? RELEASE_FOUND : RELEASE_NO_ASSET;
 }
 
-bool ota_check_github_update(char* verOut, size_t verCap, char* urlOut, size_t urlCap,
-                             char* errOut, size_t errCap) {
-  if (verOut && verCap) verOut[0] = 0;
-  if (urlOut && urlCap) urlOut[0] = 0;
-  if (errOut && errCap) errOut[0] = 0;
+// One GitHub check: network and parsing only. It runs on the check task, so it
+// writes nothing shared (no log, settings, cached version or LVGL); the main
+// loop applies the result with ghCheckApply().
+struct GhCheckResult {
+  bool ok = false;
+  bool missing = false;  // HTTP 404: no public releases
+  bool beta = false;     // channel the check asked for
+  char ver[32] = "";
+  char url[256] = "";
+  char err[96] = "";
+  char log[LOG_W] = "";
+};
+
+static void ghCheckRun(GhCheckResult& r) {
+  r.beta = settings_beta_ota();
   if (WiFi.status() != WL_CONNECTED) {
-    if (errOut) strlcpy(errOut, "Wi-Fi not connected", errCap);
-    return false;
+    strlcpy(r.err, "Wi-Fi not connected", sizeof(r.err));
+    return;
   }
   String endpoint = String("https://api.github.com/repos/") + PROJECT_GITHUB_REPO +
-                    (settings_beta_ota() ? "/releases?per_page=5" : "/releases/latest");
+                    (r.beta ? "/releases?per_page=5" : "/releases/latest");
   WiFiClientSecure tls;
   tls.setInsecure();
   tls.setHandshakeTimeout(15);
@@ -692,14 +704,15 @@ bool ota_check_github_update(char* verOut, size_t verCap, char* urlOut, size_t u
   }
   if (code != 200) {
     String detail = code < 0 ? HTTPClient::errorToString(code) : String("HTTP ") + code;
-    if (errOut) snprintf(errOut, errCap, "GitHub %s", detail.c_str());
+    snprintf(r.err, sizeof(r.err), "GitHub %s", detail.c_str());
     http.end();
-    deviceLogf("GitHub check %s; heap %u", detail.c_str(), (unsigned)ESP.getFreeHeap());
+    snprintf(r.log, sizeof(r.log), "GitHub check %s; heap %u", detail.c_str(),
+             (unsigned)ESP.getFreeHeap());
     // 404: no public releases to read (a private repo). Automatic checks stop
     // until a manual check gets through; each try costs ~45 KB of internal
     // RAM for TLS.
-    if (code == 404) settings_set_github_missing(true);
-    return false;
+    r.missing = code == 404;
+    return;
   }
   // Parse straight from the stream: the Beta list is ~50 KB of JSON.
   String ver, url;
@@ -707,29 +720,119 @@ bool ota_check_github_update(char* verOut, size_t verCap, char* urlOut, size_t u
   ReleaseParse parsed;
   {
     BufferedReadStream body(http.getStream());
-    parsed = parseRelease(body, settings_beta_ota(), ver, url, jsonErr);
+    parsed = parseRelease(body, r.beta, ver, url, jsonErr);
   }
   http.end();
   if (parsed == RELEASE_BAD_REPLY) {
-    if (errOut) strlcpy(errOut, "GitHub reply cut off", errCap);
-    deviceLogf("GitHub reply unreadable: %s; heap %u", jsonErr.c_str(),
-               (unsigned)ESP.getFreeHeap());
-    return false;
+    strlcpy(r.err, "GitHub reply cut off", sizeof(r.err));
+    snprintf(r.log, sizeof(r.log), "GitHub reply unreadable: %s; heap %u", jsonErr.c_str(),
+             (unsigned)ESP.getFreeHeap());
+    return;
   }
   if (parsed == RELEASE_NO_ASSET) {
-    if (errOut) strlcpy(errOut, "No matching board firmware asset", errCap);
+    strlcpy(r.err, "No matching board firmware asset", sizeof(r.err));
+    return;
+  }
+  strlcpy(r.ver, ver.c_str(), sizeof(r.ver));
+  strlcpy(r.url, url.c_str(), sizeof(r.url));
+  r.ok = true;
+}
+
+// Main loop only: logs, stores and shows a finished check.
+static bool ghCheckApply(GhCheckResult& r) {
+  if (r.log[0]) deviceLog(r.log);
+  if (r.ok && r.beta != settings_beta_ota()) {
+    // The Beta switch flipped while the check ran; this answer is for the
+    // other channel.
+    r.ok = false;
+    strlcpy(r.err, "Release channel changed", sizeof(r.err));
+  }
+  if (!r.ok) {
+    if (r.missing) settings_set_github_missing(true);
     return false;
   }
-  strlcpy(latestVersion, ver.c_str(), sizeof(latestVersion));
-  strlcpy(latestUrl, url.c_str(), sizeof(latestUrl));
-  if (verOut) strlcpy(verOut, latestVersion, verCap);
-  if (urlOut) strlcpy(urlOut, latestUrl, urlCap);
+  strlcpy(latestVersion, r.ver, sizeof(latestVersion));
+  strlcpy(latestUrl, r.url, sizeof(latestUrl));
   lastGithubCheck = millis();
   deviceLogf("GitHub latest v%s (%s)", latestVersion,
              ota_update_available() ? "update available" : "current");
   ui_refresh_from_web();
   settings_set_github_missing(false);
   return true;
+}
+
+// Blocking check, for the web install path (the install blocks anyway).
+bool ota_check_github_update(char* verOut, size_t verCap, char* urlOut, size_t urlCap,
+                             char* errOut, size_t errCap) {
+  GhCheckResult* r = new GhCheckResult();
+  ghCheckRun(*r);
+  bool ok = ghCheckApply(*r);
+  if (verOut && verCap) strlcpy(verOut, ok ? latestVersion : "", verCap);
+  if (urlOut && urlCap) strlcpy(urlOut, ok ? latestUrl : "", urlCap);
+  if (errOut && errCap) strlcpy(errOut, ok ? "" : r->err, errCap);
+  delete r;
+  return ok;
+}
+
+// ---- Background check -------------------------------------------------------
+// The check (TLS handshake, up to three tries) takes seconds; on its own task
+// the screen and web console keep running. State: 0 idle, 1 running, 2 done
+// and waiting for the main loop.
+static std::atomic<uint8_t> ghState{0};
+static GhCheckResult ghResult;
+static bool ghAuto = false;         // started by the hourly check
+static uint32_t ghResultSeq = 0;    // finished checks, for the web console
+static bool ghLastOk = false;
+static char ghLastErr[96] = "";
+static uint32_t ghTaskMinFree = 0;  // task stack high-water mark, bytes
+static const uint32_t GH_TASK_STACK = 12288;
+
+static void ghCheckTask(void*) {
+  ghResult = GhCheckResult();
+  ghCheckRun(ghResult);
+  ghTaskMinFree = uxTaskGetStackHighWaterMark(nullptr) * sizeof(StackType_t);
+  ghState.store(2, std::memory_order_release);
+  vTaskDelete(nullptr);
+}
+
+bool ota_check_running() { return ghState.load(std::memory_order_acquire) != 0; }
+uint32_t ota_check_seq() { return ghResultSeq; }
+
+bool ota_check_github_async(bool automatic) {
+  if (ota_check_running() || otaActive || otaDownloadActive) return false;
+  ghAuto = automatic;
+  ghState.store(1, std::memory_order_release);
+  // Internal RAM stack (a PSRAM stack can't run while a flash write has the
+  // cache off). Core 0, below Wi-Fi, so the UI on core 1 keeps its time.
+  if (xTaskCreatePinnedToCore(ghCheckTask, "ghcheck", GH_TASK_STACK, nullptr, 1, nullptr, 0) != pdPASS) {
+    ghState.store(0, std::memory_order_release);
+    deviceLogf("GitHub check task failed to start; internal heap %u",
+               (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+    return false;
+  }
+  ui_github_check_started();
+  return true;
+}
+
+// Called from loop(): hands a finished check to the log, settings and screen.
+static void ghCheckTick() {
+  if (ghState.load(std::memory_order_acquire) != 2) return;
+  bool ok = ghCheckApply(ghResult);
+  ghLastOk = ok;
+  strlcpy(ghLastErr, ok ? "" : ghResult.err, sizeof(ghLastErr));
+  ghResultSeq++;
+  deviceLogf("GitHub check task stack unused %u of %u; internal heap %u", (unsigned)ghTaskMinFree,
+             (unsigned)GH_TASK_STACK, (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+  if (ghAuto) {
+    if (ok) {
+      ghFails = 0;
+    } else {
+      lastGithubCheck = millis();  // Avoid retrying a failed API call every second.
+      if (ghFails < 255) ghFails++;
+    }
+  }
+  ghState.store(0, std::memory_order_release);
+  ui_github_check_done(ok, ghLastErr);
 }
 
 static String resolveGithubRedirect(const String& source) {
@@ -1242,6 +1345,8 @@ static void handleConsole() {
          "let r=await fetch(u,{method:'POST'});alert(await r.text());if(r.ok&&u=='/reset-wifi')location.reload()}"
          "async function githubUpdate(a){let b=qs('#updateState'),pr=qs('#prog');b.textContent=a=='check'?'Checking…':'Starting update…';"
          "let r=await fetch('/github-update?action='+a,{method:'POST'});let j=await r.json();"
+         "while(j.checking){await new Promise(z=>setTimeout(z,1000));"
+         "r=await fetch('/github-update?action=status',{method:'POST'});j=await r.json()}"
          "b.textContent=j.message||'Request failed';if(j.version)qs('#latest').textContent='v'+j.version;"
          "if(j.progress)pr.value=j.progress;if(j.reboot)waitBack(b)}"
          "function waitBack(el){el.innerHTML='<span class=spin></span>Restarting - this page reloads when the panel is back';"
@@ -1465,17 +1570,45 @@ static void webOtaProgress(int pct) {
 static void handleGithubUpdate() {
   if (!requireAuthorization()) return;
   char ver[32], url[256], err[96];
-  bool checkOnly = server.arg("action") != "install";
+  String action = server.arg("action");
+  // check: starts the background check and answers at once; the page then
+  // polls status until it finishes.
+  if (action == "check" || action == "status") {
+    bool started = action == "check" && ota_check_github_async(false);
+    if (ota_check_running()) {
+      server.send(started ? 202 : 200, "application/json",
+                  "{\"checking\":true,\"message\":\"Checking GitHub...\"}");
+      return;
+    }
+    if (action == "check" && !started) {
+      server.send(503, "application/json", "{\"ok\":false,\"message\":\"Check not started (update running?)\"}");
+      return;
+    }
+    String body;
+    if (!ghResultSeq) {
+      body = "{\"ok\":false,\"message\":\"Not checked yet\"}";
+    } else if (!ghLastOk) {
+      body = String("{\"ok\":false,\"seq\":") + ghResultSeq + ",\"message\":\"" + htmlEscape(ghLastErr) + "\"}";
+    } else {
+      String msg = ota_update_available() ? "Update available" : "Already up to date";
+      body = String("{\"ok\":true,\"seq\":") + ghResultSeq + ",\"version\":\"" + latestVersion +
+             "\",\"message\":\"" + msg + "\"}";
+    }
+    server.send(200, "application/json", body);
+    return;
+  }
+  if (action != "install") {
+    server.send(400, "application/json", "{\"ok\":false,\"message\":\"Unknown action\"}");
+    return;
+  }
+  if (ota_check_running()) {
+    server.send(409, "application/json",
+                "{\"ok\":false,\"message\":\"A check is running - try again in a moment\"}");
+    return;
+  }
   if (!ota_check_github_update(ver, sizeof(ver), url, sizeof(url), err, sizeof(err))) {
     String body = String("{\"ok\":false,\"message\":\"") + htmlEscape(err) + "\"}";
     server.send(502, "application/json", body);
-    return;
-  }
-  if (checkOnly) {
-    String msg = ota_update_available() ? "Update available" : "Already up to date";
-    String body = String("{\"ok\":true,\"version\":\"") + latestVersion +
-                  "\",\"message\":\"" + msg + "\"}";
-    server.send(200, "application/json", body);
     return;
   }
   if (!ota_update_available()) {
@@ -1844,6 +1977,7 @@ void loop() {
   apTick();
   server.handleClient();
   if (netStarted) ArduinoOTA.handle();
+  ghCheckTick();
 
 #ifdef SERIAL_SHOTS
   serialShotTick();
@@ -1873,18 +2007,11 @@ void loop() {
       if (!wifiUpSince) wifiUpSince = millis();
       // Hourly; after failures (no network, private repo) the gap doubles up
       // to 16 h so a check that can't work doesn't run and log every hour.
-      static uint8_t ghFails = 0;
       bool initialDue = !lastGithubCheck && millis() - wifiUpSince > 120000UL;
       bool hourlyDue = lastGithubCheck && millis() - lastGithubCheck > (3600000UL << min<int>(ghFails, 4));
       if (settings_auto_ota() && !settings_github_missing() && (initialDue || hourlyDue) &&
-          !otaActive && !otaDownloadActive && !ui_overlay_open()) {
-        char ver[32], url[256], err[96];
-        if (ota_check_github_update(ver, sizeof(ver), url, sizeof(url), err, sizeof(err))) {
-          ghFails = 0;
-        } else {
-          lastGithubCheck = millis(); // Avoid retrying a failed API call every second.
-          if (ghFails < 255) ghFails++;
-        }
+          !otaActive && !otaDownloadActive && !ui_overlay_open() && !ota_check_running()) {
+        ota_check_github_async(true);
       }
     } else {
       wifiUpSince = 0;
