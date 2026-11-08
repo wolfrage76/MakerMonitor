@@ -7,6 +7,14 @@ per-model sparklines, and /api/settings* for the Settings view. No external
 assets, light and dark themes.
 """
 
+GITHUB_URL = "https://github.com/wolfrage76/MakerMonitor"
+MAKERWORLD_URL = "https://makerworld.com/en/@Wofl"
+
+# Project links, at the foot of both pages.
+_FOOTER = (f'<footer class=foot><span>MakerMonitor by @Wofl</span>'
+           f'<a href="{GITHUB_URL}" target=_blank rel=noopener>GitHub</a>'
+           f'<a href="{MAKERWORLD_URL}" target=_blank rel=noopener>MakerWorld</a></footer>')
+
 _BASE_CSS = r"""
 :root{color-scheme:light dark;
 --bg:#eef1f5;--panel:#ffffff;--panel2:#f6f8fb;--line:#d5dce5;--ink:#0f1722;--ink2:#465466;--ink3:#5f6c7d;
@@ -25,18 +33,20 @@ _BASE_CSS = r"""
 body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 var(--sans)}
 a{color:inherit}button,input,select,textarea{font:inherit;color:inherit}
 :focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.foot{display:flex;flex-wrap:wrap;justify-content:center;gap:6px 18px;padding:18px 16px 28px;color:var(--ink3);font-size:13px}
+.foot a{color:var(--ink2);text-decoration:none;font-weight:600}.foot a:hover{color:var(--acc);text-decoration:underline}
 """
 
 LOGIN_HTML = """<!doctype html><html lang=en><head><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1"><title>MakerMonitor</title>
 <style>""" + _BASE_CSS + """
-main{min-height:100vh;display:grid;place-items:center;padding:16px}
+main{min-height:calc(100vh - 70px);display:grid;place-items:center;padding:16px}
 .box{max-width:440px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:28px;box-shadow:var(--shadow)}
 h1{font:700 22px var(--display);margin:0 0 12px}code{font-family:var(--mono);color:var(--acc);word-break:break-all}
 p{color:var(--ink2)}</style></head><body><main><div class=box><h1>MakerMonitor</h1>
 <p>Open this page once with your poller token:</p><p><code>http://&lt;this-pc&gt;:8787/?token=&lt;api_token&gt;</code></p>
 <p>The token is <code>api_token</code> in <code>poller/config.yaml</code>. This browser remembers it after that.</p>
-</div></main></body></html>"""
+</div></main>""" + _FOOTER + """</body></html>"""
 
 DASHBOARD_HTML = r"""<!doctype html><html lang=en><head><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1"><title>MakerMonitor</title>
@@ -348,6 +358,7 @@ dialog.dlg .row{justify-content:flex-end}
  <div class=form id=form><div class="card sec" aria-busy="true"><div class=skel style="width:28%;height:18px"></div><div class=skel></div><div class=skel style="width:72%"></div><div class=skel style="width:55%"></div></div></div>
 </div></section>
 </main>
+""" + _FOOTER + r"""
 <div class=savebar id=savebar role=region aria-label="Unsaved changes"><span class=msg><i aria-hidden=true></i><span id=savetx role=status></span></span>
  <button class="btn ghost sm" type=button id=discard>Discard</button><button class="btn pri sm" type=button id=save title="Save changes (Ctrl+S)">Save changes</button></div>
 <div class=toast id=toast role=status aria-live=polite></div>
