@@ -574,12 +574,58 @@ void ota_forget_latest() {
   ui_refresh_from_web();
 }
 
-static bool parseRelease(const String& body, bool list, String& ver, String& url) {
+// Reads a Stream through a small buffer so the JSON parser doesn't pull the
+// TLS connection one byte at a time.
+class BufferedReadStream : public Stream {
+ public:
+  explicit BufferedReadStream(Stream& src) : src_(src) {}
+  int available() override { return (len_ - pos_) + src_.available(); }
+  int read() override { return fill() ? buf_[pos_++] : -1; }
+  int peek() override { return fill() ? buf_[pos_] : -1; }
+  size_t readBytes(char* out, size_t n) override {
+    size_t got = 0;
+    while (got < n && fill()) {
+      size_t take = min(n - got, len_ - pos_);
+      memcpy(out + got, buf_ + pos_, take);
+      pos_ += take;
+      got += take;
+    }
+    return got;
+  }
+  size_t write(uint8_t) override { return 0; }
+
+ private:
+  bool fill() {
+    if (pos_ < len_) return true;
+    pos_ = len_ = 0;
+    unsigned long start = millis();
+    do {
+      int n = src_.readBytes(buf_, sizeof(buf_));
+      if (n > 0) {
+        len_ = n;
+        return true;
+      }
+    } while (millis() - start < src_.getTimeout());
+    return false;
+  }
+  Stream& src_;
+  char buf_[512];
+  size_t pos_ = 0, len_ = 0;
+};
+
+enum ReleaseParse { RELEASE_FOUND, RELEASE_NO_ASSET, RELEASE_BAD_REPLY };
+
+// Picks this board's firmware from one release (list=false) or from a list of
+// releases (list=true, the Beta channel). For a list, the highest version wins,
+// beta or stable, so Beta gets the newest beta or the latest stable when no
+// newer beta exists. A broken or cut-off reply is RELEASE_BAD_REPLY, with the
+// parser's error in jsonErr.
+static ReleaseParse parseRelease(Stream& body, bool list, String& ver, String& url,
+                                 DeserializationError& jsonErr) {
   JsonDocument filter;
   if (list) {
     filter[0]["tag_name"] = true;
     filter[0]["draft"] = true;
-    filter[0]["prerelease"] = true;
     filter[0]["assets"][0]["name"] = true;
     filter[0]["assets"][0]["browser_download_url"] = true;
   } else {
@@ -588,32 +634,31 @@ static bool parseRelease(const String& body, bool list, String& ver, String& url
     filter["assets"][0]["browser_download_url"] = true;
   }
   JsonDocument doc;
-  if (deserializeJson(doc, body, DeserializationOption::Filter(filter))) return false;
+  jsonErr = deserializeJson(doc, body, DeserializationOption::Filter(filter));
+  if (jsonErr) return RELEASE_BAD_REPLY;
   JsonArray releases;
   if (list) releases = doc.as<JsonArray>();
+  bool found = false;
   for (int ri = 0; ri < (list ? (int)releases.size() : 1); ri++) {
     JsonObject r = list ? releases[ri].as<JsonObject>() : doc.as<JsonObject>();
-    if ((r["draft"] | false) || (list && !(r["prerelease"] | false))) continue;
+    if (r["draft"] | false) continue;
     String candidate = cleanVersion(r["tag_name"] | "");
     if (!candidate.length()) continue;
-    String fallback;
+    if (found && ota_compare_versions(candidate.c_str(), ver.c_str()) <= 0) continue;
+    String exact, fallback;
     for (JsonObject asset : r["assets"].as<JsonArray>()) {
       String name = asset["name"] | "";
       String assetUrl = asset["browser_download_url"] | "";
-      if (name == BOARD_OTA_ASSET) {
-        ver = candidate;
-        url = assetUrl;
-        return url.length();
-      }
-      if (name == "firmware.bin") fallback = assetUrl;
+      if (name == BOARD_OTA_ASSET) exact = assetUrl;
+      else if (name == "firmware.bin") fallback = assetUrl;
     }
-    if (fallback.length()) {
-      ver = candidate;
-      url = fallback;
-      return true;
-    }
+    String pick = exact.length() ? exact : fallback;
+    if (!pick.length()) continue;
+    ver = candidate;
+    url = pick;
+    found = true;
   }
-  return false;
+  return found ? RELEASE_FOUND : RELEASE_NO_ASSET;
 }
 
 bool ota_check_github_update(char* verOut, size_t verCap, char* urlOut, size_t urlCap,
@@ -656,10 +701,22 @@ bool ota_check_github_update(char* verOut, size_t verCap, char* urlOut, size_t u
     if (code == 404) settings_set_github_missing(true);
     return false;
   }
-  String body = http.getString();
-  http.end();
+  // Parse straight from the stream: the Beta list is ~50 KB of JSON.
   String ver, url;
-  if (!parseRelease(body, settings_beta_ota(), ver, url)) {
+  DeserializationError jsonErr;
+  ReleaseParse parsed;
+  {
+    BufferedReadStream body(http.getStream());
+    parsed = parseRelease(body, settings_beta_ota(), ver, url, jsonErr);
+  }
+  http.end();
+  if (parsed == RELEASE_BAD_REPLY) {
+    if (errOut) strlcpy(errOut, "GitHub reply cut off", errCap);
+    deviceLogf("GitHub reply unreadable: %s; heap %u", jsonErr.c_str(),
+               (unsigned)ESP.getFreeHeap());
+    return false;
+  }
+  if (parsed == RELEASE_NO_ASSET) {
     if (errOut) strlcpy(errOut, "No matching board firmware asset", errCap);
     return false;
   }
