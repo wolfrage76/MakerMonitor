@@ -86,9 +86,71 @@ static uint8_t lastDiscReason = 0;
 static void deviceLog(const char* msg);
 void deviceLogf(const char* fmt, ...);
 
+// The P4's Wi-Fi driver lives on the C6, which doesn't keep the station
+// config across a restart, so the network is also kept in the P4's own NVS
+// and joined from there. Other boards use the driver's copy.
+#if CONFIG_IDF_TARGET_ESP32P4
+#include <Preferences.h>
+// Read once, then kept in RAM: the UI asks for the saved network often.
+static wifi_config_t staCfg;
+static bool staLoaded = false;
+static void staGetConfig(wifi_config_t* cfg) {
+  if (!staLoaded) {
+    staLoaded = true;
+    staCfg = {};
+    Preferences p;
+    if (p.begin("mmwifi", false)) {  // read-write: creates the namespace, no error log
+      p.getString("ssid", (char*)staCfg.sta.ssid, sizeof(staCfg.sta.ssid));
+      p.getString("pass", (char*)staCfg.sta.password, sizeof(staCfg.sta.password));
+      p.end();
+    }
+  }
+  *cfg = staCfg;
+}
+static void staSave(const char* ssid, const char* pass) {
+  wifi_config_t cur;
+  staGetConfig(&cur);
+  if (!strcmp((const char*)cur.sta.ssid, ssid) && !strcmp((const char*)cur.sta.password, pass)) return;
+  Preferences p;
+  if (!p.begin("mmwifi", false)) return;
+  p.putString("ssid", ssid);
+  p.putString("pass", pass);
+  p.end();
+  strlcpy((char*)staCfg.sta.ssid, ssid, sizeof(staCfg.sta.ssid));
+  strlcpy((char*)staCfg.sta.password, pass, sizeof(staCfg.sta.password));
+}
+static void staForget() {
+  Preferences p;
+  if (p.begin("mmwifi", false)) {
+    p.clear();
+    p.end();
+  }
+  staCfg = {};
+}
+#else
+static void staGetConfig(wifi_config_t* cfg) {
+  *cfg = {};
+  esp_wifi_get_config(WIFI_IF_STA, cfg);
+}
+static void staSave(const char*, const char*) {}
+static void staForget() {}
+#endif
+
+// WiFi.begin() with the saved network.
+static void wifiBeginSaved() {
+#if CONFIG_IDF_TARGET_ESP32P4
+  wifi_config_t cfg;
+  staGetConfig(&cfg);
+  if (cfg.sta.ssid[0]) WiFi.begin((const char*)cfg.sta.ssid, cfg.sta.password[0] ? (const char*)cfg.sta.password : nullptr);
+#else
+  WiFi.begin();
+#endif
+}
+
 bool net_saved_ssid(char* out, size_t cap) {
-  wifi_config_t cfg = {};
-  if (esp_wifi_get_config(WIFI_IF_STA, &cfg) != ESP_OK || !cfg.sta.ssid[0]) return false;
+  wifi_config_t cfg;
+  staGetConfig(&cfg);
+  if (!cfg.sta.ssid[0]) return false;
   strlcpy(out, (const char*)cfg.sta.ssid, cap);
   return true;
 }
@@ -134,12 +196,12 @@ static char connMsg[96];
 static wifi_config_t prevCfg;  // restored if the new network fails
 
 void net_connect(const char* ssid, const char* pass) {
-  esp_wifi_get_config(WIFI_IF_STA, &prevCfg);
+  staGetConfig(&prevCfg);
   WiFi.scanDelete();
   lastDiscReason = 0;
   WiFi.disconnect(false);
   if (pass) WiFi.begin(ssid, pass[0] ? pass : nullptr);
-  else WiFi.begin();  // the saved credentials
+  else wifiBeginSaved();
   connState = 1;
   connStart = millis();
   snprintf(connMsg, sizeof(connMsg), "Connecting to %s...", ssid);
@@ -180,7 +242,7 @@ static void netRetryTick() {
   retryAt = 0;
   deviceLogf("Wi-Fi: retrying %s (attempt %u)", saved, (unsigned)retryCount);
   WiFi.disconnect(false);
-  WiFi.begin();
+  wifiBeginSaved();
 }
 
 static void netConnTick() {
@@ -190,6 +252,7 @@ static void netConnTick() {
     snprintf(connMsg, sizeof(connMsg), "Connected to %s  -  %s", WiFi.SSID().c_str(),
              WiFi.localIP().toString().c_str());
     deviceLogf("Wi-Fi: %s", connMsg);
+    staSave(WiFi.SSID().c_str(), WiFi.psk().c_str());
     return;
   }
   const char* why = nullptr;
@@ -283,7 +346,7 @@ void net_ap_stop() {
   WiFi.mode(WIFI_STA);
   apOn = false;
   deviceLog("Setup hotspot stopped");
-  if (WiFi.status() != WL_CONNECTED) WiFi.begin();
+  if (WiFi.status() != WL_CONNECTED) wifiBeginSaved();
   else netAnnounce();
 }
 
@@ -422,14 +485,16 @@ static void logClear() {
 
 static const char* resetWhy = "?";
 
-#if CONFIG_SPIRAM_FETCH_INSTRUCTIONS && CONFIG_SPIRAM_RODATA
+#if CONFIG_SPIRAM_FETCH_INSTRUCTIONS && CONFIG_SPIRAM_RODATA && !CONFIG_IDF_TARGET_ESP32P4
 extern "C" uint32_t esp_spiram_instruction_access_enabled(void);
 extern "C" uint32_t esp_spiram_rodata_access_enabled(void);
 #endif
 // Code and read-only data run from PSRAM (XIP), so flash writes leave the
 // cache on and the display keeps running through an update.
 static bool xipActive() {
-#if CONFIG_SPIRAM_FETCH_INSTRUCTIONS && CONFIG_SPIRAM_RODATA
+#if CONFIG_IDF_TARGET_ESP32P4 && CONFIG_SPIRAM_XIP_FROM_PSRAM
+  return true;  // the P4 core has no runtime query; the image is copied at boot
+#elif CONFIG_SPIRAM_FETCH_INSTRUCTIONS && CONFIG_SPIRAM_RODATA
   return esp_spiram_instruction_access_enabled() && esp_spiram_rodata_access_enabled();
 #else
   return false;
@@ -1489,7 +1554,10 @@ static void updateNet() {
   // No modem sleep: with it the radio wakes every ~100 ms beacon, so LAN round
   // trips run 60-800 ms and OTA uploads (one ack per 1.4 KB) crawl and time
   // out. The panels are mains powered.
-  if (up && !wasUp) WiFi.setSleep(false);
+  if (up && !wasUp) {
+    WiFi.setSleep(false);
+    staSave(WiFi.SSID().c_str(), WiFi.psk().c_str());
+  }
   if (up) {
     g_net.portal = false;
     strlcpy(g_net.ip, WiFi.localIP().toString().c_str(), sizeof(g_net.ip));
@@ -1558,7 +1626,7 @@ void setup() {
                ARDUINO_EVENT_WIFI_STA_GOT_IP);
 #endif
   char saved[33];
-  if (net_saved_ssid(saved, sizeof(saved))) WiFi.begin();
+  if (net_saved_ssid(saved, sizeof(saved))) wifiBeginSaved();
   else ui_wifi_page(true);  // first boot: choose a network
   logHeap("wifi");
 
@@ -1616,6 +1684,7 @@ void setup() {
   server.on("/reset-wifi", HTTP_POST, []() {
     if (!requireAuthorization()) return;
     WiFi.disconnect(true, true);  // forget the saved network
+    staForget();
     server.send(200, "text/plain", "Wi-Fi settings cleared; rebooting");
     delay(400);
     ESP.restart();

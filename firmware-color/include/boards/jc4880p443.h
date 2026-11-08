@@ -29,3 +29,14 @@
 #define TOUCH_RST     3
 #define TOUCH_SWAP_XY 1
 #define TOUCH_FLIP_Y  1
+
+// ES8311 codec (I2C 0x18, shared with the touch bus) feeding an NS4150 amp
+// on the speaker connector. I2S needs MCLK for the codec; GPIO11 enables the amp.
+#define AUDIO_I2S        1
+#define AUDIO_ES8311     1
+#define AUDIO_ES8311_ADDR 0x18
+#define AUDIO_MCLK       13
+#define AUDIO_BCLK       12
+#define AUDIO_LRCLK      10
+#define AUDIO_DOUT       9
+#define AUDIO_PA_EN      11

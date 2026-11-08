@@ -5,7 +5,7 @@
 #   tools/build_flasher.sh [git-ref] [env ...]
 #
 # Builds from a clean export of git-ref (default HEAD), so uncommitted work in
-# firmware-color/ never ends up in a published image. Default envs: crowpanel_70 waveshare_70 jc3248w535 ws_lcd2 ws316.
+# firmware-color/ never ends up in a published image. Default envs: crowpanel_70 waveshare_70 jc3248w535 ws_lcd2 ws316 jc4880p443.
 # Each board's OTA app image (the asset name from its board header) also goes
 # to flasher/release/ for the GitHub release.
 #
@@ -20,7 +20,7 @@ REPO="$(cd "$(dirname "$0")/.." && pwd)"
 REF="${1:-HEAD}"
 shift || true
 ENVS=("$@")
-[ ${#ENVS[@]} -eq 0 ] && ENVS=(crowpanel_70 waveshare_70 jc3248w535 ws_lcd2 ws316)
+[ ${#ENVS[@]} -eq 0 ] && ENVS=(crowpanel_70 waveshare_70 jc3248w535 ws_lcd2 ws316 jc4880p443)
 
 PIO="${PIO:-$HOME/.platformio/penv/bin/pio}"
 ESPTOOL="${ESPTOOL:-$HOME/.platformio/penv/bin/esptool.py}"
@@ -36,6 +36,7 @@ board_name() {
     jc3248w535) echo 'Guition JC3248W535 3.5"' ;;
     ws_lcd2) echo 'Waveshare ESP32-S3-Touch-LCD-2' ;;
     ws316) echo 'Waveshare ESP32-S3-LCD-3.16 (knob)' ;;
+    jc4880p443) echo 'Guition JC4880P443C 4.3"' ;;
     *) echo "$1" ;;
   esac
 }
@@ -60,6 +61,12 @@ for env in "${ENVS[@]}"; do
   "$PIO" run -d "$SRC" -e "$env"
   build="$SRC/.pio/build/$env"
 
+  # The Guition 4.3" is an ESP32-P4 (RISC-V, stock core, DSI glass): no RGB
+  # ISR to check, a different chip for esptool, and its bootloader at 0x2000.
+  chip=esp32s3 family=ESP32-S3 boot_off=0x0
+  if [ "$env" = jc4880p443 ]; then
+    chip=esp32p4 family=ESP32-P4 boot_off=0x2000
+  else
   # A build linked against the stock core crashes on its first flash write.
   # The Guition's QSPI and the Waveshare 2"'s SPI panels have no RGB ISR; the
   # Guition's speaker I2S one must be in IRAM.
@@ -73,12 +80,13 @@ for env in "${ENVS[@]}"; do
       exit 1
     fi
   done
+  fi
 
   boot_app0="$(find "$HOME/.platformio/packages" -path '*arduinoespressif32*/tools/partitions/boot_app0.bin' | head -1)"
   image="makermonitor-${env//_/-}-$VERSION.bin"
-  "$ESPTOOL" --chip esp32s3 merge_bin -o "$DIST/firmware/$image" \
+  "$ESPTOOL" --chip "$chip" merge_bin -o "$DIST/firmware/$image" \
     --flash_mode keep --flash_freq keep --flash_size keep \
-    0x0 "$build/bootloader.bin" \
+    "$boot_off" "$build/bootloader.bin" \
     0x8000 "$build/partitions.bin" \
     0xe000 "$boot_app0" \
     0x10000 "$build/firmware.bin"
@@ -94,7 +102,7 @@ for env in "${ENVS[@]}"; do
   "version": "$VERSION",
   "new_install_prompt_erase": true,
   "builds": [
-    { "chipFamily": "ESP32-S3", "parts": [{ "path": "firmware/$image", "offset": 0 }] }
+    { "chipFamily": "$family", "parts": [{ "path": "firmware/$image", "offset": 0 }] }
   ]
 }
 EOF

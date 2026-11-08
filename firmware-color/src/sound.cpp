@@ -89,17 +89,81 @@ void sound_stop() {
   if (!ok) return;
   ok = false;
   for (int i = 0; i < 50 && playing; i++) delay(10);
+#if AUDIO_ES8311
+  digitalWrite(AUDIO_PA_EN, LOW);
+#endif
   i2s.end();
 }
 
+#if AUDIO_ES8311
+// ES8311 codec on the touch I2C bus, slave to our I2S with MCLK = 256 x 16 kHz
+// (4.096 MHz), DAC to the NS4150 amp. Register values follow Espressif's
+// es8311 driver for that clock: 16-bit I2S in, DAC at 0 dB, ADC off.
+#include <Wire.h>
+
+static bool esWrite(uint8_t reg, uint8_t val) {
+  Wire.beginTransmission(AUDIO_ES8311_ADDR);
+  Wire.write(reg);
+  Wire.write(val);
+  return Wire.endTransmission() == 0;
+}
+
+static bool es8311Init() {
+  if (!esWrite(0x00, 0x1F)) return false;  // reset
+  delay(20);
+  esWrite(0x00, 0x00);
+  esWrite(0x00, 0x80);  // power on, slave mode
+  esWrite(0x01, 0x3F);  // MCLK from its pin, all clocks on
+  esWrite(0x02, 0x00);  // pre-divide 1, pre-multiply 1
+  esWrite(0x03, 0x10);  // single speed, ADC OSR
+  esWrite(0x04, 0x10);  // DAC OSR
+  esWrite(0x05, 0x00);  // ADC / DAC dividers 1
+  esWrite(0x06, 0x03);  // BCLK = MCLK / 4
+  esWrite(0x07, 0x00);  // LRCK = MCLK / 256
+  esWrite(0x08, 0xFF);
+  esWrite(0x09, 0x0C);  // serial in: I2S, 16-bit
+  esWrite(0x0A, 0x0C);  // serial out: I2S, 16-bit
+  esWrite(0x0B, 0x00);
+  esWrite(0x0C, 0x00);
+  esWrite(0x10, 0x1F);
+  esWrite(0x11, 0x7F);
+  esWrite(0x0D, 0x01);  // analog power up
+  esWrite(0x0E, 0x02);
+  esWrite(0x12, 0x00);  // DAC power up
+  esWrite(0x13, 0x10);  // output drive on
+  esWrite(0x14, 0x1A);
+  esWrite(0x1C, 0x6A);
+  esWrite(0x37, 0x08);  // bypass the DAC equalizer
+  esWrite(0x31, 0x00);  // unmute
+  esWrite(0x32, 0xBF);  // DAC volume 0 dB; the settings volume scales samples
+  return true;
+}
+#endif
+
 void sound_init() {
+#if AUDIO_ES8311
+  pinMode(AUDIO_PA_EN, OUTPUT);
+  digitalWrite(AUDIO_PA_EN, LOW);
+  i2s.setPins(AUDIO_BCLK, AUDIO_LRCLK, AUDIO_DOUT, -1, AUDIO_MCLK);
+#else
   i2s.setPins(AUDIO_BCLK, AUDIO_LRCLK, AUDIO_DOUT);
+#endif
   ok = i2s.begin(I2S_MODE_STD, RATE, I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_MONO);
   if (!ok) {
     Serial.println("I2S init failed");
     return;
   }
   Serial.println("I2S OK");
+#if AUDIO_ES8311
+  // The codec needs MCLK running (from i2s.begin) before it is set up.
+  if (!es8311Init()) {
+    Serial.println("ES8311 does not answer");
+    i2s.end();
+    ok = false;
+    return;
+  }
+  digitalWrite(AUDIO_PA_EN, HIGH);
+#endif
   q = xQueueCreate(4, sizeof(uint8_t));
   xTaskCreatePinnedToCore(soundTask, "sound", 4096, nullptr, 2, nullptr, 0);
 }

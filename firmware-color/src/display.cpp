@@ -466,7 +466,6 @@ static uint16_t* p4Fb = nullptr;
 static bool p4Stopped = false;
 static uint32_t p4LastUs = 0;
 static const uint32_t P4_GAP_US = 16000;
-
 static void p4Push() {
   if (!p4Fb || p4Stopped) return;
   esp_cache_msync(p4Fb, LCD_NATIVE_W * LCD_NATIVE_H * 2, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
@@ -575,7 +574,9 @@ void display_suspend() {
 
 bool display_is_suspended() { return displaySuspended; }
 
-bool display_survives_flash() { return LCD_HAS_GRAM; }
+// The P4's DSI interrupt (stock core) stops while flash is written and the
+// glass flashes, so that board switches the screen off for updates.
+bool display_survives_flash() { return LCD_HAS_GRAM && !LCD_MIPI_P4; }
 
 void deviceLogf(const char* fmt, ...);
 

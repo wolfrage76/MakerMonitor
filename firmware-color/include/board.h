@@ -46,6 +46,9 @@
 #ifndef AUDIO_I2S
 #define AUDIO_I2S 0
 #endif
+#ifndef AUDIO_ES8311
+#define AUDIO_ES8311 0
+#endif
 #ifndef LCD_ST7701
 #define LCD_ST7701 0
 #endif
