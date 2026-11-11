@@ -65,7 +65,7 @@ static bool SEVEN = false;    // 800x480 at 133 ppi (both 7" boards): bigger sec
 // captions, numbers in text colour, cyan only for controls), on every panel.
 // Layouts stay per panel; this only switches the surface and colour rules.
 static const bool FLAT = true;
-static bool PANES = false;  // two-pane Settings: 800 x 480 touch panels
+static bool PANES = false;  // two-pane Settings (sections rail + one section's rows)
 static int TOUCH_PX = 36;     // ~7 mm touch target at this panel's density
 
 // Named by their size on the large panels; compact panels step each one down.
@@ -81,7 +81,7 @@ static void layout() {
   STRIP = !COMPACT && !TALL;
   DENSE = TALL && BOARD_PPI >= 170;
   SEVEN = TALL && !DENSE;
-  PANES = TALL && INPUT_TOUCH;
+  PANES = FLAT;  // every panel; the rail and rows scale to the panel
   TOUCH_PX = constrain((int)(7.0f * BOARD_PPI / 25.4f + 0.5f), 32, 52);
   PAD = COMPACT ? 8 : 16;
   TOP = COMPACT ? 34 : (TALL ? 56 : 48);
@@ -3778,40 +3778,58 @@ static void buildMenu() {
     // The list becomes the right-hand pane; the sections go in a rail beside it.
     static const char* const SEC_ICON[] = {LV_SYMBOL_IMAGE, LV_SYMBOL_EYE_CLOSE, LV_SYMBOL_BELL, LV_SYMBOL_WIFI,
                                            LV_SYMBOL_SETTINGS, LV_SYMBOL_SETTINGS};
-    const int railW = 236, y0 = TOP - 4, paneX = PAD + railW + 10, paneW = W - PAD - paneX, paneH = BOT - y0;
-    menuRowH = 66;
-    lv_obj_set_scrollbar_mode(menuList, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_clear_flag(menuList, LV_OBJ_FLAG_SCROLLABLE);
+    // Per panel: 800 px gets icon, name and summary; mid sizes icon and
+    // name; the 2" icons only. Rows share the pane's height between the
+    // largest section's five rows; a short pane scrolls inside a section.
+    const int railW = TALL ? 236 : STRIP ? 236 : TINY ? 46 : 150;
+    const int sgap = TALL ? 6 : COMPACT ? 4 : 6;
+    const int y0 = TOP - (COMPACT ? 2 : 4), paneX = PAD + railW + (COMPACT ? 6 : 10), paneW = W - PAD - paneX,
+              paneH = BOT - y0;
+    const int itemH = min(76, (paneH - 4 * sgap) / 5);
+    const bool withSum = itemH >= 70, withName = !TINY;
+    const int ppad = TALL ? 20 : COMPACT ? 10 : 16;
+    menuRowH = TALL ? 66 : max(TINY ? 34 : 40, min(menuRowH, (paneH - 6) / 5));
+    if (TALL) {
+      lv_obj_set_scrollbar_mode(menuList, LV_SCROLLBAR_MODE_OFF);
+      lv_obj_clear_flag(menuList, LV_OBJ_FLAG_SCROLLABLE);
+    }
     lv_obj_set_pos(menuList, paneX, y0);
     lv_obj_set_size(menuList, paneW, paneH);
     lv_obj_set_style_bg_color(menuList, C(C_CARD), 0);
     lv_obj_set_style_bg_opa(menuList, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(menuList, 1, 0);
     lv_obj_set_style_border_color(menuList, C(C_EDGE), 0);
-    lv_obj_set_style_radius(menuList, 10, 0);
-    lv_obj_set_style_pad_hor(menuList, 20, 0);
-    lv_obj_set_style_pad_top(menuList, 6, 0);
+    lv_obj_set_style_radius(menuList, COMPACT ? 6 : 10, 0);
+    lv_obj_set_style_pad_hor(menuList, ppad, 0);
+    lv_obj_set_style_pad_top(menuList, COMPACT ? 2 : 6, 0);
     lv_obj_set_style_pad_bottom(menuList, 0, 0);
-    paneInner = paneW - 2 - 40;
+    paneInner = paneW - 2 - 2 * ppad;
     menuNSec = 0;
     for (int i = 0; i < NMENU && menuNSec < MSEC_MAX; i++) {
       if (MENU[i].kind != MK_HEAD) continue;
       MenuSecUi& sec = menuSec[menuNSec];
       sec.head = i;
-      lv_obj_t* it = sec.item = box(menuRoot, PAD, y0 + menuNSec * 82, railW, 76, C_CARD, 10);
+      lv_obj_t* it = sec.item = box(menuRoot, PAD, y0 + menuNSec * (itemH + sgap), railW, itemH, C_CARD, COMPACT ? 6 : 10);
       lv_obj_set_style_border_width(it, 1, 0);
       lv_obj_set_style_bg_color(it, C(C_RAISED), LV_STATE_PRESSED);
       lv_obj_add_flag(it, LV_OBJ_FLAG_CLICKABLE);
       lv_obj_add_event_cb(it, [](lv_event_t* e) { menuShowSec(tapIdx(e)); }, LV_EVENT_SHORT_CLICKED,
                           (void*)(intptr_t)menuNSec);
-      sec.bar = box(it, -1, 22, 3, 30, C_ACCENT, 2);
-      sec.icon = label(it, F20, C_MUTED, 18, 0, SEC_ICON[menuNSec]);
-      lv_obj_align(sec.icon, LV_ALIGN_LEFT_MID, 18, 0);
+      sec.bar = box(it, -1, itemH / 4, 3, itemH / 2, C_ACCENT, 2);
+      sec.icon = label(it, F20, C_MUTED, 0, 0, SEC_ICON[menuNSec]);
+      const int ix = TINY ? (railW - 2 - lv_txt_get_width(SEC_ICON[menuNSec], strlen(SEC_ICON[menuNSec]), F20, 0, LV_TEXT_FLAG_NONE)) / 2
+                          : TALL ? 18 : 12;
+      lv_obj_align(sec.icon, LV_ALIGN_LEFT_MID, ix, 0);
       char t[32];
       sentenceCase(t, sizeof(t), MENU[i].label);
-      label(it, F16, C_TXT, 56, 14, t);
-      sec.sum = label(it, F14, C_MUTED, 56, 14 + lineH(F16) + 3, "");
-      dotLabel(sec.sum, railW - 56 - 12);
+      const int nx = TALL ? 56 : STRIP ? 52 : 40;
+      lv_obj_t* nm = label(it, F16, C_TXT, nx, 14, t);
+      if (!withSum) lv_obj_align(nm, LV_ALIGN_LEFT_MID, nx, 0);
+      show(nm, withName);
+      if (withName) dotLabel(nm, railW - nx - 8);
+      sec.sum = label(it, F14, C_MUTED, nx, 14 + lineH(F16) + 3, "");
+      dotLabel(sec.sum, railW - nx - 12);
+      show(sec.sum, withSum);
       sec.rows = plainObj(menuList);
       lv_obj_set_size(sec.rows, lv_pct(100), LV_SIZE_CONTENT);
       lv_obj_set_flex_flow(sec.rows, LV_FLEX_FLOW_COLUMN);
@@ -3866,6 +3884,7 @@ static void buildMenu() {
     }
 #endif
     if (PANES) lv_obj_set_style_radius(r, 0, 0);
+    if (PANES && !TALL) lv_obj_set_style_pad_hor(r, 4, 0);  // the knob highlight clears the text
     m.label = label(r, F16, d.kind == MK_INFO ? C_SUB : (d.kind == MK_ACTION && d.id == MA_RESET ? C_ERR : C_TXT), 0, 0,
                     d.label ? d.label : SETTINGS[d.id].label);
     lv_obj_align(m.label, LV_ALIGN_LEFT_MID, mx, 0);
@@ -3896,7 +3915,15 @@ static void buildMenu() {
     if (PANES) {
       // Flush with the pane's padding: label and value align with the hairlines.
       lv_obj_align(m.label, LV_ALIGN_LEFT_MID, 0, menuHint(i) ? -lineH(F12) / 2 - 1 : 0);
-      if (m.hint) lv_obj_align(m.hint, LV_ALIGN_LEFT_MID, 0, lineH(F16) / 2 + 3);
+      if (m.hint) {
+        lv_obj_align(m.hint, LV_ALIGN_LEFT_MID, 0, lineH(F16) / 2 + 3);
+        // The hint stops short of the value or switch on the right.
+        dotLabel(m.hint, TALL ? paneInner - 90 : paneInner * 55 / 100);
+        if (TINY) {  // 2": no room under the label; the row reads without it
+          show(m.hint, false);
+          lv_obj_align(m.label, LV_ALIGN_LEFT_MID, 0, 0);
+        }
+      }
       if (m.track) lv_obj_align(m.track, LV_ALIGN_RIGHT_MID, 0, 0);
       if (m.chev) lv_obj_align(m.chev, LV_ALIGN_RIGHT_MID, 0, 0);
       if (m.value) {
@@ -4428,6 +4455,7 @@ static void menuMove(int steps) {
     while (!menuFocusable(j));
     menuSel = j;
   }
+  menuShowSecOf(menuSel);
   refreshMenu();
   // Bring a section's title into view along with its first row.
   int target = menuSel > 0 && MENU[menuSel - 1].kind == MK_HEAD ? menuSel - 1 : menuSel;
