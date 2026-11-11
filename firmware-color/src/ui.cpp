@@ -25,7 +25,7 @@ extern const lv_img_dsc_t icon_boost_32, icon_like_32, icon_collect_32, icon_dow
     icon_rating_32, icon_follower_32;
 extern const lv_img_dsc_t icon_boost_40, icon_like_40, icon_collect_40, icon_download_40, icon_print_40, icon_rating_40,
     icon_follower_40;
-extern const lv_img_dsc_t icon_trend_32;
+extern const lv_img_dsc_t icon_trend_32, icon_comment_40;
 // 7" Today: 48 px stat icons and the points coin.
 extern const lv_img_dsc_t icon_boost_48, icon_like_48, icon_collect_48, icon_download_48, icon_print_48,
     icon_points_40, icon_points_48;
@@ -35,6 +35,8 @@ static const lv_img_dsc_t* const ICON20[NKIND] = {&icon_boost_20, &icon_like_20,
                                                   &icon_download_20, &icon_print_20, &icon_comment_20, &icon_rating_20};
 static const lv_img_dsc_t* const ICON32[NKIND] = {&icon_boost_32, &icon_like_32, &icon_collect_32,
                                                   &icon_download_32, &icon_print_32, &icon_comment_32, &icon_rating_32};
+static const lv_img_dsc_t* const ICON40[NKIND] = {&icon_boost_40, &icon_like_40, &icon_collect_40,
+                                                  &icon_download_40, &icon_print_40, &icon_comment_40, &icon_rating_40};
 
 // ---- palette ----------------------------------------------------------------
 // Dark navy base, hairline card edges, one cyan accent; stat colors are neon.
@@ -1685,9 +1687,15 @@ static void buildFeed() {
     f.card = card(s, PAD + col * (colW + 12), TOP + r * (rowH + gap), colW, rowH);
     f.iconBox = box(f.card, bigIcon ? 14 : 12, (rowH - ib) / 2, ib, ib, COLBG[0], 10);
     f.img = icon(f.iconBox, 0, bigIcon, (ib - (bigIcon ? 32 : 20)) / 2, (ib - (bigIcon ? 32 : 20)) / 2);
+    if (SEVEN) {
+      // 7": a bare 40 px icon, as on Today; the colour stays on the icon.
+      lv_obj_set_style_bg_opa(f.iconBox, LV_OPA_TRANSP, 0);
+      lv_img_set_src(f.img, ICON40[0]);
+      lv_obj_set_pos(f.img, (ib - 40) / 2, (ib - 40) / 2);
+    }
     // Time on the action's line, so the model name gets the full width.
     const int timeW = lv_txt_get_width("12:00 PM", 8, timeF, 0, LV_TEXT_FLAG_NONE);
-    f.title = label(f.card, tf, COL[0], tx, textY, "");
+    f.title = label(f.card, tf, SEVEN ? C_TXT : COL[0], tx, textY, "");
     dotLabel(f.title, colW - tx - 14 - timeW - 8);
     f.model = label(f.card, mf, C_SUB, tx, textY + lineH(tf) + 4, "");
     dotLabel(f.model, colW - tx - 14);
@@ -1713,10 +1721,11 @@ static void refreshFeed() {
     show(f.card, true);
     lv_obj_set_style_bg_color(f.iconBox, C(COLBG[r.kind]), 0);
     setIcon(f.img, r.kind, TALL || STRIP);
+    if (SEVEN) lv_img_set_src(f.img, ICON40[r.kind]);
     if (r.kind == K_COMMENT) snprintf(a, sizeof(a), "New comment");
     else fmtEventTitle(a, sizeof(a), r.kind, r.n, r.stars);
     lv_label_set_text(f.title, a);
-    lv_obj_set_style_text_color(f.title, C(COL[r.kind]), 0);
+    if (!SEVEN) lv_obj_set_style_text_color(f.title, C(COL[r.kind]), 0);
     lv_label_set_text(f.model, r.model);
     fmtHM(b, sizeof(b), r.t);
     lv_label_set_text(f.time, r.t ? b : "");
