@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Status 7in mock</title>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500&display=swap" rel="stylesheet">
+<style>
+/* 800x480 CrowPanel 7", Montserrat Medium only, flat fills (RGB565). */
+:root{
+  --ground:#06090E; --plate:#0E141D; --seam:#1E2A38;
+  --ink:#E6EDF3; --ink2:#B3C1CF; --ink3:#7E8C9B; --ink4:#2A3644;
+  --accent:#22D3EE; --ok:#2EE59D; --warn:#FFB020; --err:#FF5C6C; --idle:#4E5A68;
+}
+*{box-sizing:border-box;margin:0}
+body{background:#222;font-family:Montserrat,sans-serif;font-weight:500;color:var(--ink);
+  display:flex;flex-direction:column;align-items:center;gap:24px;padding:24px;-webkit-font-smoothing:antialiased}
+.panel{position:relative;width:800px;height:480px;background:var(--ground);overflow:hidden;flex:none}
+.abs{position:absolute}
+.card{position:absolute;background:var(--plate);border:1px solid var(--seam);border-radius:10px}
+.title{left:16px;top:13px;font-size:20px;line-height:24px}
+.btns{right:16px;top:8px;display:flex;gap:10px}
+.btn{height:34px;padding:0 14px;display:flex;align-items:center;gap:8px;font-size:16px;border:1px solid var(--seam);border-radius:6px;background:var(--plate)}
+.btn.p{color:var(--accent)}
+/* lead: is the panel getting data? */
+.lead{left:16px;top:52px;width:768px;height:140px;padding:20px 24px}
+.lead .dot{position:absolute;left:24px;top:30px;width:18px;height:18px;border-radius:50%}
+.lead .big{position:absolute;left:56px;top:18px;font-size:32px;line-height:40px;letter-spacing:-.5px}
+.lead .sub{position:absolute;left:56px;top:64px;font-size:16px;color:var(--ink2)}
+.lead .src{position:absolute;left:56px;top:96px;display:flex;gap:22px;font-size:14px;color:var(--ink3)}
+.lead .src b{font-weight:500;color:var(--ink2)}
+.lead .src i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px;vertical-align:1px}
+.lead .next{position:absolute;right:24px;top:24px;text-align:right}
+.lead .next .v{font-size:26px;line-height:32px;font-variant-numeric:tabular-nums}
+.lead .next .c{font-size:14px;color:var(--ink3);margin-top:2px}
+/* four detail cells */
+.cell{width:380px;height:124px;padding:16px 20px}
+.cell .cap{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--ink2)}
+.cell .cap i{width:8px;height:8px;border-radius:50%}
+.cell .v{position:absolute;left:20px;top:44px;font-size:24px;line-height:30px}
+.cell .s{position:absolute;left:20px;top:82px;right:16px;font-size:14px;color:var(--ink3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.note{color:#bbb;font:13px/1.4 system-ui;width:800px}
+</style>
+</head>
+<body>
+<template id="frame">
+<div class="panel">
+  <div class="abs title">Status</div>
+  <div class="abs btns"><div class="btn p">&#8635;&nbsp; Poll now</div><div class="btn">&#10005;&nbsp; Back</div></div>
+  <div class="card lead">
+    <div class="dot" data-dot></div><div class="big" data-big></div><div class="sub" data-sub></div>
+    <div class="src" data-src></div>
+    <div class="next"><div class="v" data-next></div><div class="c">next poll  ·  every 10 min</div></div>
+  </div>
+  <div class="card cell" style="left:16px;top:200px" data-c="0"></div>
+  <div class="card cell" style="left:404px;top:200px" data-c="1"></div>
+  <div class="card cell" style="left:16px;top:334px" data-c="2"></div>
+  <div class="card cell" style="left:404px;top:334px" data-c="3"></div>
+</div>
+</template>
+
+<p class="note">All good.</p><div id="a"></div>
+<p class="note">Cookie refused: the lead says what to do.</p><div id="b"></div>
+
+<script>
+function make(id, d){
+  const h=document.getElementById(id);
+  h.appendChild(document.getElementById('frame').content.cloneNode(true));
+  h.querySelector('[data-dot]').style.background=`var(--${d.dot})`;
+  h.querySelector('[data-big]').textContent=d.big;
+  h.querySelector('[data-sub]').textContent=d.sub;
+  h.querySelector('[data-src]').innerHTML=d.src.map(([n,t,c])=>`<span><i style="background:var(--${c})"></i>${n} <b>${t}</b></span>`).join('');
+  h.querySelector('[data-next]').textContent=d.next;
+  d.cells.forEach(([cap,dot,v,s],i)=>{h.querySelector(`[data-c="${i}"]`).innerHTML=
+    `<div class="cap"><i style="background:var(--${dot})"></i>${cap}</div><div class="v">${v}</div><div class="s">${s}</div>`});
+}
+make('a',{dot:'ok',big:'Synced 10 min ago',sub:'MakerWorld cookie accepted, all three sources fresh',
+  src:[['models','10m','ok'],['reach','10m','ok'],['points','10m','ok']],next:'in 8m 16s',
+  cells:[['Cookie','ok','10 min old','auth OK'],['Day base','ok','12:00 AM','since midnight  ·  sampled Mon 11:50 PM'],
+         ['Network','ok','192.168.1.164','makermonitor-8e7a8.local  ·  wofl  ·  -53 dBm'],['Device','idle','up 46 s','v0.4.140  ·  CrowPanel 7.0  ·  3 MB PSRAM free']]});
+make('b',{dot:'warn',big:'Cookie needed',sub:'Open MakerWorld in Chrome; the extension sends a new one',
+  src:[['models','2h','warn'],['reach','2h','warn'],['points','2h','warn']],next:'in 1m 40s',
+  cells:[['Cookie','warn','3 days old','MakerWorld refused it (HTTP 401)'],['Day base','ok','12:00 AM','since midnight  ·  sampled Mon 11:50 PM'],
+         ['Network','ok','192.168.1.164','makermonitor-8e7a8.local  ·  wofl  ·  -53 dBm'],['Device','idle','up 3 h 12 m','v0.4.140  ·  CrowPanel 7.0  ·  3 MB PSRAM free']]});
+</script>
+</body>
+</html>

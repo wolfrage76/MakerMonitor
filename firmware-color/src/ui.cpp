@@ -3356,6 +3356,50 @@ struct StatusCell {
   lv_obj_t *dot, *value, *sub;
 };
 static StatusCell cells[NSTATUS];
+static lv_obj_t* statusSrc = nullptr;  // 800 px: per-source freshness under the lead line
+
+// 800 px panels: one lead card answering "is it getting data?" (state, what
+// to do about it, per-source freshness, next poll on the right), then Cookie,
+// Day base, Network and Device as a 2 x 2 grid.
+static void buildStatusLead(lv_obj_t* s) {
+  const int y0 = TOP - 4, leadH = 140, g = 8;
+  lv_obj_t* c = card(s, PAD, y0, CW, leadH);
+  StatusCell& p = cells[ST_POLLER];
+  p.dot = box(c, 22, 30, 18, 18, C_IDLE, LV_RADIUS_CIRCLE);
+  p.value = label(c, &lv_font_montserrat_32, C_TXT, 56, 18, "-");
+  dotLabel(p.value, CW - 56 - 230);
+  p.sub = label(c, F16, C_SUB, 56, 64, "");
+  dotLabel(p.sub, CW - 56 - 24);
+  statusSrc = label(c, F14, C_MUTED, 56, 98, "");
+  dotLabel(statusSrc, CW - 56 - 24);
+  StatusCell& n = cells[ST_NEXT];
+  n.dot = box(c, 0, 0, 1, 1, C_CARD, 0);  // no dot: the lead's dot speaks for the poll
+  show(n.dot, false);
+  n.value = label(c, &lv_font_montserrat_26, C_TXT, 0, 0, "-");
+  lv_obj_set_width(n.value, 200);
+  lv_obj_set_style_text_align(n.value, LV_TEXT_ALIGN_RIGHT, 0);
+  lv_obj_align(n.value, LV_ALIGN_TOP_RIGHT, -22, 20);
+  n.sub = label(c, F14, C_MUTED, 0, 0, "");
+  lv_obj_set_width(n.sub, 200);
+  lv_obj_set_style_text_align(n.sub, LV_TEXT_ALIGN_RIGHT, 0);
+  lv_obj_align(n.sub, LV_ALIGN_TOP_RIGHT, -22, 20 + lineH(&lv_font_montserrat_26) + 2);
+  const int idx[4] = {ST_COOKIE, ST_BASE, ST_NET, ST_DEVICE};
+  const char* names[4] = {"Cookie", "Day base", "Network", "Device"};
+  const int cw = (CW - g) / 2, ch = (BOT - (y0 + leadH + g) - g) / 2;
+  for (int i = 0; i < 4; i++) {
+    const int x = PAD + (i % 2) * (cw + g), y = y0 + leadH + g + (i / 2) * (ch + g);
+    lv_obj_t* k = card(s, x, y, cw, ch);
+    StatusCell& m = cells[idx[i]];
+    lv_obj_t* cap = row(k, 8);
+    lv_obj_set_pos(cap, 18, 14);
+    m.dot = box(cap, 0, 0, 8, 8, C_IDLE, LV_RADIUS_CIRCLE);
+    label(cap, F14, C_SUB, 0, 0, names[i]);
+    m.value = label(k, F22, C_TXT, 18, 40, "-");
+    dotLabel(m.value, cw - 36);
+    m.sub = label(k, F14, C_MUTED, 18, ch - 14 - lineH(F14), "");
+    dotLabel(m.sub, cw - 34);
+  }
+}
 
 static void makeStatusCell(lv_obj_t* parent, int i, int x, int y, int w, int h, const char* name) {
   lv_obj_t* c = card(parent, x, y, w, h);
@@ -3417,6 +3461,10 @@ static void buildStatus() {
 #else
   hint(h, COMPACT ? "press: poll / hold: back" : "press: poll now  -  hold: back");
 #endif
+  if (TALL) {
+    buildStatusLead(s);
+    return;
+  }
   const char* names[NSTATUS] = {"POLLER", "COOKIE", "NEXT POLL", "DAY BASE", "NETWORK", "DEVICE"};
   // One full-width row each, so an address or hostname is not squeezed into a
   // quarter of the screen. Short panels keep a single line; taller ones add
@@ -3437,7 +3485,8 @@ static void refreshStatus() {
   char a[96], b[96];
   uint32_t n = nowUtc();
   if (!st.valid) {
-    setCell(ST_POLLER, C_IDLE, "Waiting", "add it to the poller's panels list");
+    setCell(ST_POLLER, C_IDLE, TALL ? "Waiting for the poller" : "Waiting", "add it to the poller's panels list");
+    if (statusSrc) setTextIfChanged(statusSrc, "");
     setCell(ST_COOKIE, C_IDLE, "-", "");
     setCell(ST_NEXT, C_IDLE, "-", "");
     setCell(ST_BASE, C_IDLE, "-", "");
@@ -3458,14 +3507,37 @@ static void refreshStatus() {
     }
     setCell(ST_POLLER, st.pollOk ? (ok ? C_OK : C_WARN) : C_ERR,
             st.pollOk ? (ok ? "Synced" : "Public only") : "Error", st.pollOk ? a : st.msg);
+    if (TALL) {
+      // The lead says what state the data is in and what, if anything, to do.
+      setTextIfChanged(statusSrc, st.health.has && n ? a : "");
+      char lead[48];
+      long ago = n && st.lastPoll ? (long)(n - st.lastPoll) : -1;
+      if (!st.pollOk) {
+        setCell(ST_POLLER, C_ERR, "Poll failed", st.msg);
+      } else if (!ok) {
+        setCell(ST_POLLER, C_WARN, "Cookie needed", "Open MakerWorld in Chrome; the extension sends a new one");
+      } else {
+        if (ago >= 0 && ago < 60) snprintf(lead, sizeof(lead), "Synced just now");
+        else {
+          fmtAgo(b, sizeof(b), ago);
+          snprintf(lead, sizeof(lead), "Synced %s ago", b);
+        }
+        setCell(ST_POLLER, C_OK, lead, "MakerWorld cookie accepted");
+      }
+    }
     fmtAgo(a, sizeof(a), st.cookieAge);
+    if (TALL && st.cookieAge >= 0) {
+      char t[24];
+      snprintf(t, sizeof(t), "%s old", a);
+      strlcpy(a, t, sizeof(a));
+    }
     setCell(ST_COOKIE, st.cookieAge < 0 ? C_WARN : ok ? C_OK : C_WARN, st.cookieAge < 0 ? "None" : a,
             ok ? "auth OK" : st.msg);
     int pollSec = setting_value(SET_POLL);
     long left = n && st.lastPoll ? (long)(st.lastPoll + st.pollSec) - (long)n : -1;
     if (left < 0) snprintf(a, sizeof(a), "due");
     else snprintf(a, sizeof(a), "in %ldm %02lds", left / 60, left % 60);
-    snprintf(b, sizeof(b), "every %d min", pollSec / 60);
+    snprintf(b, sizeof(b), TALL ? "next poll  \xE2\x80\xA2  every %d min" : "every %d min", pollSec / 60);
     setCell(ST_NEXT, C_IDLE, a, b);
     if (st.midnight || payloadLagDays()) {
       // The sample may be 23:17 the night before. That is yesterday's clock,
@@ -3492,6 +3564,11 @@ static void refreshStatus() {
     setCell(ST_NET, C_ERR, "Offline", b);
   }
   fmtAgo(a, sizeof(a), millis() / 1000);
+  if (TALL) {
+    char t[24];
+    snprintf(t, sizeof(t), "up %s", a);
+    strlcpy(a, t, sizeof(a));
+  }
 #if BAT_ADC_PIN >= 0
   float v = analogReadMilliVolts(BAT_ADC_PIN) * BAT_DIVIDER / 1000.0f;
   if (v > 4.3f || v < 2.5f) snprintf(b, sizeof(b), "v" FW_VERSION "  -  " BOARD_NAME "  -  USB power");
