@@ -10,10 +10,10 @@
 #define BOARD_PPI      278   // 880 px diagonal over 3.16"
 
 #define LCD_ST7701       1   // needs the SPI init sequence in display.cpp
-// Bounce buffer: scan-out reading PSRAM directly lost step with LVGL and
-// XIP traffic, and the picture wrapped top to bottom. Safe since XIP from
-// PSRAM keeps the cache on during flash writes. 820 must divide by it.
-#define LCD_BOUNCE_LINES 10
+// No bounce buffer: its ISR restarts GDMA from flash-resident code, which
+// panics when a flash write (NVS, LittleFS, OTA) has the cache disabled.
+// 10 lines (0.4.151) left the glass blank, though the board kept running.
+#define LCD_BOUNCE_LINES 0
 
 // RGB data bus, esp_lcd order D0..D15 = B0-B4, G0-G5, R0-R4.
 #define LCD_DATA_PINS {21, 5, 45, 48, 47, 14, 13, 12, 11, 10, 9, 17, 46, 3, 8, 18}
