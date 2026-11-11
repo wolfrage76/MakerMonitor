@@ -2745,7 +2745,7 @@ static void buildBest() {
     bestChips[i] = label(bestHdr.right, SEVEN ? F16 : F14, C_MUTED, 0, 0, TINY && i == 0 ? "DLs" : BEST_NAME[i]);
     tappable(bestChips[i], bestChipCb, i);
   }
-  const int gap = COMPACT ? 6 : 10, dayH = COMPACT ? 56 : (TALL || STRIP ? 96 : 72), hourH = TH - dayH - gap;
+  const int gap = COMPACT ? 6 : 10, dayH = TINY ? 56 : COMPACT ? 66 : (TALL || STRIP ? 96 : 72), hourH = TH - dayH - gap;
   bestHourCard = card(s, PAD, TOP, CW, hourH);
   // 7": captions and hour marks one size up.
   const lv_font_t* bcF = SEVEN ? F14 : F12;
@@ -2996,7 +2996,7 @@ static void buildCreator() {
   }
   for (int i = 0; i < NCVIEW; i++) {
     static const char* const CV_SHORT[NCVIEW] = {"Conv", "Trend", "Launch", "Earn", "Fans", "Reply"};
-    lv_obj_t* l = crSeg[i] = label(seg, SEVEN ? F16 : F14, C_MUTED, 0, 0, TINY ? CV_SHORT[i] : CV_NAME[i]);
+    lv_obj_t* l = crSeg[i] = label(seg, SEVEN ? F16 : F14, C_MUTED, 0, 0, COMPACT ? CV_SHORT[i] : CV_NAME[i]);
     lv_obj_set_style_radius(l, 4, 0);
     // 3.5": full names in 14 px only fit a sixth of the row with no side padding.
     lv_obj_set_style_pad_hor(l, TINY || ROOMY ? 1 : COMPACT ? 4 : 12, 0);
@@ -6647,8 +6647,8 @@ static void modelPage(const TopRow* r) {
   const int rh = (BOT - y0 - 16) / (NSTAT + 1);
   // Column anchors were laid out for a wide card. On 320 px they sat in empty space.
   const int col7 = TINY ? tw - 148 : tw - 190, col30 = TINY ? tw - 70 : tw - 90;
-  label(tb, F12, C_MUTED, col7, 8, "7 DAYS");
-  label(tb, F12, C_MUTED, col30, 8, "30 DAYS");
+  eyebrow(label(tb, F12, C_MUTED, col7, 8, "7 DAYS"));
+  eyebrow(label(tb, F12, C_MUTED, col30, 8, "30 DAYS"));
   static const int ORDER[NSTAT] = {S_DOWNLOADS, S_PRINTS, S_LIKES, S_COLLECTS, S_BOOSTS};
   for (int i = 0; i < NSTAT; i++) {
     int k = ORDER[i], y = 8 + (i + 1) * rh;
@@ -6659,13 +6659,14 @@ static void modelPage(const TopRow* r) {
     fmtSigned(a, sizeof(a), sum7[k]);
     label(tb, numF, C_7D, col7, TINY ? y : y - 2, sum7[k] ? a : "0");
     fmtSigned(a, sizeof(a), sum30[k]);
-    label(tb, numF, C_30D, col30, TINY ? y : y - 2, sum30[k] ? a : "0");
+    // 30-day figures in text colour too; cyan is for controls.
+    label(tb, numF, FLAT ? C_TXT : C_30D, col30, TINY ? y : y - 2, sum30[k] ? a : "0");
   }
   if (COMPACT) return;
   // Daily downloads, oldest on the left.
   const int cx = PAD + tw + 10, cw = CW - tw - 10;
   lv_obj_t* ch = card(mdRoot, cx, y0, cw, BOT - y0);
-  label(ch, F12, C_SUB, 14, 10, "DAILY DOWNLOADS");
+  eyebrow(label(ch, F12, C_SUB, 14, 10, "DAILY DOWNLOADS"));
   const int bars = max(1, min(nd, 30)), step = (cw - 28) / 30, bw = max(3, step - 2);
   const int bottom = BOT - y0 - 14, maxH = bottom - (10 + lineH(F12) + 10);
   for (int i = 0; i < bars; i++) {
