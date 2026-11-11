@@ -94,7 +94,13 @@ static void layout() {
     F12 = &lv_font_montserrat_12; F14 = &lv_font_montserrat_12; F16 = &lv_font_montserrat_14;
     F20 = &lv_font_montserrat_16; F22 = &lv_font_montserrat_16; F26 = &lv_font_montserrat_20;
     F32 = &lv_font_montserrat_22; F40 = &lv_font_montserrat_26; F48 = &lv_font_montserrat_32;
-  } else if (DENSE || STRIP) {
+  } else if (STRIP) {
+    // 3.16" (278 ppi): about twice the 7"'s density, so every step goes up
+    // two sizes; the smallest caption is 16 px (~1.5 mm on this glass).
+    F12 = &lv_font_montserrat_16; F14 = &lv_font_montserrat_20; F16 = &lv_font_montserrat_22;
+    F20 = &lv_font_montserrat_26; F22 = &lv_font_montserrat_26; F26 = &lv_font_montserrat_32;
+    F32 = &lv_font_montserrat_40; F40 = &lv_font_montserrat_40; F48 = &lv_font_montserrat_40;
+  } else if (DENSE) {
     // 5" packs the 7"'s pixels into less glass: step body type up one size
     // so text and targets land at a similar physical size on both. The
     // 3.16" (278 ppi) gets the same step.
@@ -1076,7 +1082,7 @@ static void midCell(lv_obj_t* bar, int i, int x, int w, int h, const lv_img_dsc_
   lv_obj_set_size(col, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
   lv_obj_set_flex_flow(col, LV_FLEX_FLOW_COLUMN);
   mid[i].num = label(col, nf, C_DIM, 0, 0, "0");
-  mid[i].vs = label(col, TINY ? &lv_font_montserrat_12 : &lv_font_montserrat_14, C_MUTED, 0, 0, "");
+  mid[i].vs = label(col, TINY ? &lv_font_montserrat_12 : STRIP ? &lv_font_montserrat_16 : &lv_font_montserrat_14, C_MUTED, 0, 0, "");
   show(mid[i].vs, withVs);
   lv_obj_align(grp, withVs ? LV_ALIGN_TOP_MID : LV_ALIGN_CENTER, 0, withVs ? top : 0);
 }
@@ -1089,9 +1095,10 @@ static void buildTodayFlat(lv_obj_t* s) {
   const int heroH = strip ? 252 : roomy ? 140 : tiny ? 80 : 90;
   const int midH = strip ? 80 : roomy ? 62 : tiny ? 52 : 62;
   WK_ON = strip || roomy;
-  const lv_img_dsc_t* const IC32[3] = {&icon_boost_32, &icon_download_32, &icon_print_32};
+  const lv_img_dsc_t* const IC32[3] = {strip ? &icon_boost_40 : &icon_boost_32, strip ? &icon_download_40 : &icon_download_32,
+                                       strip ? &icon_print_40 : &icon_print_32};
   const lv_img_dsc_t* const IC20[3] = {&icon_boost_20, &icon_download_20, &icon_print_20};
-  const int icW = tiny ? 20 : 32, icX = tiny ? 8 : strip ? 14 : 10, icY = tiny ? 12 : 14;
+  const int icW = tiny ? 20 : strip ? 40 : 32, icX = tiny ? 8 : strip ? 12 : 10, icY = tiny ? 12 : 14;
   HERO_NUM_X = icX + icW + (tiny ? 6 : 10);
   if (strip) {
     HERO_NF[0] = &font_num_56; HERO_NF[1] = &lv_font_montserrat_40; HERO_NF[2] = &lv_font_montserrat_32;
@@ -1103,8 +1110,8 @@ static void buildTodayFlat(lv_obj_t* s) {
     HERO_NF[0] = &lv_font_montserrat_40; HERO_NF[1] = &lv_font_montserrat_32; HERO_NF[2] = &lv_font_montserrat_26;
     HERO_BASE = 46;
   }
-  const lv_font_t* vsF = tiny ? &lv_font_montserrat_12 : strip ? &lv_font_montserrat_16 : &lv_font_montserrat_14;
-  const int vsY = tiny ? 52 : strip ? 80 : 58;
+  const lv_font_t* vsF = tiny ? &lv_font_montserrat_12 : strip ? &lv_font_montserrat_20 : &lv_font_montserrat_14;
+  const int vsY = tiny ? 52 : strip ? 76 : 58;
   // The 3.16" keeps the right 240 px for Points, Likes / Collects and Followers.
   const int heroArea = strip ? CW - 240 - g : CW;
   HERO_W = (heroArea - 2 * g) / HERO_N;
@@ -1116,7 +1123,7 @@ static void buildTodayFlat(lv_obj_t* s) {
   WK_MAX = strip ? 96 : 34;
   const int bw = (WK_W - (WEEK_N - 1) * WK_GAP) / WEEK_N;
   WK_TODAY = bw >= 34 ? "Today" : "";
-  const lv_font_t* dayF = strip ? &lv_font_montserrat_14 : &lv_font_montserrat_12;
+  const lv_font_t* dayF = strip ? &lv_font_montserrat_16 : &lv_font_montserrat_12;
   const int y0 = TOP - (COMPACT ? 2 : 4);
   for (int i = 0; i < HERO_N; i++) {
     const int k = HERO_K[i];
@@ -1143,7 +1150,8 @@ static void buildTodayFlat(lv_obj_t* s) {
   // Likes | Points | Collects. The 3.16" puts Points alone on top of its
   // right column and Likes | Collects in a plate under it.
   const lv_img_dsc_t* side[2] = {tiny ? &icon_like_20 : &icon_like_32, tiny ? &icon_collect_20 : &icon_collect_32};
-  const lv_img_dsc_t* ptsIc = tiny ? &icon_points_20 : &icon_points_32;
+  if (strip) side[0] = &icon_like_40, side[1] = &icon_collect_40;
+  const lv_img_dsc_t* ptsIc = tiny ? &icon_points_20 : strip ? &icon_points_40 : &icon_points_32;
   const lv_font_t* sideF = tiny ? &lv_font_montserrat_20 : strip ? &lv_font_montserrat_32 : &lv_font_montserrat_26;
   const lv_font_t* ptsF = tiny ? &lv_font_montserrat_26 : strip ? &lv_font_montserrat_40 : &lv_font_montserrat_32;
   int footY, footX = PAD, footW = CW;
@@ -1183,10 +1191,10 @@ static void buildTodayFlat(lv_obj_t* s) {
   lv_obj_t* fr = row(f, 8);
   bigIcon(fr, &icon_follower_20, C_FOL, 0, 0);
   folSide.value = label(fr, tiny ? &lv_font_montserrat_20 : &lv_font_montserrat_26, C_TXT, 0, 0, "0");
-  folSide.today = label(fr, tiny ? &lv_font_montserrat_12 : &lv_font_montserrat_14, C_MUTED, 0, 0, "");
+  folSide.today = label(fr, tiny ? &lv_font_montserrat_12 : strip ? &lv_font_montserrat_16 : &lv_font_montserrat_14, C_MUTED, 0, 0, "");
   lv_obj_t* rr = row(f, 6);
   bigIcon(rr, &icon_rating_20, COL[K_RATING], 0, 0);
-  ratLbl = label(rr, tiny ? &lv_font_montserrat_14 : &lv_font_montserrat_14, C_MUTED, 0, 0, "");
+  ratLbl = label(rr, strip ? &lv_font_montserrat_16 : &lv_font_montserrat_14, C_MUTED, 0, 0, "");
   if (strip) {
     // Two short lines in the narrow column.
     lv_obj_align(fr, LV_ALIGN_TOP_LEFT, fx, 6);
@@ -1977,7 +1985,7 @@ static void buildTop() {
   const lv_font_t* nf = SEVEN ? &lv_font_montserrat_26 : TALL || STRIP ? F20 : ROOMY ? &lv_font_montserrat_22 : TINY ? &lv_font_montserrat_16 : F16;
   // 7": the rank is a 40 px podium numeral down the left; the name starts after it.
   const int nameX7 = 70;
-  const lv_font_t* cf = topChipF = SEVEN ? &lv_font_montserrat_26 : TINY || ROOMY || STRIP ? &lv_font_montserrat_20 : F14;
+  const lv_font_t* cf = topChipF = SEVEN ? &lv_font_montserrat_26 : STRIP ? &lv_font_montserrat_22 : TINY || ROOMY ? &lv_font_montserrat_20 : F14;
   const int nameGap = SEVEN ? 10 : ROOMY ? 6 : 2;  // name to chip row
   const int barH = TALL ? 8 : TINY ? 2 : STRIP ? 6 : 5;
   TOP_BAR_W = stack ? CW - 2 : CW - nameX - chipR - topChipN * chipStep - 10;
@@ -2071,7 +2079,7 @@ static void refreshTop() {
       fmtFit(a, sizeof(a), r.v[k], topMode != 2, topChipTextW, f);
       if (lv_txt_get_width(a, strlen(a), f, 0, LV_TEXT_FLAG_NONE) > topChipTextW && a[0] == '+') memmove(a, a + 1, strlen(a));
       if (lv_txt_get_width(a, strlen(a), f, 0, LV_TEXT_FLAG_NONE) > topChipTextW)
-        f = f == &lv_font_montserrat_26 ? &lv_font_montserrat_20 : f == &lv_font_montserrat_20 ? &lv_font_montserrat_16 : &lv_font_montserrat_12;
+        f = f == &lv_font_montserrat_26 || f == &lv_font_montserrat_22 ? &lv_font_montserrat_20 : f == &lv_font_montserrat_20 ? &lv_font_montserrat_16 : &lv_font_montserrat_12;
       lv_obj_set_style_text_font(t.chips[s], f, 0);
       lv_label_set_text(t.chips[s], a);
       lv_obj_align(t.chips[s], LV_ALIGN_CENTER, (TINY ? 23 : SEVEN ? 42 : 26) / 2, 0);
@@ -2529,8 +2537,8 @@ static void refreshPoints() {
   lv_obj_set_width(ptSplitA, max(wa - 2, 0));
   lv_obj_set_x(ptSplitB, wa + 2);
   lv_obj_set_width(ptSplitB, max(PT_SPLIT_W - wa - 2, 0));
-  lv_label_set_text_fmt(ptLegA, COMPACT ? "%.0f models" : "%.0f from models", m.pointsModels);
-  lv_label_set_text_fmt(ptLegB, COMPACT ? "%.0f profile" : "%.0f from profile", m.pointsProfiles);
+  lv_label_set_text_fmt(ptLegA, COMPACT || STRIP ? "%.0f models" : "%.0f from models", m.pointsModels);
+  lv_label_set_text_fmt(ptLegB, COMPACT || STRIP ? "%.0f profile" : "%.0f from profile", m.pointsProfiles);
   lv_label_set_text_fmt(ptAvg, "%.1f", m.points / 30.0f);
   lv_label_set_text_fmt(ptBoosts, "%+d", m.boosts);
   lv_label_set_text_fmt(ptPrints, "%d", m.prints);
@@ -2631,7 +2639,7 @@ static void refreshReach() {
   lv_label_set_text(reachHdr.sub, a);
   fmtInt(b, sizeof(b), m.ydayImpressions);
   fmtInt(c, sizeof(c), m.ydayViews);
-  snprintf(a, sizeof(a), COMPACT ? "yday %s / %s" : "yesterday: %s impressions  -  %s views", b, c);
+  snprintf(a, sizeof(a), COMPACT || STRIP ? "yday %s / %s" : "yesterday: %s impressions  -  %s views", b, c);
   lv_label_set_text(reachYday, a);
   if (TINY) {
     lv_label_set_text_fmt(reachChips[0], "Fol %d #4FD18B (%+d)#", st.followers, m.followers);
@@ -2737,7 +2745,7 @@ static void buildBest() {
     bestChips[i] = label(bestHdr.right, SEVEN ? F16 : F14, C_MUTED, 0, 0, TINY && i == 0 ? "DLs" : BEST_NAME[i]);
     tappable(bestChips[i], bestChipCb, i);
   }
-  const int gap = COMPACT ? 6 : 10, dayH = COMPACT ? 56 : (TALL ? 96 : 72), hourH = TH - dayH - gap;
+  const int gap = COMPACT ? 6 : 10, dayH = COMPACT ? 56 : (TALL || STRIP ? 96 : 72), hourH = TH - dayH - gap;
   bestHourCard = card(s, PAD, TOP, CW, hourH);
   // 7": captions and hour marks one size up.
   const lv_font_t* bcF = SEVEN ? F14 : F12;
@@ -2762,7 +2770,7 @@ static void buildBest() {
     lv_obj_set_style_border_width(b, 1, 0);
     lv_obj_set_style_border_color(b, C(C_EDGE), 0);
     lv_obj_t* n = label(b, SEVEN ? F14 : F12, C_SUB, 0, 0, WDAY[i]);
-    lv_obj_align(n, LV_ALIGN_TOP_MID, 0, COMPACT ? 4 : 8);
+    lv_obj_align(n, LV_ALIGN_TOP_MID, 0, COMPACT ? 4 : STRIP ? 6 : 8);
     bestDayVal[i] = label(b, TALL ? F26 : TINY ? F14 : F20, C_TXT, 0, 0, "-");
     lv_obj_align(bestDayVal[i], LV_ALIGN_BOTTOM_MID, 0, COMPACT ? -4 : -8);
   }
@@ -4652,7 +4660,7 @@ static void refreshUpdate() {
     else if (ahead) fitText(updRemSub, "older than installed", "older");
     else fitText(updRemSub, "current release", "current");
   } else {
-    lv_label_set_text(updRemVer, COMPACT ? "None" : "Not checked");
+    lv_label_set_text(updRemVer, COMPACT || STRIP ? "None" : "Not checked");
     const char* slash = strchr(PROJECT_GITHUB_REPO, '/');
     fitText(updRemSub, PROJECT_GITHUB_REPO, slash ? slash + 1 : PROJECT_GITHUB_REPO);
   }
@@ -5010,7 +5018,7 @@ static void buildUpdate() {
   const int cellW = (leftW - 2 * mx - cg) / 2;
   const int cellH = COMPACT ? (ROOMY ? 76 : 66) : (TALL ? 118 : 88);
   updVerBox(lc, mx, cellY, cellW, cellH, "INSTALLED", "v" FW_VERSION, BOARD_NAME, nullptr, nullptr, nullptr);
-  updRemCell = updVerBox(lc, mx + cellW + cg, cellY, cellW, cellH, "GITHUB", "Not checked", PROJECT_GITHUB_REPO,
+  updRemCell = updVerBox(lc, mx + cellW + cg, cellY, cellW, cellH, "GITHUB", STRIP ? "None" : "Not checked", PROJECT_GITHUB_REPO,
                          &updRemEye, &updRemVer, &updRemSub);
 
   // Progress bar for GitHub OTA download/flash
@@ -5021,7 +5029,7 @@ static void buildUpdate() {
   updButton(lc, UPD_WEB, mx, TH - mx - webH, leftW - 2 * mx, webH, LABELS[UPD_WEB], F16);
 
   // Right column: 4 action cards (Check, Install, Auto-check, Beta channel)
-  const char* const* lbl = COMPACT ? LABELS_SHORT : LABELS;
+  const char* const* lbl = COMPACT || STRIP ? LABELS_SHORT : LABELS;
   const int rowGap = COMPACT ? 6 : 8;
   const int rowH = (TH - 3 * rowGap) / 4;
   const int rx = PAD + leftW + gap;
