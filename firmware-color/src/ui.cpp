@@ -3389,6 +3389,8 @@ static const MenuDef MENU[] = {
 // One-line explanation under a row's label (the two settings people ask about).
 static const char* menuHint(int i) {
   if (MENU[i].kind == MK_TOGGLE && MENU[i].id == SET_FLIP) return "If the panel is mounted upside down";
+  // 7": with quiet hours off this is the section's only row, so say what it does.
+  if (SEVEN && MENU[i].kind == MK_TOGGLE && MENU[i].id == SET_QUIET) return "No banners or chimes in a set window";
   if (MENU[i].kind != MK_CHOICE) return nullptr;
   if (MENU[i].id == SET_NOTIFY) return "Banner and chime for these events";
   if (MENU[i].id == SET_NIGHT) return "Once idle in quiet hours";
@@ -3403,6 +3405,36 @@ static lv_obj_t* menuList;
 static bool menuWide = false;  // 800 px and up: two settings per line
 static int menuSel = 1;  // knob highlight; never a section header
 static int menuRowH, menuSwW, menuSwH;
+// 7": two panes. Sections down the left (icon, name, one-line summary), the
+// chosen section's rows on the right, so nothing scrolls.
+static const int MSEC_MAX = 6;
+struct MenuSecUi {
+  int head;  // MENU index of the section's MK_HEAD
+  lv_obj_t *item, *icon, *sum, *bar, *rows;
+};
+static MenuSecUi menuSec[MSEC_MAX];
+static int menuNSec = 0, menuCurSec = 0;
+static void refreshMenu();
+static void menuShowSec(int s) {
+  menuCurSec = s;
+  for (int i = 0; i < menuNSec; i++) {
+    const bool on = i == s;
+    MenuSecUi& m = menuSec[i];
+    show(m.rows, on);
+    show(m.bar, on);
+    lv_obj_set_style_bg_opa(m.item, on ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_color(m.item, C(on ? C_EDGE : C_BG), 0);
+    lv_obj_set_style_text_color(m.icon, C(on ? C_ACCENT : C_MUTED), 0);
+  }
+}
+// The section a MENU row belongs to (7" only).
+static void menuShowSecOf(int row) {
+  if (!SEVEN || !menuNSec) return;
+  int s = 0;
+  for (int i = 0; i < menuNSec; i++)
+    if (menuSec[i].head <= row) s = i;
+  menuShowSec(s);
+}
 
 // Picker sheet over the list (nullptr when closed).
 static lv_obj_t* sheet = nullptr;
@@ -3480,10 +3512,64 @@ static void buildMenu() {
 
   lv_obj_t* group = nullptr;
   bool first = true;
+  int paneInner = CW;
+  if (SEVEN) {
+    // The list becomes the right-hand pane; the sections go in a rail beside it.
+    static const char* const SEC_ICON[] = {LV_SYMBOL_IMAGE, LV_SYMBOL_EYE_CLOSE, LV_SYMBOL_BELL, LV_SYMBOL_WIFI,
+                                           LV_SYMBOL_SETTINGS, LV_SYMBOL_SETTINGS};
+    const int railW = 236, y0 = TOP - 4, paneX = PAD + railW + 10, paneW = W - PAD - paneX, paneH = BOT - y0;
+    menuRowH = 66;
+    lv_obj_set_scrollbar_mode(menuList, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_clear_flag(menuList, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_pos(menuList, paneX, y0);
+    lv_obj_set_size(menuList, paneW, paneH);
+    lv_obj_set_style_bg_color(menuList, C(C_CARD), 0);
+    lv_obj_set_style_bg_opa(menuList, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(menuList, 1, 0);
+    lv_obj_set_style_border_color(menuList, C(C_EDGE), 0);
+    lv_obj_set_style_radius(menuList, 10, 0);
+    lv_obj_set_style_pad_hor(menuList, 20, 0);
+    lv_obj_set_style_pad_top(menuList, 6, 0);
+    lv_obj_set_style_pad_bottom(menuList, 0, 0);
+    paneInner = paneW - 2 - 40;
+    menuNSec = 0;
+    for (int i = 0; i < NMENU && menuNSec < MSEC_MAX; i++) {
+      if (MENU[i].kind != MK_HEAD) continue;
+      MenuSecUi& sec = menuSec[menuNSec];
+      sec.head = i;
+      lv_obj_t* it = sec.item = box(menuRoot, PAD, y0 + menuNSec * 82, railW, 76, C_CARD, 10);
+      lv_obj_set_style_border_width(it, 1, 0);
+      lv_obj_set_style_bg_color(it, C(C_RAISED), LV_STATE_PRESSED);
+      lv_obj_add_flag(it, LV_OBJ_FLAG_CLICKABLE);
+      lv_obj_add_event_cb(it, [](lv_event_t* e) { menuShowSec(tapIdx(e)); }, LV_EVENT_SHORT_CLICKED,
+                          (void*)(intptr_t)menuNSec);
+      sec.bar = box(it, -1, 22, 3, 30, C_ACCENT, 2);
+      sec.icon = label(it, F20, C_MUTED, 18, 0, SEC_ICON[menuNSec]);
+      lv_obj_align(sec.icon, LV_ALIGN_LEFT_MID, 18, 0);
+      char t[32];
+      sentenceCase(t, sizeof(t), MENU[i].label);
+      label(it, F16, C_TXT, 56, 14, t);
+      sec.sum = label(it, F14, C_MUTED, 56, 14 + lineH(F16) + 3, "");
+      dotLabel(sec.sum, railW - 56 - 12);
+      sec.rows = plainObj(menuList);
+      lv_obj_set_size(sec.rows, lv_pct(100), LV_SIZE_CONTENT);
+      lv_obj_set_flex_flow(sec.rows, LV_FLEX_FLOW_COLUMN);
+      menuNSec++;
+    }
+  }
+  int secN = 0;
   for (int i = 0; i < NMENU; i++) {
     const MenuDef& d = MENU[i];
     MenuUi& m = menuUi[i];
     m = MenuUi{};
+    if (d.kind == MK_HEAD && SEVEN) {
+      // 7": the title lives in the rail; m.row is a hidden stub so the rest of
+      // the menu code can treat the head like any other row.
+      group = menuSec[secN++].rows;
+      m.row = plainObj(group);
+      show(m.row, false);
+      continue;
+    }
     if (d.kind == MK_HEAD) {
       // Section title above a flat grouped card (no gradient: it scrolls).
       m.row = label(menuList, F12, C_MUTED, 0, 0, d.label);
@@ -3518,12 +3604,13 @@ static void buildMenu() {
       lv_obj_add_event_cb(r, menuHoldCb, LV_EVENT_LONG_PRESSED, nullptr);
     }
 #endif
+    if (SEVEN) lv_obj_set_style_radius(r, 0, 0);
     m.label = label(r, F16, d.kind == MK_INFO ? C_SUB : (d.kind == MK_ACTION && d.id == MA_RESET ? C_ERR : C_TXT), 0, 0,
                     d.label ? d.label : SETTINGS[d.id].label);
     lv_obj_align(m.label, LV_ALIGN_LEFT_MID, mx, 0);
     if (const char* h = menuHint(i)) {
-      // Taller row: the label moves up and the hint sits under it.
-      lv_obj_set_height(r, menuRowH + lineH(F12));
+      // Taller row: the label moves up and the hint sits under it (7": rows are tall enough already).
+      lv_obj_set_height(r, menuRowH + (SEVEN ? 0 : lineH(F12)));
       lv_obj_align(m.label, LV_ALIGN_LEFT_MID, mx, -lineH(F12) / 2 - 1);
       m.hint = label(r, F12, C_MUTED, 0, 0, h);
       lv_obj_align(m.hint, LV_ALIGN_LEFT_MID, mx, lineH(F16) / 2 + 1);
@@ -3542,10 +3629,22 @@ static void buildMenu() {
       // Whatever the label leaves, so values like "Boosts, prints, comments" fit.
       int lw = lv_txt_get_width(lv_label_get_text(m.label), strlen(lv_label_get_text(m.label)), F16, 0,
                                 LV_TEXT_FLAG_NONE);
-      const int rowW = menuWide && !menuFullRow(i) ? CW / 2 : CW;
+      const int rowW = SEVEN ? paneInner + 2 * mx : menuWide && !menuFullRow(i) ? CW / 2 : CW;
       lv_obj_set_style_max_width(m.value, max(60, rowW - 2 * mx - lw - chevW - 24), 0);
     }
+    if (SEVEN) {
+      // Flush with the pane's padding: label and value align with the hairlines.
+      lv_obj_align(m.label, LV_ALIGN_LEFT_MID, 0, menuHint(i) ? -lineH(F12) / 2 - 1 : 0);
+      if (m.hint) lv_obj_align(m.hint, LV_ALIGN_LEFT_MID, 0, lineH(F16) / 2 + 3);
+      if (m.track) lv_obj_align(m.track, LV_ALIGN_RIGHT_MID, 0, 0);
+      if (m.chev) lv_obj_align(m.chev, LV_ALIGN_RIGHT_MID, 0, 0);
+      if (m.value) {
+        const int chevW = d.kind == MK_INFO ? -10 : lv_txt_get_width(LV_SYMBOL_RIGHT, strlen(LV_SYMBOL_RIGHT), F14, 0, LV_TEXT_FLAG_NONE);
+        lv_obj_align(m.value, LV_ALIGN_RIGHT_MID, -(chevW + 10), 0);
+      }
+    }
   }
+  if (SEVEN) menuShowSec(0);
 }
 
 // Row widths and hairlines. Wide panels pair visible rows two to a line in
@@ -3553,6 +3652,24 @@ static void buildMenu() {
 // the left one of a pair gets a vertical hairline. No line under the last
 // line of a section card.
 static void menuLayout() {
+  if (SEVEN) {
+    // One row per line; a hairline under each but the section's last.
+    int last = -1;
+    for (int i = 0; i <= NMENU; i++) {
+      if (i == NMENU || MENU[i].kind == MK_HEAD) {
+        if (last >= 0) lv_obj_set_style_border_width(menuUi[last].row, 0, 0);
+        last = -1;
+        continue;
+      }
+      if (lv_obj_has_flag(menuUi[i].row, LV_OBJ_FLAG_HIDDEN)) continue;
+      lv_obj_set_width(menuUi[i].row, lv_pct(100));
+      lv_obj_set_height(menuUi[i].row, menuRowH);
+      lv_obj_set_style_border_side(menuUi[i].row, LV_BORDER_SIDE_BOTTOM, 0);
+      lv_obj_set_style_border_width(menuUi[i].row, 1, 0);
+      last = i;
+    }
+    return;
+  }
   for (int i = 0; i < NMENU; i++) {
     if (MENU[i].kind == MK_HEAD) continue;
     int j = i;  // this section: rows i..j-1
@@ -3623,6 +3740,33 @@ static void refreshMenu() {
     lv_label_set_text(m.value, val);
     lv_obj_set_style_text_color(m.value, C(d.id == MA_UPDATE && d.kind == MK_ACTION && ota_update_available()
                                                ? C_OK : (sel ? C_ACCENT : C_SUB)), 0);
+  }
+  if (SEVEN) {
+    // One line per section in the rail: what you'd otherwise open it to check.
+    char t[64], q[16], u[16];
+    for (int i = 0; i < menuNSec; i++) {
+      const char* h = MENU[menuSec[i].head].label;
+      if (!strcmp(h, "DISPLAY")) {
+        snprintf(t, sizeof(t), "%s \xE2\x80\xA2 dim after %s", setting_name(SET_BRIGHTNESS), setting_name(SET_DIM));
+      } else if (!strcmp(h, "QUIET HOURS")) {
+        fmtMinutes(q, sizeof(q), settings_quiet_start());
+        fmtMinutes(u, sizeof(u), settings_quiet_end());
+        if (quietOn) snprintf(t, sizeof(t), "%s - %s", q, u);
+        else snprintf(t, sizeof(t), "Off");
+      } else if (!strcmp(h, "ALERTS")) {
+#if AUDIO_I2S
+        snprintf(t, sizeof(t), "%s \xE2\x80\xA2 sound %s", setting_name(SET_NOTIFY), setting_value(SET_SOUND) ? "on" : "off");
+#else
+        snprintf(t, sizeof(t), "%s", setting_name(SET_NOTIFY));
+#endif
+      } else if (!strcmp(h, "NETWORK")) {
+        snprintf(t, sizeof(t), "%s \xE2\x80\xA2 every %s", g_net.connected && g_net.ssid[0] ? g_net.ssid : "Offline",
+                 setting_name(SET_POLL));
+      } else {
+        snprintf(t, sizeof(t), "%s", ota_update_available() ? "Update available" : "v" FW_VERSION);
+      }
+      setTextIfChanged(menuSec[i].sum, t);
+    }
   }
   menuLayout();
 }
@@ -5751,6 +5895,7 @@ bool ui_show(const char* page, const char* tab, const char* open, char* shown, s
     for (int i = 0; i < NMENU; i++) {
       const MenuDef& d = MENU[i];
       if (d.kind == MK_HEAD && !strncasecmp(open, d.label, strlen(open))) {  // section: scroll to it
+        menuShowSecOf(i);
         lv_obj_scroll_to_y(menuList, max(0, (int)lv_obj_get_y(menuUi[i].row) - (COMPACT ? 4 : 8)), LV_ANIM_OFF);
         // Near the end the list can't scroll that far; keep the title itself in view.
         lv_obj_scroll_to_view(menuUi[i].row, LV_ANIM_OFF);
@@ -5758,6 +5903,7 @@ bool ui_show(const char* page, const char* tab, const char* open, char* shown, s
         return true;
       }
       if (!strcmp(open, "reset") && d.kind == MK_ACTION && d.id == MA_RESET) {
+        menuShowSecOf(i);
         lv_obj_scroll_to_y(menuList, LV_COORD_MAX, LV_ANIM_OFF);
         menuActivate(i);
         snprintf(shown, cap, "settings/reset");
@@ -5769,6 +5915,7 @@ bool ui_show(const char* page, const char* tab, const char* open, char* shown, s
         // The quiet rows are hidden while quiet hours are off; show the
         // picker anyway (only Save changes anything).
         menuSel = i;
+        menuShowSecOf(i);
         menuActivate(i);
         snprintf(shown, cap, "settings/%s", open);
         return true;
