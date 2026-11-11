@@ -2722,7 +2722,7 @@ static void crMakeCard(CrCard& c, lv_obj_t* s, int x, int y, int w, int h) {
     else c.rule[i] = nullptr;
     c.ry[i] = ry;
     c.name[i] = label(c.card, rf, C_TXT, px, ry, "");
-    c.val[i] = label(c.card, rf, C_ACCENT, 0, ry, "");
+    c.val[i] = label(c.card, rf, SEVEN ? C_TXT : C_ACCENT, 0, ry, "");  // 7": cyan is for controls
     lv_obj_set_style_text_align(c.val[i], LV_TEXT_ALIGN_RIGHT, 0);
     // The name is the tap target for the whole row (48 px tall).
     tappable(c.name[i], crRowCb, (&c == &crCards[0] ? 0 : CR_ROWS) + i);
@@ -2777,7 +2777,9 @@ static void crSetTiles(int n, const char* const* vals, const char* const* lbls, 
     }
     setTextIfChanged(t.val, vals[i]);
     setTextIfChanged(t.lbl, lbls[i]);
-    lv_obj_set_style_text_color(t.val, C(cols ? cols[i] : C_TXT), 0);
+    uint32_t vc = cols ? cols[i] : C_TXT;
+    if (SEVEN && vc == C_ACCENT) vc = C_TXT;  // 7": cyan is for controls; status colours stay
+    lv_obj_set_style_text_color(t.val, C(vc), 0);
     lv_obj_align(t.val, LV_ALIGN_TOP_MID, 0, top);
     lv_obj_set_style_text_align(t.lbl, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_align(t.lbl, LV_ALIGN_TOP_MID, 0, top + vh + 2);
