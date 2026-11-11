@@ -2156,7 +2156,7 @@ static void buildPoints() {
   lv_obj_set_style_text_letter_space(balCap, 2, 0);
   eyebrow(balCap);
   const lv_font_t* balF = TINY ? F40 : F48;
-  ptBalance = label(c1, balF, C_WARN, mx, TALL ? TH / 4 : (TH - lineH(balF)) / 2, "-");
+  ptBalance = label(c1, balF, SEVEN ? C_PTS : C_WARN, mx, TALL ? TH / 4 : (TH - lineH(balF)) / 2, "-");
   if (TINY) {
     lv_label_set_long_mode(ptBalance, LV_LABEL_LONG_DOT);
     lv_obj_set_width(ptBalance, w1 - 2 * mx);
@@ -2245,10 +2245,12 @@ static void buildPoints() {
     lv_obj_t** slots[3] = {&ptAvg, &ptBoosts, &ptPrints};
     for (int i = 0; i < 3; i++) {
       lv_obj_t* fc = card(m, mx + i * (figW + 8), figTop, figW, figH);
-      lv_obj_set_style_bg_color(fc, C(figBg[i]), 0);
-      lv_obj_set_style_bg_grad_color(fc, C(C_CARD2), 0);
-      lv_obj_set_style_border_color(fc, lv_color_mix(C(figEdge[i]), C(C_EDGE), 90), 0);
-      *slots[i] = label(fc, STRIP || ROOMY ? F32 : F40, figCol[i], 0, 0, "");
+      if (!SEVEN) {  // 7": plain plates; the icon carries the colour
+        lv_obj_set_style_bg_color(fc, C(figBg[i]), 0);
+        lv_obj_set_style_bg_grad_color(fc, C(C_CARD2), 0);
+        lv_obj_set_style_border_color(fc, lv_color_mix(C(figEdge[i]), C(C_EDGE), 90), 0);
+      }
+      *slots[i] = label(fc, STRIP || ROOMY ? F32 : F40, SEVEN ? C_TXT : figCol[i], 0, 0, "");
       lv_obj_align(*slots[i], LV_ALIGN_CENTER, 0, SEVEN ? 2 : STRIP ? -12 : ROOMY ? -10 : -14);
       if (SEVEN) {
         // 7": caption over the figure, an icon under it (a rising line for
@@ -2261,7 +2263,7 @@ static void buildPoints() {
         } else {
           ic = lv_img_create(fc);
           lv_img_set_src(ic, &icon_trend_32);
-          lv_obj_set_style_img_recolor(ic, C(C_ACCENT), 0);
+          lv_obj_set_style_img_recolor(ic, C(C_PTS), 0);
           lv_obj_set_style_img_recolor_opa(ic, LV_OPA_COVER, 0);
         }
         lv_obj_align(ic, LV_ALIGN_BOTTOM_MID, 0, -14);
@@ -2292,7 +2294,8 @@ static void buildPoints() {
   lv_obj_center(ptNoData);
 }
 
-static uint32_t ptTint(float v) { return v > 0.05f ? C_OK : v < -0.05f ? C_ERR : C_MUTED; }
+// 7": a gain is the normal case, so it reads in text colour; only losses are red.
+static uint32_t ptTint(float v) { return v > 0.05f ? (SEVEN ? C_TXT : C_OK) : v < -0.05f ? C_ERR : C_MUTED; }
 
 static void refreshPoints() {
   char a[64], b[16], c[16];
