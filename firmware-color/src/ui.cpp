@@ -3370,42 +3370,76 @@ static lv_obj_t* statusSrc = nullptr;  // 800 px: per-source freshness under the
 // to do about it, per-source freshness, next poll on the right), then Cookie,
 // Day base, Network and Device as a 2 x 2 grid.
 static void buildStatusLead(lv_obj_t* s) {
-  const int y0 = TOP - 4, leadH = 140, g = 8;
-  lv_obj_t* c = card(s, PAD, y0, CW, leadH);
+  // Per panel: the lead card on top (on the 3.16" strip, down the left),
+  // the four cells as a 2 x 2 grid in what's left. Smaller panels drop the
+  // per-source line and, on the 2", the cells' detail line.
+  const bool strip = STRIP;
+  const int g = COMPACT ? 6 : 8, y0 = TOP - (COMPACT ? 2 : 4);
+  const int leadW = strip ? 300 : CW, leadH = strip ? BOT - y0 : TALL ? 140 : ROOMY ? 96 : TINY ? 60 : 80;
+  const lv_font_t* bigF = TALL || strip ? &lv_font_montserrat_32 : ROOMY ? &lv_font_montserrat_26
+                         : TINY ? &lv_font_montserrat_20 : &lv_font_montserrat_22;
+  const lv_font_t* nextF = TALL ? &lv_font_montserrat_26 : strip ? &lv_font_montserrat_26 : &lv_font_montserrat_20;
+  const int dotD = TALL || strip ? 18 : 12, lx = TALL ? 22 : COMPACT ? 10 : 14, tx = lx + dotD + (TALL ? 16 : 10);
+  lv_obj_t* c = card(s, PAD, y0, leadW, leadH);
   StatusCell& p = cells[ST_POLLER];
-  p.dot = box(c, 22, 30, 18, 18, C_IDLE, LV_RADIUS_CIRCLE);
-  p.value = label(c, &lv_font_montserrat_32, C_TXT, 56, 18, "-");
-  dotLabel(p.value, CW - 56 - 230);
-  p.sub = label(c, F16, C_SUB, 56, 64, "");
-  dotLabel(p.sub, CW - 56 - 24);
-  statusSrc = label(c, F14, C_MUTED, 56, 98, "");
-  dotLabel(statusSrc, CW - 56 - 24);
+  const int bigY = TALL ? 18 : COMPACT ? 6 : 12;
+  p.dot = box(c, lx, bigY + (lineH(bigF) - dotD) / 2, dotD, dotD, C_IDLE, LV_RADIUS_CIRCLE);
+  const int nextW = strip ? 0 : TALL ? 200 : TINY ? 44 : 150;  // next poll sits right of the lead line
+  p.value = label(c, bigF, C_TXT, tx, bigY, "-");
+  dotLabel(p.value, leadW - tx - (strip ? 16 : nextW + 30));
+  p.sub = label(c, F16, C_SUB, tx, bigY + lineH(bigF) + (TALL ? 6 : 2), "");
+  if (strip) {
+    // Narrow and tall: the explanation wraps under the state.
+    lv_label_set_long_mode(p.sub, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(p.sub, leadW - tx - 16);
+  } else {
+    dotLabel(p.sub, leadW - tx - (TINY ? 10 : 24));
+  }
+  statusSrc = label(c, F14, C_MUTED, tx, TALL ? 98 : 0, "");
+  dotLabel(statusSrc, leadW - tx - 16);
+  show(statusSrc, TALL || strip || ROOMY);
+  if (ROOMY) lv_obj_set_y(statusSrc, bigY + lineH(bigF) + 2 + lineH(F16) + 4);
   StatusCell& n = cells[ST_NEXT];
   n.dot = box(c, 0, 0, 1, 1, C_CARD, 0);  // no dot: the lead's dot speaks for the poll
   show(n.dot, false);
-  n.value = label(c, &lv_font_montserrat_26, C_TXT, 0, 0, "-");
-  lv_obj_set_width(n.value, 200);
-  lv_obj_set_style_text_align(n.value, LV_TEXT_ALIGN_RIGHT, 0);
-  lv_obj_align(n.value, LV_ALIGN_TOP_RIGHT, -22, 20);
+  n.value = label(c, nextF, C_TXT, 0, 0, "-");
   n.sub = label(c, F14, C_MUTED, 0, 0, "");
-  lv_obj_set_width(n.sub, 200);
-  lv_obj_set_style_text_align(n.sub, LV_TEXT_ALIGN_RIGHT, 0);
-  lv_obj_align(n.sub, LV_ALIGN_TOP_RIGHT, -22, 20 + lineH(&lv_font_montserrat_26) + 2);
+  if (strip) {
+    // Bottom of the lead column: next poll, then its schedule.
+    lv_obj_align(n.sub, LV_ALIGN_BOTTOM_LEFT, tx, -14);
+    lv_obj_align(n.value, LV_ALIGN_BOTTOM_LEFT, tx, -14 - lineH(F14) - 2);
+    lv_obj_align(statusSrc, LV_ALIGN_BOTTOM_LEFT, tx, -14 - lineH(F14) - 2 - lineH(nextF) - 10);
+  } else {
+    lv_obj_set_width(n.value, nextW);
+    lv_obj_set_style_text_align(n.value, LV_TEXT_ALIGN_RIGHT, 0);
+    lv_obj_align(n.value, LV_ALIGN_TOP_RIGHT, -lx, TALL ? 20 : bigY + (lineH(bigF) - lineH(nextF)) / 2);
+    lv_obj_set_width(n.sub, nextW + 40);
+    lv_obj_set_style_text_align(n.sub, LV_TEXT_ALIGN_RIGHT, 0);
+    lv_obj_align(n.sub, LV_ALIGN_TOP_RIGHT, -lx, (TALL ? 20 : bigY + (lineH(bigF) - lineH(nextF)) / 2) + lineH(nextF) + 2);
+    show(n.sub, !TINY);
+  }
   const int idx[4] = {ST_COOKIE, ST_BASE, ST_NET, ST_DEVICE};
   const char* names[4] = {"Cookie", "Day base", "Network", "Device"};
-  const int cw = (CW - g) / 2, ch = (BOT - (y0 + leadH + g) - g) / 2;
+  const int gx = strip ? PAD + leadW + g : PAD, gy = strip ? y0 : y0 + leadH + g;
+  const int gw = strip ? CW - leadW - g : CW, gh = BOT - gy;
+  const int cw = (gw - g) / 2, ch = (gh - g) / 2;
+  const lv_font_t* valF = TALL ? F22 : strip ? &lv_font_montserrat_26 : TINY ? &lv_font_montserrat_16 : &lv_font_montserrat_20;
+  const int cx = TALL ? 18 : COMPACT ? 8 : 14, cy = TALL ? 14 : COMPACT ? 5 : 10;
   for (int i = 0; i < 4; i++) {
-    const int x = PAD + (i % 2) * (cw + g), y = y0 + leadH + g + (i / 2) * (ch + g);
+    const int x = gx + (i % 2) * (cw + g), y = gy + (i / 2) * (ch + g);
     lv_obj_t* k = card(s, x, y, cw, ch);
     StatusCell& m = cells[idx[i]];
-    lv_obj_t* cap = row(k, 8);
-    lv_obj_set_pos(cap, 18, 14);
+    lv_obj_t* cap = row(k, COMPACT ? 6 : 8);
+    lv_obj_set_pos(cap, cx, cy);
     m.dot = box(cap, 0, 0, 8, 8, C_IDLE, LV_RADIUS_CIRCLE);
     label(cap, F14, C_SUB, 0, 0, names[i]);
-    m.value = label(k, F22, C_TXT, 18, 40, "-");
-    dotLabel(m.value, cw - 36);
-    m.sub = label(k, F14, C_MUTED, 18, ch - 14 - lineH(F14), "");
-    dotLabel(m.sub, cw - 34);
+    const int vy = cy + lineH(F14) + (TALL ? 12 : 2);
+    m.value = label(k, valF, C_TXT, cx, vy, "-");
+    dotLabel(m.value, cw - 2 * cx);
+    m.sub = label(k, F14, C_MUTED, cx, ch - (TALL ? 14 : cy) - lineH(F14), "");
+    dotLabel(m.sub, cw - 2 * cx + 2);
+    // The detail line only where it clears the value.
+    show(m.sub, ch - (TALL ? 14 : cy) - lineH(F14) >= vy + lineH(valF));
   }
 }
 
@@ -3469,7 +3503,7 @@ static void buildStatus() {
 #else
   hint(h, COMPACT ? "press: poll / hold: back" : "press: poll now  -  hold: back");
 #endif
-  if (TALL) {
+  if (FLAT) {
     buildStatusLead(s);
     return;
   }
@@ -3493,7 +3527,7 @@ static void refreshStatus() {
   char a[96], b[96];
   uint32_t n = nowUtc();
   if (!st.valid) {
-    setCell(ST_POLLER, C_IDLE, TALL ? "Waiting for the poller" : "Waiting", "add it to the poller's panels list");
+    setCell(ST_POLLER, C_IDLE, FLAT && !TINY ? "Waiting for the poller" : "Waiting", "add it to the poller's panels list");
     if (statusSrc) setTextIfChanged(statusSrc, "");
     setCell(ST_COOKIE, C_IDLE, "-", "");
     setCell(ST_NEXT, C_IDLE, "-", "");
@@ -3515,7 +3549,7 @@ static void refreshStatus() {
     }
     setCell(ST_POLLER, st.pollOk ? (ok ? C_OK : C_WARN) : C_ERR,
             st.pollOk ? (ok ? "Synced" : "Public only") : "Error", st.pollOk ? a : st.msg);
-    if (TALL) {
+    if (FLAT) {
       // The lead says what state the data is in and what, if anything, to do.
       setTextIfChanged(statusSrc, st.health.has && n ? a : "");
       char lead[48];
@@ -3523,7 +3557,7 @@ static void refreshStatus() {
       if (!st.pollOk) {
         setCell(ST_POLLER, C_ERR, "Poll failed", st.msg);
       } else if (!ok) {
-        setCell(ST_POLLER, C_WARN, "Cookie needed", "Open MakerWorld in Chrome; the extension sends a new one");
+        setCell(ST_POLLER, C_WARN, "Cookie needed", COMPACT ? "Open MakerWorld in Chrome" : "Open MakerWorld in Chrome; the extension sends a new one");
       } else {
         if (ago >= 0 && ago < 60) snprintf(lead, sizeof(lead), "Synced just now");
         else {
@@ -3534,7 +3568,7 @@ static void refreshStatus() {
       }
     }
     fmtAgo(a, sizeof(a), st.cookieAge);
-    if (TALL && st.cookieAge >= 0) {
+    if (FLAT && st.cookieAge >= 0) {
       char t[24];
       snprintf(t, sizeof(t), "%s old", a);
       strlcpy(a, t, sizeof(a));
@@ -3545,7 +3579,7 @@ static void refreshStatus() {
     long left = n && st.lastPoll ? (long)(st.lastPoll + st.pollSec) - (long)n : -1;
     if (left < 0) snprintf(a, sizeof(a), "due");
     else snprintf(a, sizeof(a), "in %ldm %02lds", left / 60, left % 60);
-    snprintf(b, sizeof(b), TALL ? "next poll  \xE2\x80\xA2  every %d min" : "every %d min", pollSec / 60);
+    snprintf(b, sizeof(b), FLAT ? (COMPACT ? "next \xE2\x80\xA2 every %d min" : "next poll  \xE2\x80\xA2  every %d min") : "every %d min", pollSec / 60);
     setCell(ST_NEXT, C_IDLE, a, b);
     if (st.midnight || payloadLagDays()) {
       // The sample may be 23:17 the night before. That is yesterday's clock,
@@ -3572,7 +3606,7 @@ static void refreshStatus() {
     setCell(ST_NET, C_ERR, "Offline", b);
   }
   fmtAgo(a, sizeof(a), millis() / 1000);
-  if (TALL) {
+  if (FLAT) {
     char t[24];
     snprintf(t, sizeof(t), "up %s", a);
     strlcpy(a, t, sizeof(a));
