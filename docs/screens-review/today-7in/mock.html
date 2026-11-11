@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Today 7in mock</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500&display=swap" rel="stylesheet">
+<style>
+/* 800x480 CrowPanel 7". Montserrat Medium only (the firmware's one weight).
+   Flat fills only: the panel is RGB565. Anything over 40px = custom font. */
+:root{
+  --ground:#080C12; --plate:#0F151E; --seam:#1A2430;
+  --ink:#E6EDF3; --ink2:#B3C1CF; --ink3:#7E8C9B; --ink4:#2A3644; --track:#151E29;
+  --accent:#22D3EE; --ok:#2EE59D; --warn:#FFB020;
+  --points:#F2C14E; --downloads:#2EE59D; --prints:#A78BFA;
+  --boosts:#FFB020; --likes:#FF4D7E; --collects:#3DA9FF; --followers:#2DE2E6; --rating:#FFD23F;
+}
+*{box-sizing:border-box;margin:0}
+body{background:#222;font-family:Montserrat,sans-serif;font-weight:500;color:var(--ink);
+  display:flex;flex-direction:column;align-items:center;gap:24px;padding:24px;-webkit-font-smoothing:antialiased}
+.panel{position:relative;width:800px;height:480px;background:var(--ground);overflow:hidden;flex:none}
+.abs{position:absolute}
+.card{position:absolute;background:var(--plate);border:1px solid var(--seam);border-radius:10px}
+.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+svg.ic{width:20px;height:20px;flex:none}
+.row{display:flex;align-items:center;gap:8px}
+/* header */
+.title{left:16px;top:13px;font-size:20px;line-height:24px}
+.date{left:84px;top:17px;font-size:16px;color:var(--ink3)}
+.clock{left:0;right:0;top:15px;text-align:center;font-size:16px}
+.hb{right:16px;top:8px;width:40px;height:34px;border:1px solid var(--seam);border-radius:6px;background:var(--plate)}
+.hb i{position:absolute;left:11px;height:2px;background:var(--accent);border-radius:1px}
+/* top row: Boosts, Downloads, Prints */
+.hero{top:52px;width:250px;height:200px;padding:14px 16px}
+.hero .lbl{position:absolute;left:16px;top:18px}
+.hero .lbl svg.ic{width:48px;height:48px}
+.hero .lbl .w{display:none}
+.hero .big{position:absolute;left:78px;top:10px;font-size:56px;line-height:64px;letter-spacing:-1.5px}
+.hero .vs{position:absolute;left:16px;top:84px;font-size:16px;color:var(--ink3)}
+.week{position:absolute;left:16px;right:16px;top:118px;height:52px;display:flex;align-items:flex-end;gap:6px}
+.week b{flex:1;border-radius:2px 2px 0 0;min-height:3px}
+.days{position:absolute;left:16px;right:16px;top:177px;display:flex;gap:6px;font-size:11px;color:var(--ink3)}
+.days span{flex:1;text-align:center}
+.days span:last-child{color:var(--ink)}
+/* middle bar: Likes, Points, Collects */
+.strip{top:260px;left:16px;width:768px;height:74px;display:grid;grid-template-columns:1fr 1.4fr 1fr}
+.cell{display:flex;align-items:center;gap:10px;padding:0 18px;position:relative}
+.cell+.cell:before{content:"";position:absolute;left:0;top:14px;bottom:14px;width:1px;background:var(--seam)}
+.cell .hd{display:contents}
+.cell .nm{font-size:16px;color:var(--ink2)}
+.cell .fig{margin-left:auto;text-align:right}
+.cell .v{font-size:28px;line-height:32px;letter-spacing:-.5px}
+.cell .y{font-size:13px;color:var(--ink3)}
+.cell.lead .nm{font-size:18px;color:var(--ink)}
+.cell.lead svg.ic{width:24px;height:24px}
+.cell.lead .v{font-size:40px;line-height:44px;letter-spacing:-1px}
+
+/* --- middle bar variants --- */
+/* v1: three separate cards, everything centred, Points card wider with a gold rule */
+.strip.v1{background:none;border:none;gap:9px;grid-template-columns:1fr 1.4fr 1fr}
+.strip.v1 .cell{background:var(--plate);border:1px solid var(--seam);border-radius:10px;flex-direction:column;justify-content:center;gap:2px;padding:0}
+.strip.v1 .cell:before{display:none}
+.strip.v1 .cell .hd{display:flex;align-items:center;gap:6px}
+.strip.v1 .cell .fig{margin:0;text-align:center;display:flex;align-items:baseline;gap:8px}
+.strip.v1 .cell .nm{font-size:14px}
+.strip.v1 .cell.lead{border-top:2px solid var(--points)}
+.strip.v1 .cell.lead .nm{font-size:14px;color:var(--ink2)}
+.strip.v1 .cell.lead svg.ic{width:20px;height:20px}
+/* v2: one card, icon beside each figure (no word labels), Points on a quiet gold-tinted plate */
+.strip.v2 .cell{flex-direction:row;justify-content:center;align-items:flex-start;gap:14px;padding:12px 0 0}
+.strip.v2 .cell+.cell:before{display:none}
+.strip.v2 .cell .hd{display:flex}
+.strip.v2 .cell .nm{display:none}
+.strip.v2 svg.ic{width:40px;height:40px}
+.strip.v2 .cell .fig{margin:0;text-align:left}
+.strip.v2 .cell .v{font-size:30px;line-height:34px}
+.strip.v2 .cell.lead{background:color-mix(in srgb,var(--points) 9%,var(--plate))}
+.strip.v2 .cell.lead svg.ic{width:48px;height:48px}
+.strip.v2 .cell.lead{padding-top:9px}
+.strip.v2 .cell.lead .v{font-size:40px;line-height:44px;color:var(--points)!important}
+/* v3: label column left, big figure right; Points gets a gold number, sides are one quiet line */
+.strip.v3{grid-template-columns:1fr 1.6fr 1fr}
+.strip.v3 .cell{gap:8px}
+.strip.v3 .cell .fig{display:flex;align-items:baseline;gap:8px}
+.strip.v3 .cell .y{order:-1}
+.strip.v3 .cell .v{font-size:26px}
+.strip.v3 .cell.lead .v{font-size:40px;color:var(--points)!important}
+.strip.v3 .cell.lead .y{order:0}
+.strip.v3 .cell.lead .fig{flex-direction:column;align-items:flex-end;gap:0}
+/* bottom */
+.act{top:342px;left:16px;width:500px;height:116px;padding:9px 16px}
+.cap{font-size:14px;color:var(--ink2)}
+.ar{height:28px;display:flex;align-items:center;gap:10px;font-size:16px}
+.ar .n{width:30px;font-size:16px}
+.ar .m{flex:1;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ar .t{color:var(--ink3);width:40px;text-align:right}
+.fol{top:342px;left:525px;width:259px;height:116px;padding:9px 16px}
+.fol .fv{position:absolute;left:16px;top:32px;font-size:40px;line-height:48px;letter-spacing:-.5px}
+.fol .ft{position:absolute;left:94px;top:47px;font-size:16px;color:var(--ink3)}
+.fol .rt{position:absolute;left:16px;bottom:10px;font-size:14px;color:var(--ink3);gap:6px}
+.fol .rt svg.ic{width:16px;height:16px}
+/* footer chrome */
+.sync{left:20px;top:465px;width:10px;height:10px;border-radius:50%;background:var(--ok)}
+.pager{left:0;right:0;top:469px;display:flex;justify-content:center;gap:6px}
+.pager i{width:10px;height:3px;border-radius:2px;background:var(--ink4)}
+.pager i:first-child{width:22px;background:var(--accent)}
+.ver{right:16px;top:463px;font-size:12px;color:var(--ink3)}
+.note{color:#bbb;font:13px/1.4 system-ui;width:800px}
+.muted{color:var(--ink3)}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="i-pts" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 7v10M9 9.5h4.5a2 2 0 010 4H10.5a2 2 0 000 4H15" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
+  <symbol id="i-dl" viewBox="0 0 24 24"><path d="M12 4v11m-5-5l5 5 5-5M5 20h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-pr" viewBox="0 0 24 24"><path d="M7 8V4h10v4M6 17H4v-7a2 2 0 012-2h12a2 2 0 012 2v7h-2M7 14h10v6H7z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+  <symbol id="i-bo" viewBox="0 0 24 24"><path d="M13 3L5 14h6l-1 7 8-11h-6z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+  <symbol id="i-li" viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-10a4 4 0 017-2.6A4 4 0 0119 10c0 5.6-7 10-7 10z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+  <symbol id="i-co" viewBox="0 0 24 24"><path d="M7 3h10v18l-5-4-5 4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+  <symbol id="i-fo" viewBox="0 0 24 24"><circle cx="10" cy="8" r="4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 20a7 7 0 0114 0M19 8v6M16 11h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-st" viewBox="0 0 24 24"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+</svg>
+
+<template id="frame">
+<div class="panel">
+  <div class="abs title">Today</div>
+  <div class="abs date">Mon Nov 10</div>
+  <div class="abs clock num">7:07 PM</div>
+  <div class="abs hb"><i style="top:11px;width:18px"></i><i style="top:16px;width:14px"></i><i style="top:21px;width:18px"></i></div>
+
+  <div class="card hero" style="left:16px" data-k="boosts">
+    <div class="row lbl"><svg class="ic" style="color:var(--boosts)"><use href="#i-bo"/></svg><span class="w">Boosts</span></div>
+    <div class="big num" data-v></div><div class="vs num" data-vs></div>
+    <div class="week" data-w></div><div class="days" data-d></div>
+  </div>
+  <div class="card hero" style="left:275px" data-k="downloads">
+    <div class="row lbl"><svg class="ic" style="color:var(--downloads)"><use href="#i-dl"/></svg><span class="w">Downloads</span></div>
+    <div class="big num" data-v></div><div class="vs num" data-vs></div>
+    <div class="week" data-w></div><div class="days" data-d></div>
+  </div>
+  <div class="card hero" style="left:534px" data-k="prints">
+    <div class="row lbl"><svg class="ic" style="color:var(--prints)"><use href="#i-pr"/></svg><span class="w">Prints</span></div>
+    <div class="big num" data-v></div><div class="vs num" data-vs></div>
+    <div class="week" data-w></div><div class="days" data-d></div>
+  </div>
+
+  <div class="card strip">
+    <div class="cell"><span class="hd"><svg class="ic" style="color:var(--likes)"><use href="#i-li"/></svg><span class="nm">Likes</span></span>
+      <div class="fig"><div class="v num" data-s="likes"></div><div class="y num" data-sy="likes"></div></div></div>
+    <div class="cell lead"><span class="hd"><svg class="ic" style="color:var(--points)"><use href="#i-pts"/></svg><span class="nm">Points</span></span>
+      <div class="fig"><div class="v num" data-s="points"></div><div class="y num" data-sy="points"></div></div></div>
+    <div class="cell"><span class="hd"><svg class="ic" style="color:var(--collects)"><use href="#i-co"/></svg><span class="nm">Collects</span></span>
+      <div class="fig"><div class="v num" data-s="collects"></div><div class="y num" data-sy="collects"></div></div></div>
+  </div>
+
+  <div class="card act"><div class="cap">Recent activity</div><div data-act></div></div>
+  <div class="card fol">
+    <div class="row cap"><svg class="ic" style="color:var(--followers)"><use href="#i-fo"/></svg>Followers</div>
+    <div class="fv num" data-fv></div><div class="ft num" data-ft></div>
+    <div class="rt row num"><svg class="ic" style="color:var(--rating)"><use href="#i-st"/></svg><span data-rt></span></div>
+  </div>
+
+  <div class="abs sync" data-sync></div>
+  <div class="abs pager"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+  <div class="abs ver">v0.4.135</div>
+</div>
+</template>
+
+<p class="note">Evening.</p><div id="e"></div><p class="note">Quiet morning, no cookie.</p><div id="q"></div>
+
+<script>
+const ICON = {boosts:'i-bo',likes:'i-li',collects:'i-co',downloads:'i-dl',prints:'i-pr'};
+const DAYS = ['T','W','T','F','S','S','M','Today'];
+function fill(root, d){
+  for (const k of ['boosts','downloads','prints']){
+    const c = root.querySelector(`[data-k=${k}]`), h = d.hero[k];
+    const v = c.querySelector('[data-v]');
+    v.textContent = h.today; v.style.color = h.dim ? 'var(--ink4)' : 'var(--ink)';
+    c.querySelector('[data-vs]').innerHTML = h.vs;
+    const mx = Math.max(1, ...h.week);
+    c.querySelector('[data-w]').innerHTML = h.week.map((x,i)=>{
+      const last = i===h.week.length-1;
+      const col = x===0 ? 'var(--track)' : last ? `var(--${k})` : `color-mix(in srgb, var(--${k}) 28%, var(--plate))`;
+      return `<b style="height:${Math.max(3, Math.round(52*x/mx))}px;background:${col}"></b>`}).join('');
+    c.querySelector('[data-d]').innerHTML = DAYS.map(x=>`<span>${x}</span>`).join('');
+  }
+  for (const [k,[t,y,dim]] of Object.entries(d.small)){
+    const v = root.querySelector(`[data-s=${k}]`); v.textContent = t; v.style.color = dim ? 'var(--ink4)' : 'var(--ink)';
+    root.querySelector(`[data-sy=${k}]`).innerHTML = y;
+  }
+  root.querySelector('[data-act]').innerHTML = d.act.length ? d.act.map(([k,n,m,t])=>
+    `<div class="ar"><svg class="ic" style="color:var(--${k})"><use href="#${ICON[k]}"/></svg><span class="n num">${n}</span><span class="m">${m}</span><span class="t num">${t}</span></div>`).join('')
+    : `<div class="ar muted" style="height:80px;justify-content:center">Nothing yet today</div>`;
+  root.querySelector('[data-fv]').textContent = d.fol[0];
+  root.querySelector('[data-ft]').textContent = d.fol[1];
+  root.querySelector('[data-rt]').innerHTML = d.rt;
+  root.querySelector('[data-sync]').style.background = d.sync;
+}
+function make(id, d, v){
+  const el=document.getElementById(id); el.appendChild(document.getElementById('frame').content.cloneNode(true));
+  if(v) el.querySelector('.strip').classList.add(v);
+  fill(el, d);
+}
+const A = {
+  hero:{
+    boosts:{today:'0', dim:true, vs:'yesterday 0', week:[1,0,2,0,0,1,0,0]},
+    downloads:{today:'+12', vs:'yesterday +13', week:[17,14,19,21,15,12,13,12]},
+    prints:{today:'+4', vs:'yesterday +9', week:[11,8,12,10,9,9,9,4]},
+  },
+  small:{likes:['+3','+37 yday'], points:['+13.0','yesterday +21.4'], collects:['+13','+22 yday']},
+  act:[['collects','+1','Funnel and Spout for Voisen 2LB Silica','24m'],
+       ['collects','+1','Desiccant Boxes for Sterilite Drybox','24m'],
+       ['downloads','+1','Sterilite 19QT/54QT Filament Drybox','34m']],
+  fol:['57','+0 today'], rt:'Ratings 108 &nbsp;·&nbsp; 4.94 avg', sync:'var(--ok)'
+};
+const B = {
+  hero:{
+    boosts:{today:'0', dim:true, vs:'yesterday 0', week:[1,0,2,0,0,1,0,0]},
+    downloads:{today:'0', dim:true, vs:'yesterday +13', week:[17,14,19,21,15,12,13,0]},
+    prints:{today:'0', dim:true, vs:'yesterday +9', week:[11,8,12,10,9,9,9,0]},
+  },
+  small:{likes:['0','+37 yday',true], points:['–','<span style="color:var(--warn)">Cookie needed</span>',true], collects:['0','+22 yday',true]},
+  act:[], fol:['57',''], rt:'Ratings 108 &nbsp;·&nbsp; 4.94 avg', sync:'var(--warn)'
+};
+make('e', A, 'v2'); make('q', B, 'v2');
+</script>
+</body>
+</html>

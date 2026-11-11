@@ -26,7 +26,11 @@ extern const lv_img_dsc_t icon_boost_32, icon_like_32, icon_collect_32, icon_dow
 extern const lv_img_dsc_t icon_boost_40, icon_like_40, icon_collect_40, icon_download_40, icon_print_40, icon_rating_40,
     icon_follower_40;
 extern const lv_img_dsc_t icon_trend_32;
+// 7" Today: 48 px stat icons and the points coin.
+extern const lv_img_dsc_t icon_boost_48, icon_like_48, icon_collect_48, icon_download_48, icon_print_48,
+    icon_points_40, icon_points_48;
 }
+LV_FONT_DECLARE(font_num_56);  // tools/gen_num_font.py: digits only
 static const lv_img_dsc_t* const ICON20[NKIND] = {&icon_boost_20, &icon_like_20, &icon_collect_20,
                                                   &icon_download_20, &icon_print_20, &icon_comment_20, &icon_rating_20};
 static const lv_img_dsc_t* const ICON32[NKIND] = {&icon_boost_32, &icon_like_32, &icon_collect_32,
@@ -723,9 +727,249 @@ static void refreshTodayTiny() {
   ttSet(NSTAT + 1, lag ? 0 : st.fol.today, st.fol.has);
 }
 
+// ---- 7" Today ----------------------------------------------------------------
+// Boosts, Downloads and Prints as cards across the top: a 48 px icon, today's
+// count in 56 px, yesterday, and the last seven days as bars with today lit.
+// Under them one bar holds Likes | Points | Collects, Points widest on a
+// faint gold plate. Recent activity and Followers (with ratings) at the foot.
+// Flat fills only: RGB565 bands gradients.
+static void setTextIfChanged(lv_obj_t* l, const char* txt);
+static const uint32_t C_PTS = 0xF2C14E;
+static const int HERO_N = 3, WEEK_N = 7;
+static const int HERO_K[HERO_N] = {S_BOOSTS, S_DOWNLOADS, S_PRINTS};
+struct HeroUi {
+  lv_obj_t *num, *vs, *bars[WEEK_N], *days[WEEK_N];
+};
+static HeroUi hero[HERO_N];
+struct MidUi {
+  lv_obj_t *num, *vs;
+};
+static MidUi mid[3];  // likes, points, collects
+static lv_obj_t* ratLbl = nullptr;
+// Hero card geometry (relative to the card).
+static const int HERO_W = 250, HERO_H = 200, HERO_NUM_X = 77, HERO_BASE = 60;
+static const int WK_X = 15, WK_W = 218, WK_BASE = 168, WK_MAX = 50, WK_GAP = 6;
+
+static lv_obj_t* flatCard(lv_obj_t* parent, int x, int y, int w, int h) {
+  lv_obj_t* o = box(parent, x, y, w, h, C_CARD, 10);
+  lv_obj_set_style_border_width(o, 1, 0);
+  lv_obj_set_style_border_color(o, C(C_EDGE), 0);
+  return o;
+}
+
+static lv_obj_t* bigIcon(lv_obj_t* parent, const lv_img_dsc_t* src, uint32_t col, int x, int y) {
+  lv_obj_t* i = lv_img_create(parent);
+  lv_img_set_src(i, src);
+  lv_obj_set_style_img_recolor(i, C(col), 0);
+  lv_obj_set_style_img_recolor_opa(i, LV_OPA_COVER, 0);
+  lv_obj_set_pos(i, x, y);
+  return i;
+}
+
+static void buildTodaySeven(lv_obj_t* s) {
+  static const lv_img_dsc_t* const HERO_IC[HERO_N] = {&icon_boost_48, &icon_download_48, &icon_print_48};
+  const int y0 = TOP - 4, step = (CW + 9) / HERO_N;
+  const int bw = (WK_W - (WEEK_N - 1) * WK_GAP) / WEEK_N;
+  for (int i = 0; i < HERO_N; i++) {
+    const int k = HERO_K[i];
+    HeroUi& h = hero[i];
+    lv_obj_t* c = tiles[k].card = flatCard(s, PAD + i * step, y0, HERO_W, HERO_H);
+    bigIcon(c, HERO_IC[i], COL[k], 15, 17);
+    h.num = label(c, &font_num_56, C_DIM, HERO_NUM_X, HERO_BASE - (lineH(&font_num_56) - font_num_56.base_line), "0");
+    h.vs = label(c, F16, C_MUTED, 15, 82, "");
+    for (int b = 0; b < WEEK_N; b++) {
+      const int x = WK_X + b * (bw + WK_GAP);
+      h.bars[b] = box(c, x, WK_BASE - 3, bw, 3, C_TRACK, 2);
+      // Day initial under each bar; "Today" is wider than a bar and stays inside the card.
+      const int lw = b == WEEK_N - 1 ? 40 : bw + 12;
+      h.days[b] = label(c, F12, b == WEEK_N - 1 ? C_TXT : C_MUTED, min(x + bw / 2 - lw / 2, HERO_W - 2 - 6 - lw), WK_BASE + 3, "");
+      lv_obj_set_width(h.days[b], lw);
+      lv_obj_set_style_text_align(h.days[b], LV_TEXT_ALIGN_CENTER, 0);
+    }
+  }
+
+  // Middle bar: Likes | Points | Collects. Icon beside the figure, both hung from the top.
+  const int my = y0 + HERO_H + 8, mh = 74;
+  lv_obj_t* bar = flatCard(s, PAD, my, CW, mh);
+  const int inner = CW - 2, side = inner * 10 / 34, ptsW = inner - 2 * side;
+  const int cellX[3] = {0, side, side + ptsW}, cellW[3] = {side, ptsW, side};
+  const lv_img_dsc_t* const IC[3] = {&icon_like_40, &icon_points_48, &icon_collect_40};
+  const uint32_t icCol[3] = {COL[S_LIKES], C_PTS, COL[S_COLLECTS]};
+  for (int i = 0; i < 3; i++) {
+    const bool pts = i == 1;
+    // Side cells keep the bar's corners (10 less its 1 px edge); children paint over the border.
+    lv_obj_t* cell = box(bar, cellX[i], 0, cellW[i], mh - 2, C_CARD, pts ? 0 : 9);
+    if (pts) {
+      // A fixed warm tint: a 9% mix rounds olive-green in RGB565.
+      lv_obj_set_style_bg_color(cell, C(0x28231A), 0);
+      // Tap: the Points page, sliding like a swipe (the old header chip did this).
+      tappable(cell, [](lv_event_t*) { goScreen(SC_POINTS, SC_POINTS > cur ? 1 : -1); }, 0);
+    } else {
+      tiles[i == 0 ? S_LIKES : S_COLLECTS].card = cell;  // the new-event pulse lights it
+    }
+    lv_obj_t* grp = row(cell, 14);
+    lv_obj_set_flex_align(grp, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    bigIcon(grp, IC[i], icCol[i], 0, 0);
+    lv_obj_t* col = lv_obj_create(grp);
+    lv_obj_remove_style_all(col);
+    lv_obj_clear_flag(col, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_size(col, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(col, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_top(col, pts ? 0 : 2, 0);
+    mid[i].num = label(col, pts ? &lv_font_montserrat_40 : &lv_font_montserrat_32, C_DIM, 0, 0, "0");
+    mid[i].vs = label(col, F14, C_MUTED, 0, 0, "");
+    lv_obj_align(grp, LV_ALIGN_TOP_MID, 0, pts ? 8 : 11);
+  }
+
+  // Foot: Recent activity | Followers (ratings on its last line).
+  const int fy = my + mh + 8, fh = BOT - fy, actW = 500, fol = CW - actW - 9;
+  lv_obj_t* c = flatCard(s, PAD, fy, actW, fh);
+  label(c, F14, C_SUB, 15, 8, "Recent activity");
+  const int rowsY = 30, rowH = 27, colW = actW - 30;
+  actRows = min(ACT_MAX, max(1, (fh - rowsY - 4) / rowH));
+  for (int i = 0; i < actRows; i++) {
+    ActUi& a = actUi[i];
+    a.row = lv_obj_create(c);
+    lv_obj_remove_style_all(a.row);
+    lv_obj_clear_flag(a.row, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_pos(a.row, 15, rowsY + i * rowH);
+    lv_obj_set_size(a.row, colW, rowH);
+    a.img = icon(a.row, 0, false, 0, (rowH - 20) / 2);
+    a.n = label(a.row, F16, C_TXT, 30, (rowH - lineH(F16)) / 2, "");
+    a.model = label(a.row, F16, C_SUB, 70, (rowH - lineH(F16)) / 2, "");
+    dotLabel(a.model, colW - 70 - 52);
+    a.time = label(a.row, F16, C_MUTED, 0, 0, "");
+    lv_obj_align(a.time, LV_ALIGN_RIGHT_MID, 0, 0);
+    show(a.row, false);
+  }
+  actEmpty = label(c, F16, C_MUTED, 0, 0, "Nothing yet today");
+  lv_obj_align(actEmpty, LV_ALIGN_CENTER, 0, 8);
+
+  lv_obj_t* f = flatCard(s, PAD + actW + 9, fy, fol, fh);
+  lv_obj_t* head = row(f, 8);
+  lv_obj_set_pos(head, 15, 8);
+  bigIcon(head, &icon_follower_20, C_FOL, 0, 0);
+  label(head, F14, C_SUB, 0, 0, "Followers");
+  folSide.value = label(f, &lv_font_montserrat_40, C_TXT, 15, 30, "0");
+  folSide.today = label(f, F16, C_MUTED, 0, 0, "");
+  lv_obj_t* rr = row(f, 6);
+  bigIcon(rr, &icon_rating_20, COL[K_RATING], 0, 0);
+  ratLbl = label(rr, F14, C_MUTED, 0, 0, "");
+  lv_obj_align(rr, LV_ALIGN_BOTTOM_LEFT, 15, -8);
+}
+
+static void refreshTodaySeven() {
+  char a[32], b[48];
+  const int lag = payloadLagDays();
+  auto yday = [&](int k, int& v) -> bool {
+    if (lag == 0 && st.hasYday) { v = st.yday[k]; return true; }
+    if (lag == 1) { v = st.today[k]; return true; }  // the payload's "today" closed at midnight
+    return false;
+  };
+  static const lv_font_t* const NF[3] = {&font_num_56, &lv_font_montserrat_40, &lv_font_montserrat_32};
+  const int bw = (WK_W - (WEEK_N - 1) * WK_GAP) / WEEK_N, maxW = HERO_W - 2 - HERO_NUM_X - 12;
+  for (int i = 0; i < HERO_N; i++) {
+    const int k = HERO_K[i];
+    HeroUi& h = hero[i];
+    const int todayV = lag ? 0 : st.today[k];
+    // The biggest figure that fits, on one baseline.
+    const lv_font_t* f = NF[2];
+    for (const lv_font_t* g : NF) {
+      fmtFit(a, sizeof(a), todayV, true, maxW, g);
+      if (lv_txt_get_width(a, strlen(a), g, 0, LV_TEXT_FLAG_NONE) <= maxW) { f = g; break; }
+    }
+    lv_obj_set_style_text_font(h.num, f, 0);
+    lv_obj_set_y(h.num, HERO_BASE - (lineH(f) - f->base_line));
+    setTextIfChanged(h.num, todayV == 0 ? "0" : a);
+    lv_obj_set_style_text_color(h.num, C(todayV == 0 ? C_DIM : todayV < 0 ? C_ERR : C_TXT), 0);
+    int yv;
+    if (yday(k, yv)) {
+      fmtSigned(a, sizeof(a), yv);
+      snprintf(b, sizeof(b), "yesterday %s", a);
+    } else {
+      b[0] = 0;
+    }
+    setTextIfChanged(h.vs, b);
+    // The poller sends up to seven days, oldest first, the last one today.
+    // They fill the bars from the right; with lag the last day is yesterday.
+    int v[WEEK_N] = {}, mx = 1;
+    bool has[WEEK_N] = {};
+    for (int j = 0; j < WEEK_N; j++) {
+      const int d = st.ndays - WEEK_N + j;
+      if (d < 0) continue;
+      has[j] = true;
+      v[j] = j == WEEK_N - 1 && !lag ? todayV : st.days[d].v[k];
+      mx = max(mx, v[j]);
+    }
+    for (int j = 0; j < WEEK_N; j++) {
+      const bool today = j == WEEK_N - 1 && !lag;
+      const int hh = v[j] > 0 ? max(4, WK_MAX * v[j] / mx) : 3;
+      lv_obj_set_height(h.bars[j], hh);
+      lv_obj_set_y(h.bars[j], WK_BASE - hh);
+      lv_color_t col = v[j] <= 0 ? C(C_TRACK) : today ? C(COL[k]) : lv_color_mix(C(COL[k]), C(C_CARD), 71);
+      lv_obj_set_style_bg_color(h.bars[j], col, 0);
+      const int d = st.ndays - WEEK_N + j;
+      if (today) snprintf(a, sizeof(a), "Today");
+      else if (has[j]) snprintf(a, sizeof(a), "%.1s", st.days[d].d);
+      else a[0] = 0;
+      setTextIfChanged(h.days[j], a);
+      (void)bw;
+    }
+  }
+  // Likes and Collects either side of Points.
+  const int sideK[2] = {S_LIKES, S_COLLECTS};
+  for (int i = 0; i < 2; i++) {
+    MidUi& m = mid[i * 2];
+    const int k = sideK[i], todayV = lag ? 0 : st.today[k];
+    fmtSigned(a, sizeof(a), todayV);
+    setTextIfChanged(m.num, todayV == 0 ? "0" : a);
+    lv_obj_set_style_text_color(m.num, C(todayV == 0 ? C_DIM : todayV < 0 ? C_ERR : C_TXT), 0);
+    int yv;
+    if (yday(k, yv)) {
+      fmtSigned(a, sizeof(a), yv);
+      snprintf(b, sizeof(b), "%s yday", a);
+    } else {
+      b[0] = 0;
+    }
+    setTextIfChanged(m.vs, b);
+  }
+  // Points: unreadable without the cookie, so it says so instead of showing 0.
+  MidUi& p = mid[1];
+  // No cookie yet, or MakerWorld refused it (a plain server error is not a cookie problem).
+  ptsWant = st.valid && st.cookieAge >= 0 && strcmp(st.auth, "needed") && !(st.health.has && st.health.expired);
+  if (!ptsWant) {
+    setTextIfChanged(p.num, "-");
+    lv_obj_set_style_text_color(p.num, C(C_DIM), 0);
+    setTextIfChanged(p.vs, st.valid ? "Cookie needed" : "");
+    lv_obj_set_style_text_color(p.vs, C(C_WARN), 0);
+  } else {
+    snprintf(a, sizeof(a), "%+.1f", lag ? 0.0f : st.todayPoints);
+    setTextIfChanged(p.num, a);
+    lv_obj_set_style_text_color(p.num, C(C_PTS), 0);
+    float yp = lag == 1 ? st.todayPoints : st.ydayPoints;
+    if (lag == 0 ? st.hasYday : lag == 1) snprintf(b, sizeof(b), "yesterday %+.1f", yp);
+    else b[0] = 0;
+    setTextIfChanged(p.vs, b);
+    lv_obj_set_style_text_color(p.vs, C(C_MUTED), 0);
+  }
+}
+
 static void buildToday() {
   lv_obj_t* s = screens[SC_TODAY] = newScreen();
-  todayHdr = header(s, "TODAY", TINY ? "" : "waiting for poller");
+  if (SEVEN) {
+    // 7": a quiet sentence-case title with the date beside it; no accent bar or rule.
+    lv_obj_set_style_bg_grad_dir(s, LV_GRAD_DIR_NONE, 0);
+    lv_obj_set_style_bg_color(s, C(C_BG), 0);
+    lv_obj_t* left = row(s, 10);
+    lv_obj_set_pos(left, PAD, 13);
+    todayHdr.title = label(left, F20, C_TXT, 0, 0, "Today");
+    todayHdr.sub = label(left, F16, C_MUTED, 0, 0, "waiting for poller");
+    lv_obj_set_flex_align(left, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_END);
+    todayHdr.right = row(s, 14);
+    show(todayHdr.right, false);
+  } else {
+    todayHdr = header(s, "TODAY", TINY ? "" : "waiting for poller");
+  }
   // Placed by layoutTodayChips(), not in the header row.
   ptsChip = label(s, F14, C_WARN, 0, 0, "");
   chipStyle(ptsChip, C_CHIP, C_WARN);
@@ -766,6 +1010,10 @@ static void buildToday() {
   if (TINY) lv_obj_set_width(todayHdr.sub, subW);
   if (TINY) {
     buildTodayTiny(s);
+    return;
+  }
+  if (SEVEN) {
+    buildTodaySeven(s);
     return;
   }
 
@@ -1038,8 +1286,28 @@ static void placeSideSubs(TodaySide& s) {
 }
 static void refreshActivity() {
   markPagesDirty();
-  if (!ratSide.value) return;
-  char a[24], b[32];
+  if (!ratSide.value && !(SEVEN && folSide.value)) return;
+  char a[24], b[48];
+  if (SEVEN) {
+    // 7": Followers leads its card; ratings are one line under it.
+    int folTotal = st.fol.has ? st.fol.total : st.followers;
+    fmtInt(a, sizeof(a), folTotal);
+    setTextIfChanged(folSide.value, a);
+    lv_obj_set_style_text_color(folSide.value, C(folTotal ? C_TXT : C_DIM), 0);
+    if (st.fol.has) snprintf(b, sizeof(b), "%+d today", st.fol.today);
+    else b[0] = 0;
+    setTextIfChanged(folSide.today, b);
+    lv_obj_set_style_text_color(folSide.today, C(st.fol.has && st.fol.today ? gainColor(st.fol.today) : C_MUTED), 0);
+    lv_obj_update_layout(folSide.value);
+    lv_obj_align_to(folSide.today, folSide.value, LV_ALIGN_OUT_RIGHT_MID, 16, 2);
+    if (st.totalRatings > 0) {
+      fmtInt(a, sizeof(a), st.totalRatings);
+      snprintf(b, sizeof(b), "Ratings %s  \xE2\x80\xA2  %.2f avg", a, st.ratingAvg);
+    } else {
+      snprintf(b, sizeof(b), "No ratings yet");
+    }
+    setTextIfChanged(ratLbl, b);
+  } else {
   if (st.totalRatings > 0) {
     fmtInt(a, sizeof(a), st.totalRatings);
     setTextIfChanged(ratSide.value, a);
@@ -1072,6 +1340,7 @@ static void refreshActivity() {
     setTextIfChanged(folSide.today, "");
   }
   placeSideSubs(folSide);
+  }
 
   uint32_t now = nowUtc();
   int shown = 0;
@@ -1084,7 +1353,7 @@ static void refreshActivity() {
     if (r.kind == K_COMMENT) snprintf(a, sizeof(a), "new");
     else snprintf(a, sizeof(a), "+%d", r.n);
     lv_label_set_text(f.n, a);
-    lv_obj_set_style_text_color(f.n, C(COL[r.kind]), 0);
+    lv_obj_set_style_text_color(f.n, C(SEVEN ? C_TXT : COL[r.kind]), 0);
     lv_label_set_text(f.model, r.model);
     if (r.t && now >= r.t) fmtShortAgo(a, sizeof(a), (long)(now - r.t));
     else a[0] = 0;
@@ -1099,6 +1368,10 @@ static void refreshActivity() {
 // the real widths, on the title's centre line. If it doesn't fit, it hides.
 static void layoutTodayChips() {
   if (!clockLbl) return;
+  if (SEVEN) {  // 7": Points has its own cell in the middle bar
+    show(ptsChip, false);
+    return;
+  }
   const int m = COMPACT ? 4 : 8;
   show(ptsChip, true);
   lv_obj_update_layout(screens[SC_TODAY]);
@@ -1118,6 +1391,11 @@ static void refreshToday() {
   uint32_t n = nowUtc();
   int lag = payloadLagDays();
   if (n) hourNow = toLocal(n) / 3600 % 24;
+  if (SEVEN) {
+    refreshTodaySeven();
+    refreshActivity();
+    return;
+  }
   if (TINY) refreshTodayTiny();
   for (int k = 0; k < NSTAT && !TINY; k++) {
     Tile& t = tiles[k];
@@ -1243,6 +1521,14 @@ static void refreshTodayHeader() {
       snprintf(a, sizeof(a), "waiting for poller  -  %s.local", g_net.host[0] ? g_net.host : "offline");
       setTextIfChanged(todayHdr.sub, a);
     }
+  } else if (SEVEN && n) {
+    // 7": the date beside the title ("Mon Nov 10").
+    static const char* const WD[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+    time_t lt = toLocal(n);
+    struct tm tmv;
+    gmtime_r(&lt, &tmv);
+    snprintf(a, sizeof(a), "%s %s %d", WD[tmv.tm_wday], MONTHS[tmv.tm_mon], tmv.tm_mday);
+    setTextIfChanged(todayHdr.sub, a);
   } else {
     setTextIfChanged(todayHdr.sub, "");  // no date: the clock is enough
   }
