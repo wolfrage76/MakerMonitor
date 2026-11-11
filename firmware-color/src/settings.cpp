@@ -25,9 +25,10 @@ static const int DIM_V[] = {0, 60, 300, 900, 1800};
 static const char* const NIGHT_N[] = {"Screen off", "Dim"};
 static const int NIGHT_V[] = {0, 1};
 #if AUDIO_I2S
-// Peak amplitude out of 32767.
-static const char* const VOLUME_N[] = {"Low", "Medium", "High"};
-static const int VOLUME_V[] = {2500, 7000, 16000};
+// Peak amplitude out of 32767, in even loudness steps (~7.8 dB apart). The
+// chime reaches 0.88 of this peak, so Max (37000) is just under full scale.
+static const char* const VOLUME_N[] = {"Low", "Medium", "High", "Max"};
+static const int VOLUME_V[] = {2500, 6100, 15000, 37000};
 #endif
 
 const SettingDef SETTINGS[NSET] = {
@@ -43,7 +44,7 @@ const SettingDef SETTINGS[NSET] = {
   {"flip", "Flip display", 2, ONOFF_N, ONOFF_V, 0},
 #if AUDIO_I2S
   {"sound", "Sound", 2, ONOFF_N, ONOFF_V, 1},
-  {"volume", "Volume", 3, VOLUME_N, VOLUME_V, 1},
+  {"volume", "Volume", 4, VOLUME_N, VOLUME_V, 1},
 #endif
 };
 
