@@ -126,9 +126,11 @@ static lv_obj_t* box(lv_obj_t* parent, int x, int y, int w, int h, uint32_t bg, 
 
 // Panel: hairline edge, slight top-to-bottom fade, tight corners.
 static lv_obj_t* card(lv_obj_t* parent, int x, int y, int w, int h) {
-  lv_obj_t* o = box(parent, x, y, w, h, C_CARD, COMPACT ? 4 : 6);
-  lv_obj_set_style_bg_grad_color(o, C(C_CARD2), 0);
-  lv_obj_set_style_bg_grad_dir(o, LV_GRAD_DIR_VER, 0);
+  lv_obj_t* o = box(parent, x, y, w, h, C_CARD, COMPACT ? 4 : SEVEN ? 10 : 6);
+  if (!SEVEN) {  // 7": flat plates, like Today
+    lv_obj_set_style_bg_grad_color(o, C(C_CARD2), 0);
+    lv_obj_set_style_bg_grad_dir(o, LV_GRAD_DIR_VER, 0);
+  }
   lv_obj_set_style_border_width(o, 1, 0);
   lv_obj_set_style_border_color(o, C(C_EDGE), 0);
   return o;
@@ -137,6 +139,7 @@ static lv_obj_t* card(lv_obj_t* parent, int x, int y, int w, int h) {
 // An accent rule along the top and the card's foot glowing faintly in that
 // colour, like the Today tiles (Points, 7-day trend).
 static void accentCard(lv_obj_t* c, uint32_t col) {
+  if (SEVEN) return;  // 7": flat plates; the content carries the colour
   lv_obj_set_style_border_side(c, LV_BORDER_SIDE_TOP, 0);
   lv_obj_set_style_border_width(c, 2, 0);
   lv_obj_set_style_border_color(c, C(col), 0);
@@ -359,10 +362,78 @@ struct Header {
   lv_obj_t* right;   // flex row, top right
 };
 
+// "DOWNLOADS PER VIEW (30 DAYS)" -> "Downloads per view (30 days)". Words with
+// digits and short acronyms keep their case; anything after a ':' is a name.
+static void sentenceCase(char* out, size_t cap, const char* in) {
+  static const char* const KEEP[] = {"DL", "PTS", "QR", "OK", "ID", "URL", "AMS"};
+  size_t o = 0;
+  bool first = true, name = false;
+  for (const char* p = in; *p && o + 1 < cap;) {
+    if (name || !isalnum((unsigned char)*p)) {
+      if (*p == ':') {
+        // A model name follows ("LATEST LAUNCH: Modular Desk...") only when
+        // the next word has lower case; "LONG TAIL: MODELS OVER..." keeps going.
+        const char* q = p + 1;
+        while (*q == ' ') q++;
+        for (; *q && *q != ' '; q++) name |= islower((unsigned char)*q) != 0;
+      }
+      out[o++] = *p++;
+      continue;
+    }
+    const char* e = p;
+    bool digit = false, lower = false;
+    while (*e && (isalnum((unsigned char)*e) || *e == '\'')) {
+      digit |= isdigit((unsigned char)*e) != 0;
+      lower |= islower((unsigned char)*e) != 0;
+      e++;
+    }
+    const size_t n = e - p;
+    bool keep = digit || lower;
+    for (const char* k : KEEP) keep |= n == strlen(k) && !strncmp(p, k, n);
+    const bool gh = n == 6 && !strncmp(p, "GITHUB", 6);  // -> GitHub
+    for (const char* q = p; q < e && o + 1 < cap; q++) {
+      char c = *q;
+      if (gh) c = q == p || q == p + 3 ? c : (char)tolower((unsigned char)c);
+      else if (!keep && !(first && q == p)) c = (char)tolower((unsigned char)c);
+      out[o++] = c;
+    }
+    first = false;
+    p = e;
+  }
+  out[o] = 0;
+}
+
+// Section captions. 7": sentence case in the secondary text colour, no
+// tracking (tracked caps read as a generic dashboard); elsewhere as built.
+static void eyebrow(lv_obj_t* l) {
+  if (!SEVEN) return;
+  char t[96];
+  sentenceCase(t, sizeof(t), lv_label_get_text(l));
+  lv_label_set_text(l, t);
+  lv_obj_set_style_text_letter_space(l, 0, 0);
+  lv_obj_set_style_text_color(l, C(C_SUB), 0);
+}
+
 static Header header(lv_obj_t* root, const char* title, const char* sub) {
   Header h;
   const lv_font_t* tf = TALL ? F20 : F16;
   const int gap = TINY ? 6 : 10;
+  if (SEVEN) {
+    // 7": the Today header everywhere: sentence-case title in text colour,
+    // subtitle beside it on one baseline, no accent bar or rule.
+    lv_obj_t* left = row(root, gap);
+    lv_obj_set_flex_align(left, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_END);
+    lv_obj_set_pos(left, PAD, 13);
+    char t[64];
+    sentenceCase(t, sizeof(t), title);
+    h.title = label(left, F20, C_TXT, 0, 0, t);
+    h.sub = label(left, F14, C_MUTED, 0, 0, sub);
+    lv_obj_set_style_pad_bottom(h.sub, 2, 0);
+    dotLabel(h.sub, (W * 2) / 5);
+    h.right = row(root, 14);
+    lv_obj_align(h.right, LV_ALIGN_TOP_RIGHT, -PAD - HB_W - 24, 16);
+    return h;
+  }
   lv_obj_t* left = row(root, gap);
   lv_obj_set_pos(left, PAD, COMPACT ? 9 : (TALL ? 16 : 14));
   box(left, 0, 0, 3, lineH(tf) - 4, C_ACCENT, 1);
@@ -398,9 +469,12 @@ static lv_obj_t* hint(Header& h, const char* txt) {
 }
 
 static lv_obj_t* newScreen() {
-  lv_obj_t* s = box(lv_scr_act(), 0, 0, W, H, C_BG2);
-  lv_obj_set_style_bg_grad_color(s, C(C_BG), 0);
-  lv_obj_set_style_bg_grad_dir(s, LV_GRAD_DIR_VER, 0);
+  lv_obj_t* s = box(lv_scr_act(), 0, 0, W, H, SEVEN ? C_BG : C_BG2);
+  // 7": flat; a full-height gradient bands into visible steps on RGB565.
+  if (!SEVEN) {
+    lv_obj_set_style_bg_grad_color(s, C(C_BG), 0);
+    lv_obj_set_style_bg_grad_dir(s, LV_GRAD_DIR_VER, 0);
+  }
   show(s, false);
   return s;
 }
@@ -1983,8 +2057,10 @@ static void refreshTrend() {
     // Bars fade toward their foot; today's (still open) stays muted.
     lv_color_t bc = today ? lv_color_mix(C(COL[k]), C(C_CARD), 110) : C(COL[k]);
     lv_obj_set_style_bg_color(c.bar, bc, 0);
-    lv_obj_set_style_bg_grad_color(c.bar, lv_color_mix(bc, C(C_CARD), 150), 0);
-    lv_obj_set_style_bg_grad_dir(c.bar, LV_GRAD_DIR_VER, 0);
+    if (!SEVEN) {  // 7": flat bars
+      lv_obj_set_style_bg_grad_color(c.bar, lv_color_mix(bc, C(C_CARD), 150), 0);
+      lv_obj_set_style_bg_grad_dir(c.bar, LV_GRAD_DIR_VER, 0);
+    }
     if (TINY) fmtFit(a, sizeof(a), v, true, TR_COLW, F14);
     else fmtSigned(a, sizeof(a), v);
     lv_label_set_text(c.val, a);
@@ -2058,6 +2134,7 @@ static void buildPoints() {
   accentCard(c1, C_WARN);
   lv_obj_t* balCap = label(c1, STRIP || SEVEN ? F16 : ROOMY ? F14 : F12, C_WARN, mx, TALL ? 24 : 18, "BALANCE");
   lv_obj_set_style_text_letter_space(balCap, 2, 0);
+  eyebrow(balCap);
   const lv_font_t* balF = TINY ? F40 : F48;
   ptBalance = label(c1, balF, C_WARN, mx, TALL ? TH / 4 : (TH - lineH(balF)) / 2, "-");
   if (TINY) {
@@ -2104,6 +2181,7 @@ static void buildPoints() {
   int trackY, legY;
   if (TALL) {
     ptRange = label(m, SEVEN ? F16 : F14, C_SUB, mx, 22, "LAST 30 DAYS");
+    eyebrow(ptRange);
     ptMonth = label(m, F40, C_TXT, 0, 0, "");
     lv_obj_align(ptMonth, LV_ALIGN_TOP_RIGHT, -mx, 14);
     trackY = 22 + lineH(F40) + 16;
@@ -2245,6 +2323,7 @@ static void refreshPoints() {
   fmtIsoDate(c, sizeof(c), m.end);
   snprintf(a, sizeof(a), COMPACT ? "%s - %s" : "LAST 30 DAYS  -  %s - %s", b, c);
   lv_label_set_text(ptRange, a);
+  eyebrow(ptRange);
   lv_label_set_text_fmt(ptMonth, "%+.1f", m.points);
   float sum = m.pointsModels + m.pointsProfiles;
   int wa = sum > 0 ? (int)(PT_SPLIT_W * m.pointsModels / sum) : PT_SPLIT_W;
@@ -2289,6 +2368,7 @@ static void buildReach() {
     int y = TOP + i * (rowH + gap);
     lv_obj_t* l = label(s, nameF, C_SUB, PAD, y + (rowH - lineH(nameF)) / 2, names[i]);
     lv_obj_set_style_text_letter_space(l, COMPACT || big ? 0 : 1, 0);
+    eyebrow(l);
     if (TINY) {
       lv_label_set_long_mode(l, LV_LABEL_LONG_CLIP);
       lv_obj_set_width(l, labW - 6);
@@ -2464,6 +2544,7 @@ static void buildBest() {
   const lv_font_t* bcF = SEVEN ? F14 : F12;
   lv_obj_t* t = label(bestHourCard, bcF, C_SUB, 14, 10, "BY HOUR OF DAY");
   lv_obj_set_style_text_letter_space(t, 1, 0);
+  eyebrow(t);
   bestNote = label(bestHourCard, SEVEN ? F16 : F14, C_ACCENT, 0, 0, "");
   lv_obj_align(bestNote, LV_ALIGN_TOP_RIGHT, -14, 8);
   const int inner = CW - 28, step = inner / 24, bw = max(3, step - 3);
@@ -2820,6 +2901,7 @@ static void crList(CrCard& c, const char* title, int list) {
   const Creator& cr = st.creator;
   crCardList[&c == &crCards[0] ? 0 : 1] = list;
   lv_label_set_text(c.title, title);
+  eyebrow(c.title);
   int n = cr.has ? min(cr.n[list], crRows) : 0;
   for (int i = 0; i < CR_ROWS; i++) {
     bool on = i < n;
@@ -2942,7 +3024,9 @@ static void refreshCreator() {
       char ttl[64];
       snprintf(ttl, sizeof(ttl), has ? (TINY ? "LAUNCH: %s" : "LATEST LAUNCH: %s") : (TINY ? "LAUNCH VS MEDIAN" : "LATEST LAUNCH VS MEDIAN"), cr.lname);
       lv_label_set_text(crCards[0].title, ttl);
+      eyebrow(crCards[0].title);
       lv_label_set_text(crCards[1].title, TINY ? "LONG TAIL, 30D+" : "LONG TAIL: MODELS OVER 30 DAYS OLD");
+      eyebrow(crCards[1].title);
       if (has) {
         snprintf(t[0], sizeof(t[0]), "%d of 7", cr.lday);
         snprintf(t[1], sizeof(t[1]), "%d", cr.lcur[cr.lday - 1]);
@@ -3009,6 +3093,7 @@ static void refreshCreator() {
       const Followers& f = st.fol;
       crRowsShow(crCards[0], false);
       lv_label_set_text(crCards[0].title, TINY ? "GAINED PER DAY" : "FOLLOWERS GAINED PER DAY (30 DAYS)");
+      eyebrow(crCards[0].title);
       snprintf(t[0], sizeof(t[0]), "%d", st.followers);
       snprintf(t[1], sizeof(t[1]), "%+d", f.has ? f.today : 0);
       snprintf(t[2], sizeof(t[2]), "%+d", f.has ? f.d7 : 0);
@@ -3082,6 +3167,7 @@ static void makeStatusCell(lv_obj_t* parent, int i, int x, int y, int w, int h, 
   cells[i].dot = box(c, pad, pad + (lineH(nameF) - 8) / 2, 8, 8, C_IDLE, LV_RADIUS_CIRCLE);
   lv_obj_t* l = label(c, nameF, C_SUB, pad + 14, pad, name);
   lv_obj_set_style_text_letter_space(l, TINY ? 0 : 1, 0);
+  eyebrow(l);
   lv_label_set_long_mode(l, LV_LABEL_LONG_CLIP);
   lv_obj_set_width(l, nameW - 14);
   const int textX = pad + nameW;
@@ -3377,6 +3463,7 @@ static void buildMenu() {
       // Section title above a flat grouped card (no gradient: it scrolls).
       m.row = label(menuList, F12, C_MUTED, 0, 0, d.label);
       lv_obj_set_style_text_letter_space(m.row, 2, 0);
+      eyebrow(m.row);
       lv_obj_set_style_pad_top(m.row, first ? (COMPACT ? 8 : 12) : (COMPACT ? 16 : 24), 0);
       lv_obj_set_style_pad_bottom(m.row, 8, 0);
       lv_obj_set_style_pad_left(m.row, mx, 0);
@@ -4133,7 +4220,8 @@ static void refreshUpdate() {
   lv_obj_set_style_bg_color(updRemCell, C(newer ? 0x0D2622 : C_BG), 0);
   lv_obj_set_style_border_color(updRemCell, C(newer ? C_OK : C_EDGE), 0);
   lv_label_set_text(updRemEye, beta ? (newer ? "BETA (NEW)" : "BETA") : (newer ? "GITHUB (NEW)" : "GITHUB"));
-  lv_obj_set_style_text_color(updRemEye, C(newer ? C_OK : C_MUTED), 0);
+  eyebrow(updRemEye);
+  lv_obj_set_style_text_color(updRemEye, C(newer ? C_OK : SEVEN ? C_SUB : C_MUTED), 0);
   if (has) {
     char v[40];
     snprintf(v, sizeof(v), "v%s", lat);
@@ -4398,6 +4486,7 @@ static lv_obj_t* updVerBox(lv_obj_t* parent, int x, int y, int w, int h, const c
   const int px = COMPACT ? 8 : 10, py = COMPACT ? 4 : 10;
   const lv_font_t* vf = TALL || TINY ? F26 : F20;
   lv_obj_t* e = label(b, F12, C_MUTED, px, py, eye);
+  eyebrow(e);
   dotLabel(e, w - 2 * px);
   const int sy = h - lineH(F12) - py;
   // Version sits centred between the eyebrow and the sub line.
@@ -4492,6 +4581,7 @@ static void buildUpdate() {
   lv_obj_t* lc = card(s, PAD, TOP, leftW, TH);
   lv_obj_t* eye = label(lc, F12, C_ACCENT, mx, COMPACT ? 8 : 14, "VERSIONS");
   lv_obj_set_style_text_letter_space(eye, 2, 0);
+  eyebrow(eye);
 
   const int cellY = (COMPACT ? 8 : 14) + lineH(F12) + (COMPACT ? 6 : 10);
   const int cg = COMPACT ? 6 : 10;
@@ -4548,8 +4638,10 @@ static void buildOverlay() {
   BN_Y = COMPACT ? 8 : 14;
   const int ib = COMPACT ? 44 : 60, tx = COMPACT ? 68 : 100;
   banner = box(top, PAD, -BN_H - 24, CW, BN_H, C_RAISED, COMPACT ? 4 : 8);
-  lv_obj_set_style_bg_grad_color(banner, C(C_CARD2), 0);
-  lv_obj_set_style_bg_grad_dir(banner, LV_GRAD_DIR_VER, 0);
+  if (!SEVEN) {
+    lv_obj_set_style_bg_grad_color(banner, C(C_CARD2), 0);
+    lv_obj_set_style_bg_grad_dir(banner, LV_GRAD_DIR_VER, 0);
+  }
   lv_obj_set_style_border_width(banner, 1, 0);
   lv_obj_set_style_shadow_width(banner, 24, 0);
   lv_obj_set_style_shadow_color(banner, lv_color_black(), 0);
@@ -5311,10 +5403,10 @@ static void apPage(bool open) {
   lv_label_set_long_mode(apCaption, LV_LABEL_LONG_WRAP);
   char a[80];
   int y = TOP + 8 + 4 * lineH(F16) + 16;
-  label(apRoot, F12, C_MUTED, tx, y, "NETWORK");
+  eyebrow(label(apRoot, F12, C_MUTED, tx, y, "NETWORK"));
   label(apRoot, TALL ? F22 : F16, C_TXT, tx, y + lineH(F12) + 2, ssid);
   y += lineH(F12) + lineH(TALL ? F22 : F16) + 10;
-  label(apRoot, F12, C_MUTED, tx, y, "PASSWORD");
+  eyebrow(label(apRoot, F12, C_MUTED, tx, y, "PASSWORD"));
   label(apRoot, TALL ? F22 : F16, C_ACCENT, tx, y + lineH(F12) + 2, pass);
   y += lineH(F12) + lineH(TALL ? F22 : F16) + 14;
   snprintf(a, sizeof(a), "Stops by itself in 10 minutes.");
@@ -5342,7 +5434,7 @@ void ui_wifi_page(bool open) {
   hbUpdate();
   wpRoot = box(lv_layer_top(), 0, 0, W, H, C_BG);
   lv_obj_add_flag(wpRoot, LV_OBJ_FLAG_CLICKABLE);  // keep taps off the page below
-  Header h = header(wpRoot, "WI-FI", "");
+  Header h = header(wpRoot, SEVEN ? "Wi-Fi" : "WI-FI", "");
   lv_obj_align(h.right, LV_ALIGN_TOP_RIGHT, -PAD, COMPACT ? 4 : 8);
   wpButton(h.right, LV_SYMBOL_REFRESH "  Rescan", C_ACCENT, wpRescanCb);
   wpButton(h.right, LV_SYMBOL_CLOSE "  Back", C_TXT, wpBackCb);
