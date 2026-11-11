@@ -2048,7 +2048,8 @@ static void refreshTrend() {
   char a[24];
   fmtSigned(a, sizeof(a), total);
   lv_label_set_text(trendTotal, a);
-  lv_obj_set_style_text_color(trendTotal, C(COL[k]), 0);
+  // 7": the figure in text colour; the chosen stat's colour is on the chip and bars.
+  lv_obj_set_style_text_color(trendTotal, C(SEVEN ? C_TXT : COL[k]), 0);
   if (trSumCard) accentCard(trSumCard, COL[k]);
   if (trChartCard) accentCard(trChartCard, COL[k]);
   lv_label_set_text_fmt(trendAvg, "%.1f", n ? (float)total / n : 0.0f);
