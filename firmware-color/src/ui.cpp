@@ -1796,7 +1796,8 @@ static void buildTop() {
   const int chipH = SEVEN ? 44 : TALL || STRIP || ROOMY ? 34 : TINY ? 26 : 28;
   const int chipStep = chipW + (stack ? chipGap : COMPACT ? 4 : 6);
   const int icoX = TINY ? 3 : SEVEN ? 10 : 6;  // icon's left margin inside the chip
-  topChipTextW = chipW - icoX - 20 - 6;
+  const int icoW = SEVEN ? 32 : 20;  // 7": large icons, as on Today
+  topChipTextW = chipW - icoX - icoW - 6;
   // Small panels: the counts are the point of the page, so they get the bigger type.
   const lv_font_t* nf = SEVEN ? &lv_font_montserrat_26 : TALL || STRIP ? F20 : ROOMY ? &lv_font_montserrat_22 : TINY ? &lv_font_montserrat_16 : F16;
   // 7": the rank is a 40 px podium numeral down the left; the name starts after it.
@@ -1858,9 +1859,9 @@ static void buildTop() {
     for (int s = 0; s < topChipN; s++) {
       int k = topChipKind[s];
       lv_obj_t* c = box(t.card, CW - chipR - (topChipN - s) * chipStep + (stack ? chipGap : 6), chipY, chipW, chipH, COLBG[k], TINY ? 5 : 8);
-      t.ics[s] = icon(c, k, false, icoX, (chipH - 20) / 2);
+      t.ics[s] = icon(c, k, SEVEN, icoX, (chipH - icoW) / 2);
       t.chips[s] = label(c, cf, COL[k], 0, 0, "");
-      lv_obj_align(t.chips[s], LV_ALIGN_CENTER, (icoX + 20) / 2, 0);
+      lv_obj_align(t.chips[s], LV_ALIGN_CENTER, (icoX + icoW) / 2, 0);
     }
   }
   topEmpty = label(s, F20, C_MUTED, 0, 0, "No model activity yet");
@@ -1898,12 +1899,21 @@ static void refreshTop() {
         f = f == &lv_font_montserrat_26 ? &lv_font_montserrat_20 : f == &lv_font_montserrat_20 ? &lv_font_montserrat_16 : &lv_font_montserrat_12;
       lv_obj_set_style_text_font(t.chips[s], f, 0);
       lv_label_set_text(t.chips[s], a);
-      lv_obj_align(t.chips[s], LV_ALIGN_CENTER, (TINY ? 23 : SEVEN ? 30 : 26) / 2, 0);
+      lv_obj_align(t.chips[s], LV_ALIGN_CENTER, (TINY ? 23 : SEVEN ? 42 : 26) / 2, 0);
       if (t.ics[s]) lv_obj_set_style_img_recolor(t.ics[s], C(r.v[k] ? COL[k] : C_IDLE), 0);
       // A zero chip steps back so the live counts stand out, but keeps its
       // box: a hairline outline on the chip tone, so the row still reads as
       // five separate counters.
       lv_obj_t* box = lv_obj_get_parent(t.chips[s]);
+      if (SEVEN) {
+        // 7": no tinted boxes, as on Today: the icon carries the colour, live
+        // counts in text colour, zeros step back to the dim tone.
+        lv_obj_set_style_bg_opa(box, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(box, 0, 0);
+        lv_obj_set_style_text_color(t.chips[s], C(r.v[k] ? C_TXT : C_DIM), 0);
+        if (t.ics[s]) lv_obj_set_style_img_recolor(t.ics[s], C(r.v[k] ? COL[k] : C_DIM), 0);
+        continue;
+      }
       lv_obj_set_style_bg_color(box, C(r.v[k] ? COLBG[k] : C_CHIP), 0);
       lv_obj_set_style_border_width(box, 1, 0);
       lv_obj_set_style_border_color(box, C(r.v[k] ? COLBG[k] : C_EDGE), 0);
