@@ -61,6 +61,10 @@ static bool DENSE = false;    // same pixels, smaller glass (5": 187 ppi vs 7": 
 static bool TINY = false;     // compact under 400 px wide (2": 320x240)
 static bool STRIP = false;    // 820x320 at 278 ppi (3.16"): fewer, bigger figures
 static bool SEVEN = false;    // 800x480 at 133 ppi (both 7" boards): bigger secondary type, fewer rows
+// The look first built for the 7" (flat plates, sentence-case headers and
+// captions, numbers in text colour, cyan only for controls), on every panel.
+// Layouts stay per panel; this only switches the surface and colour rules.
+static const bool FLAT = true;
 static int TOUCH_PX = 36;     // ~7 mm touch target at this panel's density
 
 // Named by their size on the large panels; compact panels step each one down.
@@ -128,8 +132,8 @@ static lv_obj_t* box(lv_obj_t* parent, int x, int y, int w, int h, uint32_t bg, 
 
 // Panel: hairline edge, slight top-to-bottom fade, tight corners.
 static lv_obj_t* card(lv_obj_t* parent, int x, int y, int w, int h) {
-  lv_obj_t* o = box(parent, x, y, w, h, C_CARD, COMPACT ? 4 : SEVEN ? 10 : 6);
-  if (!SEVEN) {  // 7": flat plates, like Today
+  lv_obj_t* o = box(parent, x, y, w, h, C_CARD, COMPACT ? (FLAT ? 6 : 4) : FLAT ? 10 : 6);
+  if (!FLAT) {  // flat plates, like the 7" Today
     lv_obj_set_style_bg_grad_color(o, C(C_CARD2), 0);
     lv_obj_set_style_bg_grad_dir(o, LV_GRAD_DIR_VER, 0);
   }
@@ -141,7 +145,7 @@ static lv_obj_t* card(lv_obj_t* parent, int x, int y, int w, int h) {
 // An accent rule along the top and the card's foot glowing faintly in that
 // colour, like the Today tiles (Points, 7-day trend).
 static void accentCard(lv_obj_t* c, uint32_t col) {
-  if (SEVEN) return;  // 7": flat plates; the content carries the colour
+  if (FLAT) return;  // flat plates; the content carries the colour
   lv_obj_set_style_border_side(c, LV_BORDER_SIDE_TOP, 0);
   lv_obj_set_style_border_width(c, 2, 0);
   lv_obj_set_style_border_color(c, C(col), 0);
@@ -408,7 +412,7 @@ static void sentenceCase(char* out, size_t cap, const char* in) {
 // Section captions. 7": sentence case in the secondary text colour, no
 // tracking (tracked caps read as a generic dashboard); elsewhere as built.
 static void eyebrow(lv_obj_t* l) {
-  if (!SEVEN) return;
+  if (!FLAT) return;
   char t[96];
   sentenceCase(t, sizeof(t), lv_label_get_text(l));
   lv_label_set_text(l, t);
@@ -438,14 +442,22 @@ static Header header(lv_obj_t* root, const char* title, const char* sub) {
   }
   lv_obj_t* left = row(root, gap);
   lv_obj_set_pos(left, PAD, COMPACT ? 9 : (TALL ? 16 : 14));
-  box(left, 0, 0, 3, lineH(tf) - 4, C_ACCENT, 1);
-  h.title = label(left, tf, C_ACCENT, 0, 0, title);
-  lv_obj_set_style_text_letter_space(h.title, TINY ? 0 : 3, 0);
-  // Hairline under the header, fading out to the right.
-  lv_obj_t* rule = box(root, PAD, TOP - (COMPACT ? 5 : 8), CW, 1, C_ACCENT);
-  lv_obj_set_style_bg_grad_color(rule, C(C_BG), 0);
-  lv_obj_set_style_bg_grad_dir(rule, LV_GRAD_DIR_HOR, 0);
-  lv_obj_set_style_bg_opa(rule, LV_OPA_70, 0);
+  if (FLAT) {
+    // Sentence case in text colour, subtitle on the title's baseline; no bar or rule.
+    lv_obj_set_flex_align(left, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_END);
+    char t[64];
+    sentenceCase(t, sizeof(t), title);
+    h.title = label(left, tf, C_TXT, 0, 0, t);
+  } else {
+    box(left, 0, 0, 3, lineH(tf) - 4, C_ACCENT, 1);
+    h.title = label(left, tf, C_ACCENT, 0, 0, title);
+    lv_obj_set_style_text_letter_space(h.title, TINY ? 0 : 3, 0);
+    // Hairline under the header, fading out to the right.
+    lv_obj_t* rule = box(root, PAD, TOP - (COMPACT ? 5 : 8), CW, 1, C_ACCENT);
+    lv_obj_set_style_bg_grad_color(rule, C(C_BG), 0);
+    lv_obj_set_style_bg_grad_dir(rule, LV_GRAD_DIR_HOR, 0);
+    lv_obj_set_style_bg_opa(rule, LV_OPA_70, 0);
+  }
   h.sub = label(left, F14, C_MUTED, 0, 0, sub);
   // Keep the subtitle from running under the right-hand cluster.
   if (TINY) {
@@ -471,9 +483,9 @@ static lv_obj_t* hint(Header& h, const char* txt) {
 }
 
 static lv_obj_t* newScreen() {
-  lv_obj_t* s = box(lv_scr_act(), 0, 0, W, H, SEVEN ? C_BG : C_BG2);
-  // 7": flat; a full-height gradient bands into visible steps on RGB565.
-  if (!SEVEN) {
+  lv_obj_t* s = box(lv_scr_act(), 0, 0, W, H, FLAT ? C_BG : C_BG2);
+  // Flat: a full-height gradient bands into visible steps on RGB565.
+  if (!FLAT) {
     lv_obj_set_style_bg_grad_color(s, C(C_BG), 0);
     lv_obj_set_style_bg_grad_dir(s, LV_GRAD_DIR_VER, 0);
   }
@@ -1695,7 +1707,7 @@ static void buildFeed() {
     }
     // Time on the action's line, so the model name gets the full width.
     const int timeW = lv_txt_get_width("12:00 PM", 8, timeF, 0, LV_TEXT_FLAG_NONE);
-    f.title = label(f.card, tf, SEVEN ? C_TXT : COL[0], tx, textY, "");
+    f.title = label(f.card, tf, FLAT ? C_TXT : COL[0], tx, textY, "");
     dotLabel(f.title, colW - tx - 14 - timeW - 8);
     f.model = label(f.card, mf, C_SUB, tx, textY + lineH(tf) + 4, "");
     dotLabel(f.model, colW - tx - 14);
@@ -1725,7 +1737,8 @@ static void refreshFeed() {
     if (r.kind == K_COMMENT) snprintf(a, sizeof(a), "New comment");
     else fmtEventTitle(a, sizeof(a), r.kind, r.n, r.stars);
     lv_label_set_text(f.title, a);
-    if (!SEVEN) lv_obj_set_style_text_color(f.title, C(COL[r.kind]), 0);
+    if (!FLAT) lv_obj_set_style_text_color(f.title, C(COL[r.kind]), 0);
+    else if (!SEVEN) lv_obj_set_style_bg_opa(f.iconBox, LV_OPA_TRANSP, 0);  // the icon carries the colour
     lv_label_set_text(f.model, r.model);
     fmtHM(b, sizeof(b), r.t);
     lv_label_set_text(f.time, r.t ? b : "");
@@ -1905,8 +1918,8 @@ static void refreshTop() {
       // box: a hairline outline on the chip tone, so the row still reads as
       // five separate counters.
       lv_obj_t* box = lv_obj_get_parent(t.chips[s]);
-      if (SEVEN) {
-        // 7": no tinted boxes, as on Today: the icon carries the colour, live
+      if (FLAT) {
+        // No tinted boxes, as on the 7" Today: the icon carries the colour, live
         // counts in text colour, zeros step back to the dim tone.
         lv_obj_set_style_bg_opa(box, LV_OPA_TRANSP, 0);
         lv_obj_set_style_border_width(box, 0, 0);
@@ -2049,7 +2062,7 @@ static void refreshTrend() {
   fmtSigned(a, sizeof(a), total);
   lv_label_set_text(trendTotal, a);
   // 7": the figure in text colour; the chosen stat's colour is on the chip and bars.
-  lv_obj_set_style_text_color(trendTotal, C(SEVEN ? C_TXT : COL[k]), 0);
+  lv_obj_set_style_text_color(trendTotal, C(FLAT ? C_TXT : COL[k]), 0);
   if (trSumCard) accentCard(trSumCard, COL[k]);
   if (trChartCard) accentCard(trChartCard, COL[k]);
   lv_label_set_text_fmt(trendAvg, "%.1f", n ? (float)total / n : 0.0f);
@@ -2077,7 +2090,7 @@ static void refreshTrend() {
     // Bars fade toward their foot; today's (still open) stays muted.
     lv_color_t bc = today ? lv_color_mix(C(COL[k]), C(C_CARD), 110) : C(COL[k]);
     lv_obj_set_style_bg_color(c.bar, bc, 0);
-    if (!SEVEN) {  // 7": flat bars
+    if (!FLAT) {  // flat bars
       lv_obj_set_style_bg_grad_color(c.bar, lv_color_mix(bc, C(C_CARD), 150), 0);
       lv_obj_set_style_bg_grad_dir(c.bar, LV_GRAD_DIR_VER, 0);
     }
@@ -2156,7 +2169,7 @@ static void buildPoints() {
   lv_obj_set_style_text_letter_space(balCap, 2, 0);
   eyebrow(balCap);
   const lv_font_t* balF = TINY ? F40 : F48;
-  ptBalance = label(c1, balF, SEVEN ? C_PTS : C_WARN, mx, TALL ? TH / 4 : (TH - lineH(balF)) / 2, "-");
+  ptBalance = label(c1, balF, FLAT ? C_PTS : C_WARN, mx, TALL ? TH / 4 : (TH - lineH(balF)) / 2, "-");
   if (TINY) {
     lv_label_set_long_mode(ptBalance, LV_LABEL_LONG_DOT);
     lv_obj_set_width(ptBalance, w1 - 2 * mx);
@@ -2245,12 +2258,12 @@ static void buildPoints() {
     lv_obj_t** slots[3] = {&ptAvg, &ptBoosts, &ptPrints};
     for (int i = 0; i < 3; i++) {
       lv_obj_t* fc = card(m, mx + i * (figW + 8), figTop, figW, figH);
-      if (!SEVEN) {  // 7": plain plates; the icon carries the colour
+      if (!FLAT) {  // plain plates; the icon carries the colour
         lv_obj_set_style_bg_color(fc, C(figBg[i]), 0);
         lv_obj_set_style_bg_grad_color(fc, C(C_CARD2), 0);
         lv_obj_set_style_border_color(fc, lv_color_mix(C(figEdge[i]), C(C_EDGE), 90), 0);
       }
-      *slots[i] = label(fc, STRIP || ROOMY ? F32 : F40, SEVEN ? C_TXT : figCol[i], 0, 0, "");
+      *slots[i] = label(fc, STRIP || ROOMY ? F32 : F40, FLAT ? C_TXT : figCol[i], 0, 0, "");
       lv_obj_align(*slots[i], LV_ALIGN_CENTER, 0, SEVEN ? 2 : STRIP ? -12 : ROOMY ? -10 : -14);
       if (SEVEN) {
         // 7": caption over the figure, an icon under it (a rising line for
@@ -2295,7 +2308,7 @@ static void buildPoints() {
 }
 
 // 7": a gain is the normal case, so it reads in text colour; only losses are red.
-static uint32_t ptTint(float v) { return v > 0.05f ? (SEVEN ? C_TXT : C_OK) : v < -0.05f ? C_ERR : C_MUTED; }
+static uint32_t ptTint(float v) { return v > 0.05f ? (FLAT ? C_TXT : C_OK) : v < -0.05f ? C_ERR : C_MUTED; }
 
 static void refreshPoints() {
   char a[64], b[16], c[16];
@@ -2722,7 +2735,7 @@ static void crMakeCard(CrCard& c, lv_obj_t* s, int x, int y, int w, int h) {
     else c.rule[i] = nullptr;
     c.ry[i] = ry;
     c.name[i] = label(c.card, rf, C_TXT, px, ry, "");
-    c.val[i] = label(c.card, rf, SEVEN ? C_TXT : C_ACCENT, 0, ry, "");  // 7": cyan is for controls
+    c.val[i] = label(c.card, rf, FLAT ? C_TXT : C_ACCENT, 0, ry, "");  // cyan is for controls
     lv_obj_set_style_text_align(c.val[i], LV_TEXT_ALIGN_RIGHT, 0);
     // The name is the tap target for the whole row (48 px tall).
     tappable(c.name[i], crRowCb, (&c == &crCards[0] ? 0 : CR_ROWS) + i);
@@ -2778,7 +2791,7 @@ static void crSetTiles(int n, const char* const* vals, const char* const* lbls, 
     setTextIfChanged(t.val, vals[i]);
     setTextIfChanged(t.lbl, lbls[i]);
     uint32_t vc = cols ? cols[i] : C_TXT;
-    if (SEVEN && vc == C_ACCENT) vc = C_TXT;  // 7": cyan is for controls; status colours stay
+    if (FLAT && vc == C_ACCENT) vc = C_TXT;  // cyan is for controls; status colours stay
     lv_obj_set_style_text_color(t.val, C(vc), 0);
     lv_obj_align(t.val, LV_ALIGN_TOP_MID, 0, top);
     lv_obj_set_style_text_align(t.lbl, LV_TEXT_ALIGN_CENTER, 0);
@@ -4390,7 +4403,7 @@ static void refreshUpdate() {
   lv_obj_set_style_border_color(updRemCell, C(newer ? C_OK : C_EDGE), 0);
   lv_label_set_text(updRemEye, beta ? (newer ? "BETA (NEW)" : "BETA") : (newer ? "GITHUB (NEW)" : "GITHUB"));
   eyebrow(updRemEye);
-  lv_obj_set_style_text_color(updRemEye, C(newer ? C_OK : SEVEN ? C_SUB : C_MUTED), 0);
+  lv_obj_set_style_text_color(updRemEye, C(newer ? C_OK : FLAT ? C_SUB : C_MUTED), 0);
   if (has) {
     char v[40];
     snprintf(v, sizeof(v), "v%s", lat);
@@ -4807,7 +4820,7 @@ static void buildOverlay() {
   BN_Y = COMPACT ? 8 : 14;
   const int ib = COMPACT ? 44 : 60, tx = COMPACT ? 68 : 100;
   banner = box(top, PAD, -BN_H - 24, CW, BN_H, C_RAISED, COMPACT ? 4 : 8);
-  if (!SEVEN) {
+  if (!FLAT) {
     lv_obj_set_style_bg_grad_color(banner, C(C_CARD2), 0);
     lv_obj_set_style_bg_grad_dir(banner, LV_GRAD_DIR_VER, 0);
   }
@@ -5603,7 +5616,7 @@ void ui_wifi_page(bool open) {
   hbUpdate();
   wpRoot = box(lv_layer_top(), 0, 0, W, H, C_BG);
   lv_obj_add_flag(wpRoot, LV_OBJ_FLAG_CLICKABLE);  // keep taps off the page below
-  Header h = header(wpRoot, SEVEN ? "Wi-Fi" : "WI-FI", "");
+  Header h = header(wpRoot, FLAT ? "Wi-Fi" : "WI-FI", "");
   lv_obj_align(h.right, LV_ALIGN_TOP_RIGHT, -PAD, COMPACT ? 4 : 8);
   wpButton(h.right, LV_SYMBOL_REFRESH "  Rescan", C_ACCENT, wpRescanCb);
   wpButton(h.right, LV_SYMBOL_CLOSE "  Back", C_TXT, wpBackCb);
