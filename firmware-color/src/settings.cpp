@@ -43,7 +43,7 @@ const SettingDef SETTINGS[NSET] = {
   {"night", "Night mode", 2, NIGHT_N, NIGHT_V, 0},
   {"flip", "Flip display", 2, ONOFF_N, ONOFF_V, 0},
 #if AUDIO_I2S
-  {"sound", "Sound", 2, ONOFF_N, ONOFF_V, 1},
+  {"sound", "Sound", 2, ONOFF_N, ONOFF_V, 0},  // off until the user turns it on
   {"volume", "Volume", 4, VOLUME_N, VOLUME_V, 1},
 #endif
 };
