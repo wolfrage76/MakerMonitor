@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MakerMonitor Flasher</title>
 <script type="module" src="https://unpkg.com/esp-web-tools@10.4.0/dist/web/install-button.js?module"></script>
+<!-- Visit counter (GoatCounter: no cookies, no personal data). Stats at https://makermonitor.goatcounter.com -->
+<script data-goatcounter="https://makermonitor.goatcounter.com/count" async src="https://gc.zgo.at/count.js"></script>
 <style>
   :root {
     --bg: #f6f7f9; --card: #fff; --text: #1b1f24; --muted: #5b6470;
@@ -76,6 +78,11 @@
       version.textContent = `Firmware v${data.version}`;
       select.addEventListener("change", pick);
       pick();
+      // Count presses of the install button per board (shows as an event in GoatCounter).
+      install.addEventListener("click", () => {
+        const board = select.options[select.selectedIndex]?.text || "unknown";
+        window.goatcounter?.count?.({ path: "install-" + board, title: "Install: " + board, event: true });
+      });
     })
     .catch(() => {
       select.innerHTML = "<option>No firmware found</option>";
