@@ -26,3 +26,7 @@ tools/publish_flasher.sh
 ```
 
 It replaces the `gh-pages` branch contents with `flasher/dist/` in one commit; GitHub Pages serves that branch. The page and the images must stay on the same site, so the flasher can't point at release assets.
+
+## Visit counter
+
+The page loads [GoatCounter](https://www.goatcounter.com) (no cookies, no personal data) and also logs an `install-<board>` event each time someone presses **Connect and install**. Stats are at https://makermonitor.goatcounter.com. To use a different GoatCounter site, change the `data-goatcounter` URL in `index.html`.
