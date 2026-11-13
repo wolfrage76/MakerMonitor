@@ -180,6 +180,27 @@ class DayTracker:
                       "bestDay": max(range(7), key=lambda i: wday[i]) if any(wday) else -1}
         return out
 
+    def dashboard_extra(self, window: int = 30) -> dict[str, Any]:
+        """Dashboard-only extras (kept out of the panel payload): yesterday's
+        hourly buckets for a same-time comparison, how many of each weekday
+        closed days the best-time window covers, and today's weekday (to average the weekday totals), and
+        all of today's feed rather than the panels' last 8."""
+        with self._lock:
+            d = self.d
+            hd = list(d.get("hour_days", []))
+            days = hd[-(window - 1):] + ([{"date": d["day"]}] if d.get("day") else [])
+            yd = None
+            if d.get("day"):
+                want = date.fromordinal(date.fromisoformat(d["day"]).toordinal() - 1).isoformat()
+                yd = next((x.get("hours") for x in reversed(hd) if x.get("date") == want), None)
+            feed = [e for e in d.get("feed", []) if e.get("t", 0) >= d.get("base_t", 0)][::-1]
+        # Closed days only; today is partial, so the page takes its hours out of the totals.
+        wdn = [0] * 7
+        for x in days[:-1] if d.get("day") else days:
+            wdn[date.fromisoformat(x["date"]).weekday()] += 1
+        tw = date.fromisoformat(d["day"]).weekday() if d.get("day") else None
+        return {"yhours": yd, "wdayN": wdn, "todayWd": tw, "feedAll": feed}
+
     def model_history(self, mid: str) -> list[dict[str, Any]]:
         """Daily activity of one model, oldest first, from the per-day model
         baselines (taken around midnight) plus today's live counts."""

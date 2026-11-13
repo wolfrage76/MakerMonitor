@@ -907,6 +907,7 @@ def create_app(settings: Settings, cfg_path=None) -> FastAPI:
             st = dict(st)
         # Live, not from the last push: a stopped poll loop must show here.
         st["health"] = ctx.health_view()
+        st["dash"] = ctx.day.dashboard_extra()
         return JSONResponse(st)
 
     return app

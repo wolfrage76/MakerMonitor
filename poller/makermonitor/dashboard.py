@@ -2,7 +2,8 @@
 
 One static page with five views (Overview, Models, Activity, Health,
 Settings). It reads /api/dashboard (the state the color panels get, plus
-health and best-time insights) and /v2/creator every 60 s, /v2/model for
+health, best-time insights and the dashboard-only "dash" extras: yesterday's
+hourly buckets, weekday counts and today's full feed) and /v2/creator every 60 s, /v2/model for
 per-model sparklines, and /api/settings* for the Settings view. No external
 assets, light and dark themes.
 """
@@ -20,7 +21,7 @@ _BASE_CSS = r"""
 --bg:#eef1f5;--panel:#ffffff;--panel2:#f6f8fb;--line:#d5dce5;--ink:#0f1722;--ink2:#465466;--ink3:#5f6c7d;
 --acc:#0b7499;--acc-ink:#ffffff;--acc2:#38c6f0;--acc2-ink:#04202b;--ok:#07714d;--warn:#9a5f00;--err:#c42b40;
 --b:#d98a00;--l:#e0457b;--c:#2f80ed;--d:#109e6a;--p:#7b5cf0;--f:#0f8fb8;--r:#c99a00;
---shadow:0 1px 2px rgba(15,23,34,.06),0 4px 16px rgba(15,23,34,.04);--r:14px;
+--shadow:0 1px 2px rgba(15,23,34,.06),0 4px 16px rgba(15,23,34,.04);--rad:14px;
 --mono:ui-monospace,"SF Mono","JetBrains Mono","Cascadia Mono",Menlo,Consolas,monospace;
 --sans:ui-sans-serif,"Inter","Segoe UI Variable","Segoe UI",system-ui,-apple-system,Roboto,sans-serif;
 --display:ui-rounded,"SF Pro Rounded","Nunito","Segoe UI Variable Display","Segoe UI",system-ui,sans-serif}
@@ -31,6 +32,7 @@ _BASE_CSS = r"""
 --shadow:0 1px 2px rgba(0,0,0,.3)}}
 *{box-sizing:border-box}html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 var(--sans)}
+::selection{background:color-mix(in srgb,var(--acc) 28%,transparent)}
 a{color:inherit}button,input,select,textarea{font:inherit;color:inherit}
 :focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 .foot{display:flex;flex-wrap:wrap;justify-content:center;gap:6px 18px;padding:18px 16px 28px;color:var(--ink3);font-size:13px}
@@ -41,7 +43,7 @@ LOGIN_HTML = """<!doctype html><html lang=en><head><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1"><title>MakerMonitor</title>
 <style>""" + _BASE_CSS + """
 main{min-height:calc(100vh - 70px);display:grid;place-items:center;padding:16px}
-.box{max-width:440px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:28px;box-shadow:var(--shadow)}
+.box{max-width:440px;background:var(--panel);border:1px solid var(--line);border-radius:var(--rad);padding:28px;box-shadow:var(--shadow)}
 h1{font:700 22px var(--display);margin:0 0 12px}code{font-family:var(--mono);color:var(--acc);word-break:break-all}
 p{color:var(--ink2)}</style></head><body><main><div class=box><h1>MakerMonitor</h1>
 <p>Open this page once with your poller token:</p><p><code>http://&lt;this-pc&gt;:8787/?token=&lt;api_token&gt;</code></p>
@@ -77,13 +79,13 @@ section.view{display:none}section.view.on{display:block;animation:in .18s ease-o
 .grid{display:grid;gap:16px;grid-template-columns:repeat(12,1fr)}
 .s12{grid-column:span 12}.s8{grid-column:span 8}.s7{grid-column:span 7}.s6{grid-column:span 6}.s5{grid-column:span 5}.s4{grid-column:span 4}
 @media (max-width:1000px){.s8,.s7,.s6,.s5,.s4{grid-column:span 12}}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:18px;box-shadow:var(--shadow);min-width:0}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--rad);padding:18px;box-shadow:var(--shadow);min-width:0}
 .card>h2,.h2{display:flex;align-items:center;gap:10px;margin:0 0 14px;font:700 15px var(--display)}
 .h2 small,.card>h2 small{font:500 12px var(--sans);color:var(--ink3)}
 .card>h2 .sp{flex:1}
 .mut{color:var(--ink3)}.ink2{color:var(--ink2)}.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
 .up{color:var(--ok)}.down{color:var(--err)}
-.banner{display:none;margin-bottom:16px;padding:12px 16px;border-radius:var(--r);font-weight:600;border:1px solid}
+.banner{display:none;margin-bottom:16px;padding:12px 16px;border-radius:var(--rad);font-weight:600;border:1px solid}
 .banner.err{display:block;color:var(--err);border-color:color-mix(in srgb,var(--err) 40%,transparent);background:color-mix(in srgb,var(--err) 8%,var(--panel))}
 .banner.warn{display:block;color:var(--warn);border-color:color-mix(in srgb,var(--warn) 40%,transparent);background:color-mix(in srgb,var(--warn) 8%,var(--panel))}
 .banner a{font-weight:700}
@@ -94,12 +96,13 @@ section.view{display:none}section.view.on{display:block;animation:in .18s ease-o
 .hero{display:grid;grid-template-columns:repeat(6,1fr);gap:12px}
 @media (max-width:1100px){.hero{grid-template-columns:repeat(3,1fr)}}
 .stat{position:relative;padding:14px 14px 10px;border-radius:12px;background:var(--panel2);overflow:hidden;min-width:0}
-.stat:before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--k)}
-.stat .lab{font-size:12px;font-weight:600;color:var(--ink2);display:flex;justify-content:space-between;gap:6px}
+.stat .lab{font-size:12px;font-weight:600;color:var(--ink2);display:flex;justify-content:space-between;align-items:center;gap:6px}
+.stat .lab .kdot{margin-right:7px}
 .stat .val{font:800 34px/1.1 var(--display);margin:6px 0 2px;color:var(--ink);font-variant-numeric:tabular-nums}
 .stat .val.zero{color:var(--ink3)}
-.stat .cmp{font-size:12px;color:var(--ink3)}
-.stat svg{display:block;width:100%;height:28px;margin-top:6px}
+.stat .cmp{font-size:12px;color:var(--ink3);display:flex;flex-wrap:wrap;gap:0 8px}.stat .cmp b{font-weight:700}
+.stat .cmp .up,.stat .cmp .down{font-weight:700}
+.stat svg{display:block;width:100%;height:30px;margin-top:8px}
 .stat svg.stars{width:120px;height:24px;margin-top:8px}
 .herofoot{display:flex;gap:18px;flex-wrap:wrap;margin-top:14px;color:var(--ink2);font-size:13px}
 .herofoot b{font-family:var(--mono);color:var(--ink)}
@@ -116,6 +119,9 @@ td.nm{font-family:var(--sans);max-width:320px;overflow:hidden;text-overflow:elli
 td.nm a{text-decoration:none}td.nm a:hover{text-decoration:underline;color:var(--acc)}
 th.sort{cursor:pointer;user-select:none}th.sort:hover{color:var(--ink)}th.sort.on{color:var(--acc)}
 td svg.spark{width:90px;height:22px;vertical-align:middle}
+td svg.wk7{width:64px;height:20px;vertical-align:middle}
+.fit table td.nm,.fit table th:first-child{max-width:0;width:100%}
+@media (max-width:760px){.nophone{display:none}.fit table td.nm,.fit table th:first-child{min-width:100px}#mtable td.nm{max-width:150px}}
 .kdot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--k);margin-right:6px;vertical-align:1px}
 .empty{padding:18px 4px;color:var(--ink3);text-align:center;font-family:var(--sans)}
 /* ---- charts ---- */
@@ -131,16 +137,45 @@ td svg.spark{width:90px;height:22px;vertical-align:middle}
 .mini{background:var(--panel2);border-radius:10px;padding:10px 12px}
 .mini b{display:block;font:800 22px var(--display);font-variant-numeric:tabular-nums}.mini span{font-size:12px;color:var(--ink3)}
 @media (max-width:760px){.minis{grid-template-columns:repeat(2,1fr)}}
-.kp{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px}
-.kp div{background:var(--panel2);border-radius:10px;padding:12px}
-.kp b{display:block;font:800 20px var(--display);font-variant-numeric:tabular-nums}.kp span{font-size:12px;color:var(--ink3)}
-.lists{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px}
+.facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px 28px}
+@media (max-width:900px){.facts{grid-template-columns:minmax(0,1fr)}}
+.facts h3{margin:0 0 4px;font:700 12px var(--sans);color:var(--ink3);text-transform:uppercase;letter-spacing:.5px}
+.facts .fr{display:flex;justify-content:space-between;align-items:baseline;gap:16px;padding:9px 0;border-bottom:1px solid color-mix(in srgb,var(--line) 60%,transparent)}
+.facts .fr:last-child{border-bottom:0}
+.facts .fr>span{color:var(--ink2);min-width:0}.facts .fr>span small{display:block;color:var(--ink3);font-size:12px}
+.facts .fr>b{text-align:right;font:700 15px var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.facts .fr>b small{font:500 12px var(--sans);color:var(--ink3);margin-left:6px}
+.lists td.nm{white-space:normal}.lists td.nm>a,.lists td.nm>span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.35}
+.lists{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:16px}
+@media (max-width:420px){.lists{grid-template-columns:minmax(0,1fr)}}
 .lc{display:flex;align-items:flex-end;gap:8px;height:110px}.lc div{flex:1;display:flex;gap:3px;align-items:flex-end;height:100%}
 .lc i{flex:1;border-radius:3px 3px 0 0;min-height:2px}
+.acts{list-style:none;margin:0;padding:0}
+.acts li{display:flex;gap:12px;padding:11px 0;border-top:1px solid var(--line)}.acts li:first-child{border-top:0;padding-top:2px}
+.acts li>i{flex:none;width:8px;height:8px;border-radius:50%;margin-top:7px;background:var(--ink3)}
+.acts li.now>i{background:var(--warn)}.acts li.fix>i{background:var(--acc)}
+.acts li>div{min-width:0}.acts b{display:block;font-weight:650;overflow-wrap:anywhere}.acts b a{color:inherit}
+.acts span{display:block;color:var(--ink2);font-size:13px;margin-top:2px}
+.fn .fs{display:flex;align-items:baseline;gap:10px;padding:6px 0}.fn .fs>span{flex:1;font-weight:600}
+.fn .fs>span small{display:block;font-weight:400;color:var(--ink3);font-size:12px}
+.fn .fs b{font-size:17px;font-variant-numeric:tabular-nums}.fn .fs>small{color:var(--ink3);font-size:12px;min-width:96px;text-align:right}
+.fn .fc{display:flex;align-items:center;gap:8px;padding:3px 0 3px 2px;color:var(--ink2);font-size:13px}
+.fn .fc .ar{color:var(--ink3);width:14px;text-align:center}.fn .fc .rt{font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums}
+.fn .fc .y{margin-left:auto;font-variant-numeric:tabular-nums}
+.fn .take{margin:12px 0 0;padding-top:12px;border-top:1px solid var(--line);color:var(--ink2);font-size:13px}
 .tail{display:flex;height:10px;border-radius:999px;overflow:hidden;background:var(--panel2);margin:6px 0 12px}
 .legend{display:flex;gap:14px;font-size:12px;color:var(--ink3);flex-wrap:wrap}.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
 /* ---- feed ---- */
 .feed{display:flex;flex-direction:column}
+.fsum{display:flex;flex-wrap:wrap;gap:6px;margin:-4px 0 10px}
+.fsum>span{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;background:var(--panel2);font-size:12.5px;color:var(--ink2)}
+.fsum b{font:700 12.5px var(--mono);color:var(--ink)}
+.mtools{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:-4px 0 12px}
+.mtools input[type=search]{flex:0 1 280px;min-height:36px;padding:6px 11px;border-radius:9px;border:1px solid var(--line);background:var(--panel2);outline:none}
+.mtools input[type=search]:focus{border-color:var(--acc);box-shadow:0 0 0 3px color-mix(in srgb,var(--acc) 24%,transparent)}
+.reply{display:flex;flex-direction:column}.reply a{display:flex;justify-content:space-between;gap:12px;padding:8px 0;text-decoration:none;border-bottom:1px solid color-mix(in srgb,var(--line) 60%,transparent)}
+.reply a:last-child{border:0}.reply a span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.reply a:hover span{color:var(--acc);text-decoration:underline}
+.reply a b{font:700 13px var(--mono);color:var(--warn)}
 .ev{display:grid;grid-template-columns:58px 1fr auto;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid color-mix(in srgb,var(--line) 60%,transparent)}
 .ev:last-child{border:0}
 .tag{font:700 12px var(--mono);padding:3px 0;border-radius:6px;text-align:center;color:var(--k);background:color-mix(in srgb,var(--k) 14%,transparent)}
@@ -149,11 +184,14 @@ td svg.spark{width:90px;height:22px;vertical-align:middle}
 .cm .who{font-weight:600}.cm .on{color:var(--ink3);font-size:12px}.cm p{margin:4px 0 0;color:var(--ink2)}
 /* ---- health ---- */
 .src{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
-.src>div{background:var(--panel2);border-radius:12px;padding:14px;border-left:4px solid var(--ok)}
-.src>div.warn{border-color:var(--warn)}.src>div.err{border-color:var(--err)}.src>div.idle{border-color:var(--ink3)}
-.src b{display:block;font-weight:700;margin-bottom:4px}.src .e{margin-top:6px;font:12px var(--mono);color:var(--err);word-break:break-word}
+.src>div{background:var(--panel2);border-radius:12px;padding:14px;--st:var(--ok)}
+.src>div.warn{--st:var(--warn)}.src>div.err{--st:var(--err)}.src>div.idle{--st:var(--ink3)}
+.src b{display:flex;align-items:center;gap:8px;font-weight:700;margin-bottom:4px;min-width:0;overflow-wrap:anywhere}
+.src b:before{content:"";flex:none;width:8px;height:8px;border-radius:50%;background:var(--st)}
+.src>div.ok b:before,.src>div:not(.warn):not(.err):not(.idle) b:before{box-shadow:0 0 0 3px color-mix(in srgb,var(--ok) 20%,transparent)}
+.hsum{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}.src .e{margin-top:6px;font:12px var(--mono);color:var(--err);word-break:break-word}
 .meter{height:8px;border-radius:999px;background:var(--panel2);overflow:hidden;margin:8px 0}.meter i{display:block;height:100%;background:var(--acc)}
-dl.kv{display:grid;grid-template-columns:max-content 1fr;gap:6px 16px;margin:0}dl.kv dt{color:var(--ink3)}dl.kv dd{margin:0;font-family:var(--mono);word-break:break-all}
+dl.kv{display:grid;grid-template-columns:max-content 1fr;gap:6px 16px;margin:0}dl.kv dt{color:var(--ink3)}dl.kv dd{margin:0;font-family:var(--mono);overflow-wrap:anywhere}
 /* ---- controls (shared) ---- */
 main:focus{outline:none}#ctset{color:var(--warn);background:color-mix(in srgb,var(--warn) 14%,var(--panel))}
 .sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
@@ -208,7 +246,7 @@ input[type=checkbox]{width:18px;height:18px;accent-color:var(--acc);margin:0;fle
 .setnav{position:sticky;top:calc(var(--toph,104px) + 20px);display:flex;flex-direction:column;gap:2px}
 .setnav a{display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:9px;text-decoration:none;color:var(--ink2);font-weight:600}
 .setnav a:hover{background:var(--panel);color:var(--ink)}
-.setnav a[aria-current]{background:var(--panel);color:var(--ink);box-shadow:inset 3px 0 0 var(--acc),var(--shadow)}
+.setnav a[aria-current]{background:var(--panel);color:var(--acc);box-shadow:var(--shadow)}
 .setnav .dd{margin-left:auto;width:8px;height:8px;border-radius:50%;flex:none}
 .setnav a.dirty .dd{background:var(--warn)}.setnav a.bad .dd{background:var(--err)}
 .form{display:flex;flex-direction:column;gap:20px;padding-bottom:110px}
@@ -258,6 +296,8 @@ details.disc textarea{background:var(--panel)}
 .pnl .pt{display:flex;gap:8px;align-items:center}.pnl .pt input{flex:1;background:var(--panel)}
 .pnl .pm{display:flex;gap:6px 12px;align-items:center;flex-wrap:wrap;margin-top:10px;font-size:13px;color:var(--ink2)}
 .pnl .ferr{margin-top:8px}
+.pnl .btn.dan:not(:hover):not(:focus-visible){color:var(--ink3)}
+.cnt b{color:var(--ok);font-weight:600}.cnt em{color:var(--err);font-style:normal;font-weight:600}
 @media (max-width:560px){.pnl .pt{flex-wrap:wrap}.pnl .pt input{flex:1 1 100%}}
 .ch{border:1px solid var(--line);border-radius:12px;background:var(--panel2)}
 .ch.bad{border-color:color-mix(in srgb,var(--err) 55%,var(--line))}
@@ -276,7 +316,7 @@ details.disc textarea{background:var(--panel)}
 .pw{display:flex;gap:6px;align-items:flex-start}.pw input,.pw textarea{flex:1}
 .secret{display:flex;gap:8px;align-items:center;flex-wrap:wrap;min-height:40px}
 .addch{margin-top:12px}.addch select{width:auto;min-width:200px}
-.esum{border:1px solid color-mix(in srgb,var(--err) 45%,var(--line));background:color-mix(in srgb,var(--err) 6%,var(--panel));border-radius:var(--r);padding:14px 18px;outline:none}
+.esum{border:1px solid color-mix(in srgb,var(--err) 45%,var(--line));background:color-mix(in srgb,var(--err) 6%,var(--panel));border-radius:var(--rad);padding:14px 18px;outline:none}
 .esum:focus-visible{box-shadow:0 0 0 3px color-mix(in srgb,var(--err) 30%,transparent)}
 .esum h2{margin:0 0 6px;font:700 15px var(--display);color:var(--err)}.esum ul{margin:0;padding-left:20px}.esum li{margin:3px 0}
 @media (max-width:900px){.set{grid-template-columns:minmax(0,1fr);gap:12px}
@@ -299,9 +339,10 @@ body[data-view=settings].dirty .savebar{transform:translate(-50%,0);visibility:v
 @media (max-width:560px){.savebar{left:10px;right:10px;width:auto;transform:translateY(170%)}
  body[data-view=settings].dirty .savebar{transform:none}.savebar .msg{flex:1}.savebar .where{display:none}}
 @media (prefers-reduced-motion:reduce){.savebar{transition:none}}
-.toast{position:fixed;right:18px;bottom:18px;z-index:40;padding:12px 16px;border-radius:12px;background:var(--panel);border:1px solid var(--line);border-left-width:4px;
+.toast{position:fixed;right:18px;bottom:18px;z-index:40;padding:12px 16px;border-radius:12px;background:var(--panel);border:1px solid var(--line);
  box-shadow:0 10px 30px rgba(0,0,0,.18);font-weight:600;display:none;max-width:min(440px,calc(100vw - 24px))}
-.toast.show{display:block}.toast.ok{border-left-color:var(--ok)}.toast.err{border-left-color:var(--err);color:var(--err)}
+.toast.show{display:flex;align-items:center;gap:10px}.toast:before{content:"";flex:none;width:8px;height:8px;border-radius:50%;background:var(--ok)}
+.toast.err{color:var(--err);border-color:color-mix(in srgb,var(--err) 45%,var(--line))}.toast.err:before{background:var(--err)}
 body[data-view=settings].dirty .toast{bottom:84px}
 @media (max-width:560px){.toast{left:12px;right:12px;max-width:none}}
 dialog.dlg{border:1px solid var(--line);border-radius:16px;background:var(--panel);color:var(--ink);padding:22px;width:min(420px,calc(100vw - 32px));
@@ -310,7 +351,7 @@ dialog.dlg::backdrop{background:rgba(8,12,18,.5)}
 dialog.dlg h2{margin:0 0 8px;font:700 17px var(--display)}dialog.dlg p{margin:0 0 20px;color:var(--ink2)}
 dialog.dlg .row{justify-content:flex-end}
 @media (max-width:760px){main{padding:14px}.bar{padding:10px 14px 0}.card{padding:14px}nav.tabs{padding:4px 6px 0;gap:0}
- nav.tabs a{padding:8px 10px 10px}#ydaynote{display:none}.acct{display:none}}
+ nav.tabs a{padding:8px 10px 10px}.acct{display:none}}
 </style></head><body>
 <a class=skip href="#main">Skip to content</a>
 <div class=top>
@@ -327,26 +368,31 @@ dialog.dlg .row{justify-content:flex-end}
 <section class=view id=v-overview><div class=grid>
  <div class="card s12"><h2>Today<small id=since></small><span class=sp></span><small id=ydaynote></small></h2>
   <div class=hero id=hero></div><div class=herofoot id=herofoot></div></div>
- <div class="card s7"><h2>Top models<span class=sp></span><span class=seg id=topseg></span></h2><div class=tw id=top></div></div>
+ <div class="card s7"><h2>To do<span class=sp></span><small id=actn></small></h2><ul class=acts id=acts></ul></div>
+ <div class="card s5"><h2>Funnel<span class=sp></span><small>30 days, and yesterday</small></h2><div class=fn id=fun></div></div>
+ <div class="card s7"><h2>Top models<span class=sp></span><span class=seg id=topseg></span></h2><div class="tw fit" id=top></div></div>
  <div class="card s5"><h2>Followers<span class=sp></span><small>last 30 days</small></h2><div class=minis id=fol></div>
   <div class=bars id=folbars style="height:70px"></div><div class=axis><span>30 days ago</span><span>today</span></div></div>
- <div class="card s5"><h2>7 and 30 days</h2><div class=tw id=periods></div></div>
+ <div class="card s5"><h2>7 and 30 days<span class=sp></span><small>bars: last 7 days</small></h2><div class="tw fit" id=periods></div></div>
  <div class="card s7"><h2>Best times<span class=sp></span><span class=seg id=bestseg></span></h2><div id=best></div></div>
- <div class="card s12"><h2>Creator at a glance<span class=sp></span><small id=cprog></small></h2><div class=kp id=ckp></div></div>
+ <div class="card s12"><h2>Creator at a glance<span class=sp></span><small id=cprog></small></h2><div class=facts id=ckp></div></div>
 </div></section>
 
 <section class=view id=v-models><div class=grid>
  <div class="card s12"><h2>All models<small id=mcount></small><span class=sp></span><span class=seg id=mseg></span></h2>
+  <div class=mtools><label class=sr for=mq>Filter models</label><input type=search id=mq placeholder="Filter by name" autocomplete=off><label class=chk><input type=checkbox id=mact> Hide models with no downloads</label></div>
   <div class=tw id=mtable></div></div>
  <div class="s12 lists" id=cgrid></div>
 </div></section>
 
 <section class=view id=v-activity><div class=grid>
- <div class="card s7"><h2>Today's activity<span class=sp></span><small>newest first</small></h2><div class=feed id=feed></div></div>
- <div class="card s5"><h2>Recent comments<span class=sp></span><small id=unans></small></h2><div id=comments></div></div>
+ <div class="card s7"><h2>Today's activity<span class=sp></span><small id=feednote>newest first</small></h2><div class=fsum id=fsum></div><div class=feed id=feed></div></div>
+ <div class="s5" style="display:flex;flex-direction:column;gap:16px;min-width:0">
+  <div class=card><h2>Needs a reply<span class=sp></span><small id=unans></small></h2><div class=reply id=reply></div></div>
+  <div class=card><h2>Recent comments</h2><div id=comments></div></div></div>
 </div></section>
 
-<section class=view id=v-health><div class=grid>
+<section class=view id=v-health><div class=hsum id=hsum></div><div class=grid>
  <div class="card s12"><h2>MakerWorld data sources</h2><div class=src id=srcs></div></div>
  <div class="card s6"><h2>Request budget<span class=sp></span><small>shared by every MakerWorld request</small></h2><div id=limiter></div></div>
  <div class="card s6"><h2>Poller</h2><dl class=kv id=pinfo></dl></div>
@@ -371,7 +417,7 @@ const K=[["downloads","Downloads","d"],["prints","Prints","p"],["boosts","Boosts
 const KC={boosts:"b",likes:"l",collects:"c",downloads:"d",prints:"p",comment:"f",ratings:"r"};
 const WD=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 const EV={health:"Health alerts",comment:"Comments",follower:"Followers",download:"Downloads",print:"Prints",boost:"Boosts",like:"Likes",collect:"Collects",rating:"Ratings",points:"Points"};
-let S=null,C=null,topMode="today",bestM="downloads",mSort="d30",mDir=-1,mView="30";
+let S=null,C=null,topMode="today",bestM="downloads",mSort="d30",mDir=-1,mView="30",mQ="",mAct=false;
 const SP={};  // model id -> [daily downloads] for sparklines
 const $=id=>document.getElementById(id),fmt=n=>(+n||0).toLocaleString(),sg=n=>(n>0?"+":"")+fmt(n);
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -414,59 +460,142 @@ function renderHead(){const h=S.health||{},st=S.status||{};
  else if(h.auth=="none"){bn.className="banner warn";bn.innerHTML=`No MakerWorld cookie yet, so only public stats show. <a href="#settings/mw">Add one in Settings</a>.`}
  else bn.className="banner";
  const fails=Object.values(h.src||{}).filter(x=>x.f).length;const ct=$("cthl");ct.hidden=!fails;ct.textContent=fails;
- const nf=(S.feed||[]).length;$("ctact").hidden=!nf;$("ctact").textContent=nf;tabScroll()}
+ // The poller keeps the last 40 events, so a full list may be missing earlier ones.
+ const nf=((S.dash||{}).feedAll||S.feed||[]).length;$("ctact").hidden=!nf;$("ctact").textContent=nf>=40?"40+":nf;tabScroll()}
 
 /* ---------- overview ---------- */
-// Ratings have no hourly buckets, so the tile shows the average as stars instead of a sparkline.
+// The poller's local hour (S.tz is its UTC offset in seconds), so the "by now" comparison
+// lines up with its hourly buckets even if the browser is in another timezone.
+// Anchored at S.t, when today's numbers were measured.
+const pSec=()=>{const t=S&&S.t?S.t:Date.now()/1e3;return S&&S.tz!=null?(((t+S.tz)%86400)+86400)%86400:(new Date(t*1e3).getHours()*3600+new Date(t*1e3).getMinutes()*60)};
+const pHour=()=>Math.floor(pSec()/3600);
+// Yesterday's total by this time: the hourly buckets count gross gains while the day total is
+// net, so scale the total by the share of the buckets reached by now (the current hour prorated).
+function byNow(yk,total){const sec=pSec(),h=Math.floor(sec/3600),all=sum(yk,24);if(!all||total==null)return null;
+ return Math.round(total*(sum(yk,h)+(+yk[h]||0)*((sec%3600)/3600))/all)}
+const sum=(a,n)=>(a||[]).slice(0,n).reduce((x,v)=>x+(+v||0),0);
+// Hourly line for today (up to now) over yesterday's full day, dashed and faint.
+function dayLine(td,yd,color,h,w=120,ht=30){const all=[...(td||[]).slice(0,h+1),...(yd||[])],mx=Math.max(1,...all),st=w/23;
+ const pts=a=>a.map((v,i)=>`${(i*st).toFixed(1)},${(ht-2-(v/mx)*(ht-5)).toFixed(1)}`).join(" ");
+ const t=(td||[]).slice(0,h+1);
+ return `<svg viewBox="0 0 ${w} ${ht}" preserveAspectRatio=none aria-hidden=true>`+
+  (yd&&yd.length?`<polyline points="${pts(yd)}" fill=none stroke="var(--ink3)" stroke-opacity=.55 stroke-width=1.2 stroke-dasharray="3 3" vector-effect=non-scaling-stroke />`:"")+
+  (t.length>1?`<polygon points="0,${ht} ${pts(t)} ${((t.length-1)*st).toFixed(1)},${ht}" style="fill:var(--${color})" opacity=.14 /><polyline points="${pts(t)}" fill=none style="stroke:var(--${color})" stroke-width=1.7 stroke-linejoin=round vector-effect=non-scaling-stroke />`:"")+`</svg>`}
+// Ratings have no hourly buckets, so the tile shows the average as stars instead of a line.
 function ratingTile(t,y,tot){const v=t.ratings||0,a=+tot.ratingAvg||0,pct=Math.max(0,Math.min(100,a/5*100));
- return `<div class=stat style="--k:var(--r)"><div class=lab><span>Ratings</span><span title="average of ${fmt(tot.ratings)} ratings">${a?a.toFixed(2)+"★":""}</span></div>
-  <div class="val${v?"":" zero"}">${v?sg(v):"0"}</div><div class=cmp>${y.ratings!=null?"yesterday "+fmt(y.ratings):fmt(tot.ratings||0)+" total"}</div>
+ return `<div class=stat style="--k:var(--r)"><div class=lab><span><span class=kdot></span>Ratings</span><span title="average of ${fmt(tot.ratings)} ratings">${a?a.toFixed(2)+" avg":""}</span></div>
+  <div class="val${v?"":" zero"}">${v?sg(v):"0"}</div><div class=cmp>${y.ratings!=null?`<span>${fmt(y.ratings)} all day yesterday</span>`:`<span>${fmt(tot.ratings||0)} total</span>`}</div>
   <svg class=stars viewBox="0 0 120 24" role=img aria-label="${a?a.toFixed(1)+" out of 5 stars":"no ratings yet"}"><defs><linearGradient id=rg>
-   <stop offset="${pct}%" stop-color="var(--r)"/><stop offset="${pct}%" stop-color="color-mix(in srgb,var(--r) 22%,var(--panel2))"/></linearGradient></defs>
+   <stop offset="${pct}%" style="stop-color:var(--r)"/><stop offset="${pct}%" style="stop-color:color-mix(in srgb,var(--r) 22%,var(--panel2))"/></linearGradient></defs>
    <path fill="url(#rg)" d="${[0,1,2,3,4].map(i=>STAR(i*24)).join("")}"/></svg></div>`}
 const STAR=x=>{let d="";for(let i=0;i<10;i++){const r=i%2?4.6:10.5,t=-Math.PI/2+i*Math.PI/5;d+=(i?"L":"M")+(x+12+r*Math.cos(t)).toFixed(1)+" "+(12.6+r*Math.sin(t)).toFixed(1)}return d+"Z"};
-function renderOverview(){const t=S.today||{},y=S.yday||{},hr=S.hours||{};
+const PERIOD_ROWS=[...K,["views","Views","acc"],["impressions","Impressions","ink3"],["points","Points","r"]];
+function wk7(vals,color){const mx=Math.max(1,...vals),n=vals.length,bw=64/7;
+ return `<svg class=wk7 viewBox="0 0 64 20" aria-hidden=true>${vals.map((v,i)=>`<rect x="${(i*bw+1).toFixed(1)}" y="${(20-Math.max(1.5,v/mx*19)).toFixed(1)}" width="${(bw-2).toFixed(1)}" height="${Math.max(1.5,v/mx*19).toFixed(1)}" rx=1.5 style="fill:var(--${color})" opacity="${i==n-1?1:.55}"/>`).join("")}</svg>`}
+function renderOverview(){const t=S.today||{},y=S.yday||{},hr=S.hours||{},X=S.dash||{},yh=X.yhours,h=pHour();
  $("since").textContent=S.midnight?"since midnight":"since "+hm(S.since||0);
- $("ydaynote").textContent=y.date?"compared with all of yesterday":"";
- $("hero").innerHTML=K.map(([k,l,c])=>{const v=t[k]||0,yv=y[k];const hv=hr[k]||[];
-  return `<div class=stat style="--k:var(--${c})"><div class=lab><span>${l}</span></div>
-   <div class="val${v?"":" zero"}">${v?sg(v):"0"}</div><div class=cmp>${yv!=null?"yesterday "+fmt(yv):"&nbsp;"}</div>
-   ${hv.length>1?spark(hv,c,120,28):"<svg></svg>"}</div>`}).join("")+ratingTile(t,y,S.total||{});
- const tot=S.total||{};
- $("herofoot").innerHTML=[t.points!=null?`<span>Points today <b>${sg(+(+t.points).toFixed(1))}</b></span>`:"",
-  `<span>Lifetime downloads <b>${fmt(tot.downloads)}</b></span>`,`<span>Prints <b>${fmt(tot.prints)}</b></span>`,
-  `<span>Points <b>${fmt(Math.round(tot.points||0))}</b></span>`,`<span>Models <b>${fmt(tot.models)}</b></span>`].join("");
+ $("ydaynote").textContent=yh?"dashed line: yesterday":"";
+ $("hero").innerHTML=K.map(([k,l,c])=>{const v=t[k]||0,yv=y[k],yk=yh&&yh[k];
+  let cmp="&nbsp;";
+  const by=yk?byNow(yk,yv):null;
+  if(by!=null){const d=v-by;cmp=`<span class="${d>0?"up":d<0?"down":""}">${d?sg(d):"±0"}</span><span>vs ${fmt(by)} by now yesterday</span>`}
+  else if(yv!=null)cmp=`<span>${fmt(yv)} all day yesterday</span>`;
+  return `<div class=stat style="--k:var(--${c})" title="${yv!=null?l+" yesterday: "+fmt(yv)+" all day":""}"><div class=lab><span><span class=kdot></span>${l}</span></div>
+   <div class="val${v?"":" zero"}">${v?sg(v):"0"}</div><div class=cmp>${cmp}</div>
+   ${dayLine(hr[k],yk,c,h)}</div>`}).join("")+ratingTile(t,y,S.total||{});
+ const tot=S.total||{},m=S.month||{};
+ $("herofoot").innerHTML=[t.points!=null?`<span>Points today <b>${sg(+(+t.points).toFixed(1))}</b>${y.points!=null?` <span class=mut>(yesterday ${nf(y.points)})</span>`:""}</span>`:"",
+  m.yday_views!=null?`<span>Views yesterday <b>${fmt(m.yday_views)}</b></span>`:"",
+  m.yday_impressions!=null?`<span>Impressions yesterday <b>${fmt(m.yday_impressions)}</b></span>`:"",
+  `<span>Followers <b>${fmt(tot.followers)}</b></span>`,`<span>Models <b>${fmt(tot.models)}</b></span>`].join("");
  seg($("topseg"),[["today","Today"],["week","7 days"],["life","Lifetime"]],topMode,v=>topMode=v);
  const rows=((S.top||{})[topMode]||[]);
- $("top").innerHTML=table(["Model","30 days",...K.map(([,l,c])=>`<span class=kdot style="--k:var(--${c})"></span>${l.slice(0,2)}`)],
-  rows.map(r=>`<tr><td class=nm>${mwLink(r.id,r.n)}</td><td>${spark(SP[r.id],"d")}</td><td>${r.d}</td><td>${r.p}</td><td>${r.b}</td><td>${r.l}</td><td>${r.c}</td></tr>`),
+ $("top").innerHTML=table(["Model",`<span class=nophone>30 days</span>`,...K.map(([,l,c])=>`<span title="${l}"><span class=kdot style="--k:var(--${c})"></span>${l=="Downloads"?"DL":l=="Collects"?"Coll.":l}</span>`)],
+  rows.map(r=>`<tr><td class=nm>${mwLink(r.id,r.n)}</td><td class=nophone>${spark(SP[r.id],"d")}</td><td>${r.d}</td><td>${r.p}</td><td>${r.b}</td><td>${r.l}</td><td>${r.c}</td></tr>`),
   topMode=="today"?"No model activity yet today":"No activity yet");
  const fo=S.followers||{},fs=fo.series30||[],fm=Math.max(1,...fs.map(Math.abs));
  $("fol").innerHTML=[[fmt(fo.total),"total",""],[sg(fo.today||0),"today",fo.today],[sg(fo.d7||0),"7 days",fo.d7],[sg(fo.d30||0),"30 days",fo.d30]]
   .map(([v,l,n])=>`<div class=mini><b class="${n>0?"up":n<0?"down":""}">${v}</b><span>${l}</span></div>`).join("");
  $("folbars").innerHTML=fs.map((v,i)=>`<i class="${v<0?"neg":v>0?"hi":""}" style="height:${Math.max(3,Math.abs(v)/fm*100)}%" title="${fs.length-1-i?fs.length-1-i+" days ago":"today"}: ${sg(v)}"></i>`).join("");
- const d7={};(S.days||[]).forEach(d=>K.forEach(([k])=>d7[k]=(d7[k]||0)+(d[k]||0)));const m=S.month||{};
- const m30={boosts:m.boosts,likes:m.likes,collects:m.saves,downloads:m.downloads,prints:m.prints};
- $("periods").innerHTML=table(["","7 days","30 days","Lifetime"],K.map(([k,l,c])=>
-  `<tr><td class=nm><span class=kdot style="--k:var(--${c})"></span>${l}</td><td>${sg(d7[k]||0)}</td><td>${m30[k]!=null?sg(m30[k]):"–"}</td><td>${fmt(tot[k])}</td></tr>`).concat(
-  m.views!=null?[`<tr><td class=nm class=mut>Views</td><td>–</td><td>${fmt(m.views)}</td><td>–</td></tr>`]:[]));
+ const days=S.days||[],d7={};days.forEach(d=>PERIOD_ROWS.forEach(([k])=>d7[k]=(d7[k]||0)+(+d[k]||0)));const a=(C&&C.acct)||{};
+ const m30={boosts:m.boosts,likes:m.likes,collects:m.saves,downloads:m.downloads,prints:m.prints,views:m.views,impressions:m.impressions,points:m.points};
+ // Views: both columns from the per-model analytics when there, so 7 and 30 days agree.
+ if(a.views30!=null)m30.views=a.views30;
+ const w7={views:a.views7,impressions:null,points:d7.points!=null?d7.points:null};
+ const life={...tot,views:null,impressions:null};
+ const cell=(v,s)=>v==null?"<span class=mut>–</span>":s?sg(Math.round(v)):fmt(Math.round(v));
+ $("periods").innerHTML=table(["",`<span class=nophone>Daily</span>`,"7 days","30 days","Lifetime"],PERIOD_ROWS.map(([k,l,c])=>{
+  const series=K.some(x=>x[0]==k)||k=="points"?days.map(d=>+d[k]||0):null,v7=k in w7?w7[k]:d7[k];
+  if(m30[k]==null&&v7==null&&life[k]==null)return "";
+  return `<tr><td class=nm><span class=kdot style="--k:var(--${c})"></span>${l}</td><td class=nophone>${series&&series.length>1?wk7(series,c):""}</td><td>${cell(v7,K.some(x=>x[0]==k)||k=="points")}</td><td>${cell(m30[k],K.some(x=>x[0]==k)||k=="points")}</td><td>${cell(life[k])}</td></tr>`}).filter(Boolean));
  const ins=S.insights||{};seg($("bestseg"),[["downloads","Downloads"],["prints","Prints"],["boosts","Boosts"]],bestM,v=>bestM=v);
  const b=ins[bestM];
  if(!ins.has||!b){$("best").innerHTML=`<p class=mut>Best times show after a week of data. ${ins.days||0} of 7 days collected so far.</p>`}else{
-  const mx=Math.max(1,...b.hour);
-  $("best").innerHTML=`<div class=bars>${b.hour.map((v,i)=>`<i class="${i==b.bestHour?"hi":""}" style="height:${Math.max(3,v/mx*100)}%" title="${hh(i)}, ${v}"></i>`).join("")}</div>
+  const mx=Math.max(1,...b.hour),wn=X.wdayN||[],tw=X.todayWd,tsum=sum((S.hours||{})[bestM],24),
+   av=b.wday.map((v,i)=>wn[i]?(v-(i===tw?tsum:0))/wn[i]:null),bd=av.some(v=>v!=null)?av.indexOf(Math.max(...av.filter(v=>v!=null))):b.bestDay;
+  $("best").innerHTML=`<div class=bars>${b.hour.map((v,i)=>`<i class="${i==b.bestHour?"hi":""}" style="height:${Math.max(3,v/mx*100)}%" title="${hh(i)}, ${v} over ${ins.days} days"></i>`).join("")}</div>
   <div class=axis><span>12a</span><span>6a</span><span>12p</span><span>6p</span><span>12a</span></div>
-  <div class=wk>${b.wday.map((v,i)=>`<div class="${i==b.bestDay?"hi":""}">${WD[i]}<b>${fmt(v)}</b></div>`).join("")}</div>
-  <p class=mut style="margin:12px 0 0">Busiest hour ${hh(b.bestHour)}, busiest day ${WD[b.bestDay]||"–"}, over the last ${ins.days} days.</p>`}
- renderKpis()}
-function renderKpis(){if(!C)return;const a=C.acct||{},p=C.progress||{};
+  <div class=wk>${b.wday.map((v,i)=>`<div class="${i==bd?"hi":""}" title="${av[i]!=null?nf(av[i])+" a day over "+wn[i]+" full "+WD[i]+(wn[i]==1?"":"s"):fmt(v)}">${WD[i]}<b>${av[i]!=null?nf(av[i]):fmt(v)}</b></div>`).join("")}</div>
+  <p class=mut style="margin:12px 0 0">Busiest hour ${hh(b.bestHour)}, busiest day ${WD[bd]||"–"}${wn.length?" (average a day)":""}, over the last ${ins.days} days.</p>`}
+ renderActs();renderFunnel();renderKpis()}
+function renderKpis(){if(!C)return;const a=C.acct||{},p=C.progress||{},fo=S.followers||{};
  $("cprog").textContent=p.of?(p.have<p.of?`analytics for ${p.have} of ${p.of} models so far`:`analytics for all ${p.of} models`):"waiting for the first poll";
- const e=(a.e100||{}).m||{},tr=a.ptsTrend=="up"?"up":a.ptsTrend=="down"?"down":"";
- $("ckp").innerHTML=[[pc(a.dpv7),"downloads per view, 7 days"],[pc(a.dpv30),"downloads per view, 30 days"],[pc(a.ppd,0),"prints per download"],
-  [nf(e.all),"likes, collects, comments per 100 downloads"],[`${nf(a.pts7)} / ${nf(a.pts30)}`,"model points, 7 / 30 days"],
-  [`<span class="${tr}">${nf(a.pts7avg)}</span>`,`points a day (was ${nf(a.ptsPrev7avg)})`],
-  [`${a.fol7??"–"} / ${a.fol30??"–"}`,"followers from models, 7 / 30 days"],[a.rt?`${nf(a.ra,2)}★`:"–",`average of ${fmt(a.rt||0)} ratings`],[`<a href="#activity" style="text-decoration:none">${a.unans??"–"}</a>`,"unanswered comments"]]
-  .map(([v,l])=>`<div><b>${v}</b><span>${l}</span></div>`).join("")}
+ const e=(a.e100||{}).m||{},tr=a.ptsTrend=="up"?"up":a.ptsTrend=="down"?"down":"",dd=a.dpv7!=null&&a.dpv30!=null?(a.dpv7>a.dpv30?"up":a.dpv7<a.dpv30?"down":""):"";
+ const row=(l,sub,v,extra="")=>`<div class=fr><span>${l}${sub?`<small>${sub}</small>`:""}</span><b>${v}${extra?`<small>${extra}</small>`:""}</b></div>`;
+ const grp=(h,rows)=>`<div><h3>${h}</h3>${rows.join("")}</div>`;
+ $("ckp").innerHTML=[
+  grp("Conversion",[row("Downloads per view","7 days",`<span class="${dd}">${pc(a.dpv7)}</span>`,`30d ${pc(a.dpv30)}`),
+   row("Prints per download","lifetime",pc(a.ppd,0),a.ppd30!=null?`30d ${pc(a.ppd30,0)}`:""),
+   row("Likes, collects, comments","per 100 downloads, 30 days",nf(e.all))]),
+  grp("Points",[row("Points a day","7-day average",`<span class="${tr}">${nf(a.pts7avg)}</span>`,`was ${nf(a.ptsPrev7avg)}`),
+   row("Model points","7 / 30 days",`${nf(a.pts7,0)} / ${nf(a.pts30,0)}`),
+   row("Points, all sources","30 days",S.month&&S.month.points!=null?nf(S.month.points,0):"–")]),
+  grp("Audience",[row("New followers","7 / 30 days",`${sg(fo.d7||0)} / ${sg(fo.d30||0)}`,(a.fol30?`${a.fol30} via models`:"")),
+   row("Average rating",`${fmt(a.rt||0)} ratings`,a.rt?nf(a.ra,2):"–"),
+   row("Unanswered comments","",`<a href="#activity" style="color:${a.unans?"var(--warn)":"inherit"};text-decoration:none">${a.unans??"–"}</a>`)])].join("")}
+
+/* ---------- to do and funnel ---------- */
+const med=a=>{a=a.filter(v=>v!=null).sort((x,y)=>x-y);const n=a.length,i=n>>1;return n?(n%2?a[i]:(a[i-1]+a[i])/2):null};
+// Models that lag the creator's own typical rates. Medians, so one hit model doesn't set the bar.
+function diag(){const ms=Object.values(C&&C.models||{}),has=ms.filter(r=>r.has);
+ const md=med(has.filter(r=>r.m.v>=30).map(r=>r.dpv30)),mp=med(ms.filter(r=>r.life.d>=15).map(r=>r.ppd));
+ const miss=r=>Math.round(r.m.v*(md-r.dpv30));
+ const under=md?has.filter(r=>r.m.v>=150&&r.dpv30!=null&&r.dpv30<md*.5).sort((a,b)=>miss(b)-miss(a)):[];
+ const lowP=r=>mp&&r.life.d>=15&&r.ppd!=null&&r.ppd<mp*.5,lowR=r=>r.rt>=3&&r.ra!=null&&r.ra<4.5;
+ const prn=ms.filter(r=>lowP(r)||lowR(r)).sort((a,b)=>b.life.d-a.life.d);
+ return {ms,has,md,mp,under,prn,miss,lowP,lowR}}
+function renderActs(){const el=$("acts");if(!C){el.innerHTML=`<li><div><span>Waiting for creator stats</span></div></li>`;$("actn").textContent="";return}
+ const D=diag(),a=C.acct||{},it=[],add=(k,o,t,w)=>it.push({k,o,t,w});
+ if(a.unans)add("now",0,`<a href="#activity">Reply to ${a.unans} comment${a.unans==1?"":"s"}</a>`,"Comments on your models with no answer from you yet.");
+ D.has.filter(r=>r.mom&&r.mom.rising).sort((x,y)=>y.mom.y-x.mom.y).slice(0,2).forEach(r=>
+  add("now",1,`${mwLink(r.id,r.n)} is taking off`,`${fmt(r.mom.y)} downloads yesterday against ${nf(r.mom.avg)} a day before. A good moment to answer its comments and share it.`));
+ const la=a.launch;if(la&&la.day>=2&&la.pct!=null&&la.pct<25)
+  add("fix",2,`${mwLink(la.id,la.n)} is launching slowly`,`Day ${la.day}: behind ${100-la.pct}% of your ${la.past} earlier launches. Share it, or try a stronger cover image.`);
+ D.under.slice(0,2).forEach(r=>add("fix",3,`Improve the page for ${mwLink(r.id,r.n)}`,
+  `${fmt(r.m.v)} views in 30 days but ${pc(r.dpv30)} downloaded, against ${pc(D.md)} for your typical model. That's about ${fmt(D.miss(r))} downloads missed. Try a new cover photo or a clearer description.`));
+ D.prn.slice(0,2).forEach(r=>D.lowR(r)?add("fix",4,`${mwLink(r.id,r.n)} is rated ${nf(r.ra,1)}★`,`${fmt(r.rt)} ratings. Read the reviews for print problems.`)
+  :add("fix",4,`Check the print profile for ${mwLink(r.id,r.n)}`,`${fmt(r.life.d)} downloads, ${pc(r.ppd,0)} printed, against ${pc(D.mp,0)} for your typical model. If it's meant to be printed as is, check its profile and plates.`));
+ D.has.filter(r=>r.mom&&r.mom.stalled).sort((x,y)=>y.mom.avg-x.mom.avg).slice(0,1).forEach(r=>
+  add("",5,`${mwLink(r.id,r.n)} has gone quiet`,`It averaged ${nf(r.mom.avg)} downloads a day and has none since yesterday. Check it's still listed and its files open.`));
+ if(a.ptsTrend=="down")add("",6,"Points are down",`${nf(a.pts7avg)} a day over the last week, ${nf(a.ptsPrev7avg)} the week before.`);
+ it.sort((x,y)=>x.o-y.o);const n=it.length;it.splice(6);
+ $("actn").textContent=n?(n>6?`top 6 of ${n}`:`${n} item${n==1?"":"s"}`):"";
+ el.innerHTML=it.length?it.map(x=>`<li class="${x.k}"><i aria-hidden=true></i><div><b>${x.t}</b><span>${x.w}</span></div></li>`).join("")
+  :`<li><i aria-hidden=true style="background:var(--ok)"></i><div><b>Nothing needs attention</b><span>No unanswered comments, slow launches or pages lagging your usual rates.</span></div></li>`}
+function renderFunnel(){const m=S.month||{},y=S.yday||{},el=$("fun");
+ if(m.impressions==null||m.views==null){el.innerHTML=`<p class=mut>Needs the MakerWorld cookie for impressions and views.</p>`;return}
+ const st=[["Impressions","shown in feeds and search",m.impressions,m.yday_impressions],["Views","opened the model page",m.views,m.yday_views],
+  ["Downloads","",m.downloads,y.downloads],["Prints","",m.prints,y.prints]];
+ const step=[["clicked through","the cover image and title"],["downloaded","the photos, description and files"],["printed","the print profiles and plates"]];
+ const r=(a,b)=>a&&b!=null?b/a:null;let worst=null,html="";
+ st.forEach(([l,sub,v,yv],i)=>{html+=`<div class=fs><span>${l}${sub?`<small>${sub}</small>`:""}</span><b>${fmt(v)}</b><small>${yv!=null?"yesterday "+fmt(yv):""}</small></div>`;
+  if(i<3){const r30=r(v,st[i+1][2]),ry=r(yv,st[i+1][3]),d=r30&&ry!=null?ry/r30:null;
+   if(d!=null&&d<.8&&(!worst||d<worst.d))worst={d,i,ry,r30};
+   html+=`<div class=fc><span class=ar aria-hidden=true>↓</span><span class=rt>${pc(r30,r30<.1?1:0)}</span>${step[i][0]}<span class="y ${d==null?"":d>=1.2?"up":d<.8?"down":"mut"}">${ry!=null?"yesterday "+pc(ry,ry<.1?1:0):""}</span></div>`}});
+ const ok=st.every(x=>x[3]!=null);
+ html+=`<p class=take>${worst?`Weakest step yesterday: <b>${step[worst.i][0]}</b>, ${pc(worst.ry,1)} against ${pc(worst.r30,1)} usually. That step depends on ${step[worst.i][1]}.`
+  :ok?"Every step was at or near its 30-day rate yesterday.":"Yesterday's numbers aren't in yet."}</p>`;
+ el.innerHTML=html}
 
 /* ---------- models ---------- */
 const MCOLS=[["n","Model"],["sp","30 days"],["d30","Downloads"],["v30","Views"],["dpv","DL / view"],["p30","Prints"],["l30","Likes"],["c30","Collects"],["pt30","Points"],["rt","Ratings"],["mom","Trend"],["un","Unanswered"]];
@@ -475,14 +604,17 @@ function mrows(){return Object.values(C&&C.models||{}).map(r=>{const w=r.has?(mV
   rt:r.rt||0,ra:r.ra,mom:r.mom?(r.mom.dir=="up"?1:r.mom.dir=="down"?-1:0)+(r.mom.rising?1:0)-(r.mom.stalled?2:0):null,momr:r.mom,un:r.unans||0}})}
 function renderModels(){if(!C){$("mtable").innerHTML=`<p class=mut>Waiting for creator stats</p>`;return}
  seg($("mseg"),[["7","7 days"],["30","30 days"]],mView,v=>mView=v);
- const rows=mrows().sort((a,b)=>{const x=a[mSort],y=b[mSort];if(mSort=="n")return mDir*String(x).localeCompare(String(y));return mDir*(((x??-1e9))-((y??-1e9)))});
- const nh=rows.filter(r=>!r.has).length;$("mcount").textContent=rows.length+" models"+(nh?`, ${nh} still waiting for MakerWorld analytics`:"");
- const head=MCOLS.map(([k,l])=>k=="sp"?`<th>${l}</th>`:`<th class="sort${mSort==k?" on":""}" data-k="${k}">${l}${mSort==k?(mDir<0?" ↓":" ↑"):""}</th>`).join("");
+ const all=mrows(),q=mQ.trim().toLowerCase();
+ const rows=all.filter(r=>(!q||String(r.n).toLowerCase().includes(q))&&(!mAct||(r.d30||0)>0))
+  .sort((a,b)=>{const x=a[mSort],y=b[mSort];if(mSort=="n")return mDir*String(x).localeCompare(String(y));return mDir*(((x??-1e9))-((y??-1e9)))});
+ const nh=all.filter(r=>!r.has).length;
+ $("mcount").textContent=(rows.length<all.length?`${rows.length} of ${all.length}`:all.length)+" models"+(nh?`, ${nh} still waiting for MakerWorld analytics`:"");
+ const head=MCOLS.map(([k,l])=>k=="sp"?`<th class=nophone>${l}</th>`:`<th class="sort${mSort==k?" on":""}" data-k="${k}">${l}${mSort==k?(mDir<0?" ↓":" ↑"):""}</th>`).join("");
  const trend=m=>!m?"<span class=mut>–</span>":m.stalled?`<span class=down>stalled</span>`:m.rising?`<span class=up>rising fast</span>`:m.dir=="up"?`<span class=up>up</span>`:m.dir=="down"?`<span class=down>down</span>`:"<span class=mut>flat</span>";
  const nv=v=>v==null?"<span class=mut>–</span>":fmt(Math.round(v));
- $("mtable").innerHTML=`<table><thead><tr>${head}</tr></thead><tbody>`+(rows.map(r=>`<tr><td class=nm>${mwLink(r.id,r.n)}</td><td>${spark(SP[r.id],"d")}</td>
+ $("mtable").innerHTML=`<table><thead><tr>${head}</tr></thead><tbody>`+(rows.map(r=>`<tr><td class=nm>${mwLink(r.id,r.n)}</td><td class=nophone>${spark(SP[r.id],"d")}</td>
   <td>${nv(r.d30)}</td><td>${nv(r.v30)}</td><td>${pc(r.dpv)}</td><td>${nv(r.p30)}</td><td>${nv(r.l30)}</td><td>${nv(r.c30)}</td><td>${r.pt30==null?"<span class=mut>–</span>":nf(r.pt30)}</td>
-  <td>${r.rt?`${fmt(r.rt)} <span class=mut>${nf(r.ra,1)}★</span>`:"<span class=mut>–</span>"}</td><td>${trend(r.momr)}</td><td>${r.un?`<b style="color:var(--warn)">${r.un}</b>`:"<span class=mut>0</span>"}</td></tr>`).join("")||`<tr><td colspan=12 class=empty>No models yet</td></tr>`)+"</tbody></table>";
+  <td>${r.rt?`${fmt(r.rt)} <span class=mut>${nf(r.ra,1)}★</span>`:"<span class=mut>–</span>"}</td><td>${trend(r.momr)}</td><td>${r.un?`<b style="color:var(--warn)">${r.un}</b>`:"<span class=mut>0</span>"}</td></tr>`).join("")||`<tr><td colspan=12 class=empty>${all.length?"No models match the filter":"No models yet"}</td></tr>`)+"</tbody></table>";
  $("mtable").querySelectorAll("th.sort").forEach(th=>th.onclick=()=>{const k=th.dataset.k;if(mSort==k)mDir=-mDir;else{mSort=k;mDir=k=="n"?1:-1}renderModels()});
  renderInsights()}
 function renderInsights(){const m=Object.values(C.models||{}),has=m.filter(r=>r.has),top=(arr,f,n=8)=>arr.sort(f).slice(0,n);
@@ -495,15 +627,20 @@ function renderInsights(){const m=Object.values(C.models||{}),has=m.filter(r=>r.
  const pts=top(has.filter(r=>r.pts30>0),(x,y)=>y.pts30-x.pts30).map(r=>R(L(r.id,r.n)+`<td>${nf(r.pts7)}</td><td>${nf(r.pts30)}</td>`));
  const rated=top(m.filter(r=>r.rt>=3),(x,y)=>(y.ra-x.ra)||(y.rt-x.rt)).map(r=>R(L(r.id,r.n)+`<td>${nf(r.ra,2)}★</td><td>${fmt(r.rt)}</td>`));
  const fol=top(has.filter(r=>r.fol30>0),(x,y)=>y.fol30-x.fol30).map(r=>R(L(r.id,r.n)+`<td>${r.fol7}</td><td>${r.fol30}</td>`));
+ const D=diag();
+ const under=D.under.slice(0,8).map(r=>R(L(r.id,r.n)+`<td>${fmt(r.m.v)}</td><td>${pc(r.dpv30)}</td><td>${fmt(D.miss(r))}</td>`));
+ const prn=D.prn.slice(0,8).map(r=>R(L(r.id,r.n)+`<td>${fmt(r.life.d)}</td><td${D.lowP(r)?" class=down":""}>${pc(r.ppd,0)}</td><td${D.lowR(r)?" class=down":""}>${r.rt?nf(r.ra,1)+"★":"<span class=mut>–</span>"}</td>`));
  const la=(C.acct||{}).launch;let lc="<p class=mut>Shows once a model has launch data.</p>";
- if(la){const mx=Math.max(1,...la.cur,...la.med);lc=`<p class=ink2 style="margin-top:0">${esc(la.n)}: day ${la.day} of 7, ${la.cur[la.day-1]} downloads`+
-  (la.pct!=null?`, ahead of ${la.pct}% of ${la.past} earlier launches`:"")+`</p><div class=lc>${[0,1,2,3,4,5,6].map(i=>`<div title="day ${i+1}"><i style="background:var(--acc);height:${la.cur[i]!=null?Math.max(3,la.cur[i]/mx*100):0}%"></i><i style="background:var(--line);height:${la.med.length?Math.max(3,la.med[i]/mx*100):0}%"></i></div>`).join("")}</div>
+ if(la){const mx=Math.max(1,...la.cur,...la.med);const nd=la.cur[la.day-1]||0;lc=`<p class=ink2 style="margin-top:0">${mwLink(la.id,la.n)}: day ${la.day} of 7, ${fmt(nd)} download${nd==1?"":"s"} so far`+
+  (la.pct!=null&&(nd>0||la.day>1)?`, ahead of ${la.pct}% of ${la.past} earlier launches`:la.past?`. The median of ${la.past} earlier launches is shown in grey.`:"")+`</p><div class=lc>${[0,1,2,3,4,5,6].map(i=>`<div title="day ${i+1}"><i style="background:var(--acc);height:${la.cur[i]!=null?Math.max(3,la.cur[i]/mx*100):0}%"></i><i style="background:var(--line);height:${la.med.length?Math.max(3,la.med[i]/mx*100):0}%"></i></div>`).join("")}</div>
   <div class=axis><span>day 1</span><span>day 7</span></div><div class=legend style="margin-top:10px"><span><i style="background:var(--acc)"></i>this launch</span><span><i style="background:var(--line)"></i>median launch</span></div>`}
  const t=(C.acct||{}).tail||{},tb=(l,v)=>{v=v||[0,0];const s=v[0]+v[1],o=s?Math.round(100*v[0]/s):0;return `<div class=ink2>${l}: <b>${o}%</b> from models older than 30 days <span class=mut>(${fmt(v[0])} of ${fmt(s)})</span></div><div class=tail><i style="width:${o}%;background:var(--c)"></i><i style="width:${100-o}%;background:var(--d)"></i></div>`};
- const card=(h,sub,b)=>`<div class=card><h2>${h}<span class=sp></span><small>${sub}</small></h2><div class=tw>${b}</div></div>`;
+ const card=(h,sub,b)=>`<div class="card fit"><h2>${h}<span class=sp></span><small>${sub}</small></h2><div class=tw>${b}</div></div>`;
  $("cgrid").innerHTML=[
   card("Best converting","downloads per view, 30 days",table(["Model","DL/view","Views","DL","Prints/DL"],conv,"Needs models with 30+ views")),
   card("Most engaging","per 100 downloads, 30 days",table(["Model","Likes","Coll.","Comm.","Lifetime"],eng,"Needs models with 5+ downloads")),
+  card("Pages to improve",D.md?`DL/view under half your ${pc(D.md)}`:"downloads per view",table(["Model","Views","DL/view","Missed DL"],under,"No page with 150+ views is lagging")),
+  card("Printing problems?",D.mp?`printed under half your ${pc(D.mp,0)}, or under 4.5★`:"print rate and rating",table(["Model","DL","Printed","Rating"],prn,"No model stands out")),
   card("Rising","yesterday against the 7-day average",table(["Model","Yday","Avg","Ratio"],rise,"Nothing rising right now")),
   card("Stalled","averaged 1+ a day, none since yesterday",table(["Model","Was / day"],stall,"Nothing stalled")),
   card("Launch curve","first 7 days",lc),
@@ -521,7 +658,14 @@ async function loadSparks(){if(!C||!S||Date.now()-sparkAt<6e5)return;sparkAt=Dat
  renderAll()}
 
 /* ---------- activity ---------- */
-function renderActivity(){const f=S.feed||[];
+function renderActivity(){const f=(S.dash||{}).feedAll||S.feed||[];
+ // Totals come from today's counters, not the event list, which is capped at 40.
+ const t=S.today||{},by=[...K.map(([k])=>[k,t[k]||0]),["ratings",t.ratings||0],["comments",f.filter(e=>e.k=="comment").length]].filter(x=>x[1]>0);
+ $("feednote").textContent=f.length>=40?"latest 40, newest first":"newest first";
+ $("fsum").innerHTML=by.sort((a,b)=>b[1]-a[1]).map(([k,n])=>`<span><span class=kdot style="--k:var(--${KC[k]||KC[k.replace(/s$/,"")]||"f"})"></span><b>${fmt(n)}</b>${esc(n==1?k.replace(/s$/,""):k)}</span>`).join("");
+ const um=Object.values(C&&C.models||{}).filter(r=>r.unans>0).sort((a,b)=>b.unans-a.unans);
+ $("reply").innerHTML=um.length?um.slice(0,8).map(r=>`<a href="https://makerworld.com/en/models/${encodeURIComponent(r.id)}" target=_blank rel=noopener title="${esc(r.n)}"><span>${esc(r.n)}</span><b>${r.unans}</b></a>`).join("")+(um.length>8?`<p class=mut style="margin:8px 0 0">and ${um.length-8} more models</p>`:"")
+  :`<p class=empty>${C?"Every comment has a reply.":"Waiting for creator stats"}</p>`;
  $("feed").innerHTML=f.length?f.map(e=>{const c=KC[e.k]||"ink2";return `<div class=ev style="--k:var(--${c})"><span class=tag>${e.k=="comment"?"new":"+"+e.n}</span>
   <span class=m><span class=mut>${esc(e.k=="comment"?"comment":e.k=="ratings"?(e.n==1?"rating":"ratings")+(e.s?" "+e.s+"★":""):e.k)}</span> · ${esc(e.m)}</span><span class=t>${ago(e.t)}</span></div>`}).join("")
   :`<p class=empty>Nothing yet today. New downloads, prints, boosts, likes, ratings and comments show here as they happen.</p>`;
@@ -532,8 +676,14 @@ function renderActivity(){const f=S.feed||[];
 /* ---------- health ---------- */
 function renderHealth(){const h=S.health||{},src=h.src||{},st=S.status||{};
  const NAMES={models:["Models and totals","every poll"],reach:["30-day reach","every poll"],points:["Points","every poll"],"model-stats":["Per-model analytics","background"]};
+ const sf=Object.keys(NAMES).filter(k=>(src[k]||{}).f).length,pl0=h.panels||[],pu=pl0.filter(p=>p.up).length,lm0=h.limiter||{};
+ $("hsum").innerHTML=[
+  `<span class="badge ${sf?"warn":"ok"}"><span class=bd></span>${sf?sf+" of "+Object.keys(NAMES).length+" sources failing":"All MakerWorld sources OK"}</span>`,
+  `<span class="badge ${h.auth=="ok"?"ok":h.auth=="expired"?"err":"warn"}"><span class=bd></span>Cookie ${{ok:"accepted",expired:"rejected",none:"not set"}[h.auth]||"unknown"}</span>`,
+  pl0.length?`<span class="badge ${pu==pl0.length?"ok":pu?"warn":"err"}"><span class=bd></span>${pu} of ${pl0.length} panels answering</span>`:"",
+  `<span class="badge ${lm0.paused?"err":Object.keys(lm0.backoff_until||{}).length?"warn":"mut"}"><span class=bd></span>${fmt(lm0.requests_last_hour||0)} of ${fmt(lm0.budget||0)} requests this hour</span>`].join("");
  $("srcs").innerHTML=Object.entries(NAMES).map(([k,[l,when]])=>{const x=src[k]||{};const cls=!x.t&&!x.f?"idle":x.f>=3?"err":x.f?"warn":"";
-  return `<div class="${cls}"><b>${l}</b><div class=ink2>Last good: ${ago(x.t)} <span class=mut>(${when})</span></div>
+  return `<div class="${cls}"><b>${l}</b><div class=ink2>Last good ${ago(x.t)}</div><div class=mut>Runs ${when=="background"?"in the background":"every poll"}</div>
    <div class=mut>${x.f?x.f+" failure"+(x.f>1?"s":"")+" in a row":"No failures"}</div>${x.e?`<div class=e>${esc(x.e)}</div>`:""}</div>`}).join("")+
   `<div class="${h.auth=="expired"?"err":h.auth=="ok"?"":"warn"}"><b>Cookie</b><div class=ink2>${{ok:"Accepted by MakerWorld",expired:"Rejected, needs a refresh",none:"Not set, public stats only"}[h.auth]||"Unknown"}</div>
    <div class=mut>${st.cookieAge>=0?"Sent "+ago(Date.now()/1e3-st.cookieAge):"Never sent"}</div><div style="margin-top:6px"><a href="#settings/mw">Manage</a></div></div>`;
@@ -545,13 +695,14 @@ function renderHealth(){const h=S.health||{},src=h.src||{},st=S.status||{};
  $("pinfo").innerHTML=[["Last poll",st.lastPoll?hm(st.lastPoll)+" ("+ago(st.lastPoll)+")":"never"],["Result",st.ok===false?esc(st.msg||"failed"):"ok"],
   ["Poll interval",(st.pollSec||"–")+" s"],["Panel URL",esc(S.poller||"–")],["Data as of",S.t?new Date(S.t*1e3).toLocaleDateString()+" "+hm(S.t):"–"]]
   .map(([k,v])=>`<dt>${k}</dt><dd>${v}</dd>`).join("")
- const pl=h.panels||[];
+ const pl=[...(h.panels||[])].sort((a,b)=>(b.up===true)-(a.up===true));
  $("pnls").innerHTML=pl.length?pl.map(p=>`<div class="${p.up===false?"err":p.type=="unknown"?"idle":""}"><b>${esc(p.host)}</b>
    <div class=ink2>${PTYPE[p.type]||"Not detected yet"}${p.board?" · "+esc(p.board):""}${p.fw?" · v"+esc(p.fw):""}</div>
    <div class=mut>${p.up===false?"Not answering":p.up?"Answering":"Not checked yet"}</div></div>`).join("")
   :`<p class=mut>No panels. Add one under <a href="#settings/panels">Settings</a>.</p>`}
 const PTYPE={color:"Color panel",eink:"E-paper panel"};
 
+$("mq").oninput=e=>{mQ=e.target.value;renderModels()};$("mact").onchange=e=>{mAct=e.target.checked;renderModels()};
 function renderAll(){if(!S)return;renderHead();renderOverview();renderActivity();renderHealth();renderModels()}
 async function load(){try{const c=await fetch("/v2/creator");if(c.ok)C=await c.json()}catch(e){}
  try{const r=await fetch("/api/dashboard",{credentials:"same-origin"});if(r.ok){S=await r.json();renderAll();loadSparks()}
@@ -636,7 +787,8 @@ function paint(){const ch=changedSecs(),d=ch.length>0;document.body.classList.to
  document.querySelectorAll("#form [data-v]").forEach(c=>{if(/^(INPUT|SELECT|TEXTAREA)$/.test(c.tagName))c.setAttribute("aria-invalid",!!E[c.dataset.v]);else c.classList.toggle("bad",!!E[c.dataset.v])});
  document.querySelectorAll("#form .ch").forEach(c=>{const P=`channels.${c.dataset.j}.`;c.classList.toggle("bad",Object.keys(E).some(k=>k.startsWith(P)))});
  const t=F.top,eff=F.effective.poll_interval_sec,np=$("n-poll"),nc=$("n-cyc");
- if(np)np.textContent=[dur(t.poll_interval_sec)&&"= "+dur(t.poll_interval_sec),eff!=F0.top.poll_interval_sec?`Running at ${dur(eff)} right now, set from a panel. Saving here takes over.`:""].filter(Boolean).join(". ");
+ const pph=+t.poll_interval_sec>=60?Math.round(3600/+t.poll_interval_sec*10)/10:0;
+ if(np)np.textContent=[dur(t.poll_interval_sec)&&"= "+dur(t.poll_interval_sec)+(pph?`, ${pph} ${pph==1?"poll":"polls"} an hour`:""),eff!=F0.top.poll_interval_sec?`Running at ${dur(eff)} right now, set from a panel. Saving here takes over.`:""].filter(Boolean).join(". ");
  if(nc)nc.textContent=dur(t.page_cycle_sec)?"= "+dur(t.page_cycle_sec):"";
  summary(E);return d}
 const cap=s=>String(s).charAt(0).toUpperCase()+String(s).slice(1);
@@ -736,6 +888,7 @@ function chanCard(c,j){const P=`channels.${j}`,isOpen=open.has(j),name=c.name||T
 function renderSettings(){if(!F)return;const t=F.top,n=F.notifications,d=n.defaults,ro=F.readonly;FL={};EC=shownErr();
  const fa=document.activeElement,fid=fa&&$("form").contains(fa)?fa.id:"";
  const dg=d.quiet_digest==null?true:d.quiet_digest,qon=!!d.quiet_hours,np=HOSTS.filter(h=>h.trim()).length;
+ const pup=HOSTS.map(h=>{const k=h.trim(),c=PCHK[k],x=(F.panels_detected||[]).find(y=>y.host==k||y.host==k.replace(/:80$/,""));return c?c.ok:x?x.up:null}),nup=pup.filter(v=>v===true).length,ndn=pup.filter(v=>v===false).length;
  $("form").innerHTML=`<div id=esum class=esum tabindex=-1 hidden></div>
  ${sec("mw","Account","Your MakerWorld profile, and the browser cookie that unlocks points and creator stats.",
   srow("top.handle","MakerWorld handle","Your username, as in makerworld.com/en/@<i>handle</i>.",`<div class="affix narrow"><span class=pre aria-hidden=true>@</span>${inp("top.handle",t.handle,{ph:"yourname"})}</div>`)+
@@ -749,7 +902,7 @@ function renderSettings(){if(!F)return;const t=F.top,n=F.notifications,d=n.defau
   `<div class="srow full"><div class=plist>${HOSTS.length?HOSTS.map(pnlRow).join(""):`<div class=empty-st><b>No panels yet</b><p>Add a panel by the address on its Connect the poller page.</p></div>`}</div>${errEl("top.panels")}
    <div class=row><button class="btn sm" id=addhost type=button>${PLUS} Add panel</button></div>
    <p class=help>An IP address or a .local name. makermonitor.local keeps working when the router hands out a new address. Add :port for a port other than 80.</p></div>`,
-  `<span class=cnt>${np?np+(np==1?" panel":" panels"):""}</span>`)}
+  `<span class=cnt>${np?np+(np==1?" panel":" panels")+(nup?` · <b>${nup} online</b>`:"")+(ndn?` · <em>${ndn} offline</em>`:""):""}</span>`)}
  ${sec("notify","Notifications","Messages to your phone or chat when things happen. Each poll sends at most one message per channel.",
   `<div class="srow full"><div class=lab><span class=lt>Channels</span><p>Switch a channel off to pause it and keep its settings.</p></div>
    <div class=chans>${n.channels.map(chanCard).join("")||`<div class=empty-st><b>No channels yet</b><p>Add one below to start getting messages.</p></div>`}</div>
@@ -762,9 +915,9 @@ function renderSettings(){if(!F)return;const t=F.top,n=F.notifications,d=n.defau
  ${sec("quiet","Quiet hours","Nothing is sent during quiet hours except urgent events. Each panel has its own quiet hours, set on the panel.",
   srow("defaults.quiet_hours","Quiet hours","Applies to every channel unless a channel sets its own.",
    `<div class=swrow><label class=sw><input type=checkbox role=switch id=qon${qon?" checked":""} aria-label="Quiet hours" aria-describedby=qon-t><i></i></label><span id=qon-t>${qon?"On":"Off. Messages go out any time."}</span></div>${qon?qPick("defaults.quiet_hours",d.quiet_hours):""}`,{forId:false})+
-  srow("defaults.quiet_digest","When quiet hours end","A catch-up message lists what happened while it was quiet.",
+  (qon?srow("defaults.quiet_digest","When quiet hours end","A catch-up message lists what happened while it was quiet.",
    `<select ${ctlAttrs("defaults.quiet_digest")}>${[["true","Send a catch-up if anything happened"],["always","Always send a catch-up, even after a quiet night"],["false","Don't send a catch-up"]].map(([k,l])=>`<option value="${k}"${String(dg)==k?" selected":""}>${l}</option>`).join("")}</select>`)+
-  srow("defaults.urgent","Urgent events","Sent right away, even during quiet hours.",evChips("defaults.urgent",d.urgent||["health"],pid("defaults.urgent")+"-l"),{forId:false}))}
+  srow("defaults.urgent","Urgent events","Sent right away, even during quiet hours.",evChips("defaults.urgent",d.urgent||["health"],pid("defaults.urgent")+"-l"),{forId:false}):""))}
  ${sec("poll","Polling","How often MakerWorld is checked, and how long e-paper pages stay up.",
   srow("top.poll_interval_sec","Check MakerWorld every","60 to 3600 seconds. Every MakerWorld request shares a budget of about 120 an hour.",
    `<div class=unitrow><div class=affix>${inp("top.poll_interval_sec",t.poll_interval_sec,{type:"number",min:60,max:3600})}<span class=suf aria-hidden=true>seconds</span></div><span class=help id=n-poll aria-live=polite></span></div>`)+
@@ -773,7 +926,7 @@ function renderSettings(){if(!F)return;const t=F.top,n=F.notifications,d=n.defau
  ${sec("adv","Advanced","Rarely needed.",
   srow("top.user_agent","Browser user agent","Should roughly match the browser the cookie came from.",inp("top.user_agent",t.user_agent))+
   `<div class=srow><div class=lab><span class=lt>Set in config.yaml only</span><p>Changing these needs a poller restart.</p></div><div class=ctl>
-   <dl class=kv><dt>Listen</dt><dd>${esc(ro.listen_host)}:${esc(ro.listen_port)}</dd><dt>Data folder</dt><dd>${esc(ro.data_dir)}</dd><dt>Dashboard token</dt><dd>api_token</dd><dt>Config file</dt><dd>${esc(F.path)}</dd></dl>
+   <dl class=kv><dt>Listen</dt><dd>${esc(ro.listen_host)}:${esc(ro.listen_port)}</dd><dt>Data folder</dt><dd>${esc(ro.data_dir).replace(/\//g,"/<wbr>")}</dd><dt>Dashboard token</dt><dd>api_token</dd><dt>Config file</dt><dd>${esc(F.path).replace(/\//g,"/<wbr>")}</dd></dl>
    <p class=help>Every save keeps the previous file as config.yaml.bak-&lt;time&gt; next to it (the last 10).</p></div></div>`)}`;
  bindSettings();paint();spy();
  if(fid&&$(fid))$(fid).focus({preventScroll:true})}
