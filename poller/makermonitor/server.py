@@ -21,6 +21,7 @@ from .dashboard import DASHBOARD_HTML, LOGIN_HTML
 from .makerworld import AuthError, MakerWorldClient
 from .pages import build_sections
 from .notify import NotifyHub
+from .notify import summary as notify_summary
 from .panel import PanelClient, PanelGroup, build_events
 from .panels import PanelDirectory
 from .ratelimit import LIMITER
@@ -257,6 +258,19 @@ class AppContext:
             # Each configured panel: host, detected kind, board, firmware, answering.
             "panels": self.panels_view(),
         }
+
+    def _daily_summary(self) -> None:
+        """Track today's spikes, and send the daily summary once its time has come."""
+        try:
+            full = self.creator_full()
+            self.day.note_spikes(((full or {}).get("acct") or {}).get("spikes"))
+            if self.day.summary_due(self.notifier.summary_time):
+                v = self.day.view()
+                title, lines = notify_summary.build(v["today"], v.get("yday"), full, self.day.spiked_today())
+                self.notifier.send_summary(title, lines)
+                self.day.mark_summary()
+        except Exception as exc:  # noqa: BLE001 - never break the poll
+            log.exception("daily summary failed: %s", exc)
 
     def creator_full(self) -> dict[str, Any] | None:
         snap = self.store.status.last_snapshot
@@ -654,11 +668,9 @@ class AppContext:
                 await self._push_color(snap, cevents, "needed", "public only - open MakerWorld")
             else:
                 await self._push_color(snap, cevents, "ok", "synced")
-            spikes = None
-            if self.notifier.channels:
-                spikes = ((self.creator_full() or {}).get("acct") or {}).get("spikes")
-            self.notifier.submit(prev, snap, self.health_view(), fresh, baseline=not prev.fetched_at or stale,
-                                 spikes=spikes, day=self.day.d.get("day", ""))
+            self.notifier.submit(prev, snap, self.health_view(), fresh, baseline=not prev.fetched_at or stale)
+            if self.notifier.wants_summary:
+                self._daily_summary()
             self.creator.kick(client, snap)
 
             result["ok"] = True

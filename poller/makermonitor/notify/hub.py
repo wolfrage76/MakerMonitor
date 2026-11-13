@@ -12,7 +12,7 @@ from . import (  # noqa: F401 - registers the built-in channels
     apprise_channel, discord, homeassistant, ntfy, pushbullet, pushover, telegram, webhook,
 )
 from .base import CHANNELS, Channel, expand_env
-from .events import Event, HealthWatch, SpikeWatch, snapshot_events
+from .events import Event, HealthWatch, snapshot_events
 from .style import build_digest
 
 log = logging.getLogger(__name__)
@@ -23,7 +23,6 @@ class NotifyHub:
         cfg = cfg or {}
         self.handle = handle
         self.health = HealthWatch()
-        self.spikes = SpikeWatch()
         self.channels: list[Channel] = []
         self._tasks: set[asyncio.Task] = set()
         defaults = {k: v for k, v in cfg.items() if k != "channels"}
@@ -42,12 +41,19 @@ class NotifyHub:
             except ValueError as exc:
                 log.warning("notifications: %s disabled, %s", label, exc)
         self._announced = False
+        # Daily summary: local "HH:MM", sent by the poll loop to channels that list "summary".
+        self.summary_time = str(defaults.get("summary_time") or "21:00")
+
+    @property
+    def wants_summary(self) -> bool:
+        return any("summary" in ch.events for ch in self.channels)
+
+    def send_summary(self, title: str, lines: list[str]) -> None:
+        self.dispatch([Event("summary", title=title, text="\n".join(lines))])
 
     def submit(self, prev: Snapshot | None, cur: Snapshot | None, health: dict[str, Any] | None = None,
-               skip: set[str] | frozenset[str] = frozenset(), baseline: bool = False,
-               spikes: list[dict[str, Any]] | None = None, day: str = "") -> list[Event]:
-        """Called once per poll. `baseline` means don't report activity (first poll, long gap).
-        `spikes` is creator.find_spikes() for today (`day`), sent once per model per day."""
+               skip: set[str] | frozenset[str] = frozenset(), baseline: bool = False) -> list[Event]:
+        """Called once per poll. `baseline` means don't report activity (first poll, long gap)."""
         if not self.channels:
             return []
         if not self._announced:  # logged here because the log file isn't set up yet in __init__
@@ -61,7 +67,6 @@ class NotifyHub:
                 events += snapshot_events(prev, cur, skip)
             except Exception as exc:  # noqa: BLE001 - never break the poll
                 log.exception("notifications: event diff failed: %s", exc)
-            events += self.spikes.update(spikes, day)
         self.dispatch(events)
         return events
 
@@ -88,8 +93,9 @@ class NotifyHub:
         sample = [
             Event("health", level="ok", title="MakerMonitor test message",
                   text="Notifications are set up. This is how each kind of event looks."),
-            Event("spike", 9, model="Sample Model", model_id="123456",
-                  text="9 downloads today, against about 1.5 by this time on a normal day. It may have been featured or linked somewhere."),
+            Event("summary", title="Daily summary · Thursday",
+                  text="+17 downloads, +9 prints, +5 likes, +24 collects\nYesterday: 18 downloads, 9 prints\n"
+                       "📈 Spiked: [Sample Model](https://makerworld.com/en/models/123456), 9 downloads against about 1.5 by then"),
             Event("comment", 1, model="Sample Model", model_id="123456", user="A Maker", text="Printed great, thanks!"),
             Event("follower", 1, 321),
             Event("download", 3, 1205, "Sample Model", "123456"),

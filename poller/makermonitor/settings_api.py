@@ -33,7 +33,7 @@ from ruamel.yaml.comments import CommentedMap, CommentedSeq
 from ruamel.yaml.scalarstring import DoubleQuotedScalarString
 
 from .config import Settings
-from .notify import CHANNELS, EVENT_TYPES, NotifyHub
+from .notify import CHANNELS, DEFAULT_EVENTS, EVENT_TYPES, NotifyHub
 from .notify.base import expand_env
 from .panels import detect
 
@@ -86,7 +86,7 @@ CHANNEL_FIELDS: dict[str, list[F]] = {
                 ("headers", "Headers", "headers", False, True, "one per line: Name: value")],
 }
 COMMON = ("type", "name", "enabled", "events", "quiet_hours")
-DEFAULT_KEYS = ("events", "quiet_hours", "quiet_digest", "urgent", "min_count")
+DEFAULT_KEYS = ("events", "quiet_hours", "quiet_digest", "urgent", "min_count", "summary_time")
 GROUPED = ("download", "print", "boost", "like", "collect", "rating", "points")
 _QUIET_T = re.compile(r"^(\d{1,2})(?::([0-5]\d))?\s*([ap])?\.?m?\.?$", re.I)
 
@@ -171,7 +171,7 @@ class SettingsService:
         top["panels"] = st.panel_hosts  # `panels` plus anything still under the old keys
         n = doc.get("notifications") or {}
         defaults = {k: _plain(n.get(k)) for k in DEFAULT_KEYS if n.get(k) is not None}
-        defaults["events"] = _effective(n.get("events"), n.get("exclude")) or list(EVENT_TYPES)
+        defaults["events"] = _effective(n.get("events"), n.get("exclude")) or list(DEFAULT_EVENTS)
         channels = []
         for i, ch in enumerate(n.get("channels") or []):
             if not isinstance(ch, dict):
@@ -360,13 +360,20 @@ class SettingsService:
                     except (TypeError, ValueError):
                         errors[f"defaults.min_count.{t}"] = "whole number"
             qd = d.get("quiet_digest", True)
+            st_ = str(d.get("summary_time") or "").strip()
+            if st_ and not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", st_):
+                errors["defaults.summary_time"] = 'use a time like "21:00"'
+                st_ = ""
             new_defaults = {
-                "events": events if events and set(events) != set(EVENT_TYPES) else None,
+                # Unset means every type but the opt-in summary.
+                "events": events if events and set(events) != set(DEFAULT_EVENTS) else None,
                 "quiet_hours": q or None,
                 # [health] is the built-in default; only write it when it differs.
                 "urgent": None if urgent == ["health"] else urgent,
                 "quiet_digest": None if qd is True else qd,
                 "min_count": mc or None,
+                # 21:00 is the built-in default.
+                "summary_time": None if st_ in ("", "21:00") else st_,
             }
             if "events" in d and not events:
                 errors["defaults.events"] = "pick at least one event"
@@ -533,7 +540,7 @@ def _effective(events: Any, exclude: Any, base: list[str] | None = None) -> list
     if isinstance(events, str):
         events = [e.strip() for e in events.split(",")]
     skip = set(exclude or [])
-    return [e for e in (events or base or EVENT_TYPES) if e in EVENT_TYPES and e not in skip]
+    return [e for e in (events or base or DEFAULT_EVENTS) if e in EVENT_TYPES and e not in skip]
 
 
 def _plain(v: Any) -> Any:

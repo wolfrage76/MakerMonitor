@@ -150,6 +150,45 @@ class DayTracker:
             self.d["feed"] = feed[-KEEP_FEED:]
             self._save()
 
+    def note_spikes(self, spikes: list[dict[str, Any]] | None) -> None:
+        """Remember today's spiking models (their highest point) for the daily summary."""
+        if not spikes:
+            return
+        with self._lock:
+            day = self.d.get("day", "")
+            sp = self.d.get("spiked")
+            if not sp or sp.get("day") != day:
+                sp = self.d["spiked"] = {"day": day, "m": {}}
+            for s in spikes:
+                old = sp["m"].get(s["id"])
+                if not old or s["today"] > old["today"]:
+                    sp["m"][s["id"]] = {k: s[k] for k in ("id", "n", "today", "exp")}
+            self._save()
+
+    def spiked_today(self) -> list[dict[str, Any]]:
+        with self._lock:
+            sp = self.d.get("spiked") or {}
+            if sp.get("day") != self.d.get("day"):
+                return []
+            return sorted(sp.get("m", {}).values(), key=lambda s: -s["today"])
+
+    def summary_due(self, at: str, now: datetime | None = None) -> bool:
+        """True once a day, at or after `at` ("HH:MM", local)."""
+        now = now or datetime.now()
+        with self._lock:
+            if self.d.get("summary_sent") == now.date().isoformat():
+                return False
+        try:
+            h, m = (int(x) for x in at.split(":"))
+        except ValueError:
+            h, m = 21, 0
+        return (now.hour, now.minute) >= (h, m)
+
+    def mark_summary(self, now: datetime | None = None) -> None:
+        with self._lock:
+            self.d["summary_sent"] = (now or datetime.now()).date().isoformat()
+            self._save()
+
     # ---- views -------------------------------------------------------------
 
     def today(self) -> dict[str, float]:

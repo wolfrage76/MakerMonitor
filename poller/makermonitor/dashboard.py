@@ -416,7 +416,7 @@ dialog.dlg .row{justify-content:flex-end}
 const K=[["downloads","Downloads","d"],["prints","Prints","p"],["boosts","Boosts","b"],["likes","Likes","l"],["collects","Collects","c"]];
 const KC={boosts:"b",likes:"l",collects:"c",downloads:"d",prints:"p",comment:"f",ratings:"r"};
 const WD=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],WDL=["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
-const EV={health:"Health alerts",spike:"Spikes",comment:"Comments",follower:"Followers",download:"Downloads",print:"Prints",boost:"Boosts",like:"Likes",collect:"Collects",rating:"Ratings",points:"Points"};
+const EV={health:"Health alerts",comment:"Comments",follower:"Followers",download:"Downloads",print:"Prints",boost:"Boosts",like:"Likes",collect:"Collects",rating:"Ratings",points:"Points",summary:"Daily summary"};
 let S=null,C=null,topMode="today",bestM="downloads",mSort="d30",mDir=-1,mView="30",mQ="",mAct=false;
 const SP={};  // model id -> [daily downloads] for sparklines
 const $=id=>document.getElementById(id),fmt=n=>(+n||0).toLocaleString(),sg=n=>(n>0?"+":"")+fmt(n);
@@ -565,7 +565,7 @@ function diag(){const ms=Object.values(C&&C.models||{}),has=ms.filter(r=>r.has);
  const prn=ms.filter(r=>lowP(r)||lowR(r)).sort((a,b)=>b.life.d-a.life.d);
  return {ms,has,md,mp,under,prn,miss,lowP,lowR}}
 // Models running well ahead of their own pace today (creator.find_spikes, the same check
-// that sends the "spike" notification).
+// that feeds the daily summary notification).
 const spikes=()=>((C&&C.acct)||{}).spikes||[];
 const PARTS=["Night","Morning","Afternoon","Evening"],PARTH=["midnight to 6 AM","6 AM to noon","noon to 5 PM","5 PM to midnight"];
 function renderActs(){const el=$("acts");if(!C){el.innerHTML=`<li><div><span>Waiting for creator stats</span></div></li>`;$("actn").textContent="";return}
@@ -745,7 +745,7 @@ const pid=p=>"f-"+String(p).replace(/[^\w-]/g,"-");
 const blank=v=>v===""||v===null||v===undefined||(v&&typeof v=="object"&&!Array.isArray(v)&&Object.values(v).every(blank));
 const js=o=>JSON.stringify(o,(k,v)=>k=="_set"||k&&blank(v)?undefined:v);
 const SLICE={mw:f=>[f.top.handle],panels:f=>[f.top.panels],adv:f=>[f.top.user_agent],poll:f=>[f.top.poll_interval_sec,f.top.page_cycle_sec],
- notify:f=>[f.notifications.defaults.events,f.notifications.defaults.min_count,f.notifications.channels],
+ notify:f=>[f.notifications.defaults.events,f.notifications.defaults.min_count,f.notifications.defaults.summary_time,f.notifications.channels],
  quiet:f=>[f.notifications.defaults.quiet_hours,f.notifications.defaults.quiet_digest,f.notifications.defaults.urgent]};
 const SLOTS=[...Array(96)].map((_,i)=>String(i>>2).padStart(2,"0")+":"+String((i&3)*15).padStart(2,"0"));
 const t12=s=>{const[h,m]=String(s).split(":").map(Number);return isNaN(h)?s:(h%12||12)+":"+String(m||0).padStart(2,"0")+" "+(h<12?"AM":"PM")};
@@ -807,6 +807,8 @@ function paint(){const ch=changedSecs(),d=ch.length>0;document.body.classList.to
  const pph=+t.poll_interval_sec>=60?Math.round(3600/+t.poll_interval_sec*10)/10:0;
  if(np)np.textContent=[dur(t.poll_interval_sec)&&"= "+dur(t.poll_interval_sec)+(pph?`, ${pph} ${pph==1?"poll":"polls"} an hour`:""),eff!=F0.top.poll_interval_sec?`Running at ${dur(eff)} right now, set from a panel. Saving here takes over.`:""].filter(Boolean).join(". ");
  if(nc)nc.textContent=dur(t.page_cycle_sec)?"= "+dur(t.page_cycle_sec):"";
+ const sh=$("sumhint");if(sh){const nd=F.notifications.defaults,on=F.notifications.channels.filter(c=>c.enabled!==false&&(c.events==null?nd.events||[]:c.events).includes("summary")).length;
+  sh.textContent=on?`Goes to ${on} channel${on==1?"":"s"}.`:"No channel gets it yet. Tick Daily summary under Default events, or in a channel's own events."}
  summary(E);return d}
 const cap=s=>String(s).charAt(0).toUpperCase()+String(s).slice(1);
 function summary(E){const s=$("esum");if(!s)return;const ks=Object.keys(E);if(!TRIED||!ks.length){s.hidden=true;return}
@@ -926,6 +928,9 @@ function renderSettings(){if(!F)return;const t=F.top,n=F.notifications,d=n.defau
    <div class="row addch"><label class=sr for=newtype>New channel type</label><select id=newtype>${Object.keys(F.schema.types).map(k=>`<option value=${k}>${TYPE_LABEL[k]||k}</option>`).join("")}</select>
     <button class="btn sm" id=addch type=button>${PLUS} Add channel</button></div></div>`+
   srow("defaults.events","Default events","Channels send these unless they pick their own.",evChips("defaults.events",d.events,pid("defaults.events")+"-l"),{forId:false})+
+  srow("defaults.summary_time","Daily summary","Sent once a day to channels with the Daily summary event: the day's totals, top models, any spikes, unanswered comments and the page most worth improving.",
+   `<select ${ctlAttrs("defaults.summary_time")} class=narrow>${(SLOTS.includes(d.summary_time||"21:00")?SLOTS:[...SLOTS,d.summary_time].sort()).map(x=>`<option value="${x}"${x==(d.summary_time||"21:00")?" selected":""}>${t12(x)}</option>`).join("")}</select>
+   <p class=help id=sumhint></p>`)+
   srow("defaults.min_count","Hold small amounts","Wait until an event adds up to this many, then send it. Smaller amounts roll into the next message. Empty or 1 sends every time.",
    `<div class=mini-grid>${F.schema.grouped.map(k=>{const p="defaults.min_count."+k;FL[p]="Hold "+EV[k].toLowerCase();
     return `<div class=fld><label for=${pid(p)}>${EV[k]}</label>${inp(p,(d.min_count||{})[k]??"",{type:"number",ph:"1",min:1})}${errEl(p)}</div>`}).join("")}</div>`,{forId:false}))}

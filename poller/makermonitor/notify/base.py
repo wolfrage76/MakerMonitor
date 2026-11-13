@@ -10,7 +10,7 @@ from typing import Any, ClassVar
 
 import httpx
 
-from .events import EVENT_TYPES, Event
+from .events import DEFAULT_EVENTS, EVENT_TYPES, Event
 from .style import Digest
 
 log = logging.getLogger(__name__)
@@ -87,7 +87,7 @@ class Channel:
         self.cfg = cfg
         self.handle = handle
         self.name = str(cfg.get("name") or self.kind)
-        events = cfg.get("events") or defaults.get("events") or list(EVENT_TYPES)
+        events = cfg.get("events") or defaults.get("events") or list(DEFAULT_EVENTS)
         if isinstance(events, str):
             events = [e.strip() for e in events.split(",")]
         skip = set(cfg.get("exclude") or defaults.get("exclude") or [])

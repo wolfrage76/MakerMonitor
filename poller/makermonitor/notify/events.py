@@ -10,7 +10,11 @@ from ..state import Snapshot
 MAKERWORLD = "https://makerworld.com/en"
 
 # Every event type a channel can subscribe to, in the order messages list them.
-EVENT_TYPES = ("health", "spike", "comment", "follower", "download", "print", "boost", "like", "collect", "rating", "points")
+EVENT_TYPES = ("health", "comment", "follower", "download", "print", "boost", "like", "collect", "rating", "points",
+               "summary")
+# What a channel gets when it doesn't list its events: everything except the
+# opt-in daily summary.
+DEFAULT_EVENTS = tuple(t for t in EVENT_TYPES if t != "summary")
 
 _MODEL_STATS = (("download", "downloads"), ("print", "prints"), ("boost", "boosts"),
                 ("like", "likes"), ("collect", "collects"))
@@ -38,7 +42,7 @@ class Event:
 
     def to_dict(self) -> dict[str, Any]:
         d = {k: v for k, v in asdict(self).items() if v not in ("", None)}
-        if self.type == "health":
+        if self.type in ("health", "summary"):
             d.pop("count"), d.pop("total")
         elif not self.total:
             d.pop("total")
@@ -94,28 +98,6 @@ def snapshot_events(prev: Snapshot, cur: Snapshot, skip: set[str] | frozenset[st
     if cur.points > prev.points + 0.049 and prev.points:
         out.append(Event("points", round(cur.points - prev.points, 2), round(cur.points, 2)))
     return out
-
-
-class SpikeWatch:
-    """One "spike" event per model per day, when a model runs well ahead of its
-    usual pace (creator.find_spikes). In memory, so a restart can repeat one."""
-
-    def __init__(self) -> None:
-        self.day = ""
-        self.seen: set[str] = set()
-
-    def update(self, spikes: list[dict[str, Any]] | None, day: str) -> list[Event]:
-        if day != self.day:
-            self.day, self.seen = day, set()
-        out = []
-        for s in spikes or []:
-            if s["id"] in self.seen:
-                continue
-            self.seen.add(s["id"])
-            out.append(Event("spike", s["today"], 0, s["n"], s["id"],
-                             text=f"{s['today']:,} downloads today, against about {s['exp']:g} by this time on a normal day. "
-                                  "It may have been featured or linked somewhere."))
-        return out
 
 
 class HealthWatch:

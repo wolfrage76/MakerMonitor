@@ -24,7 +24,7 @@ Supported services:
 | `comment` | A new comment on one of your models (your own replies are skipped). Shows who and what |
 | `follower` | Follower count changed (up or down) |
 | `points` | MakerWorld points went up |
-| `spike` | A model is running well ahead of its own pace today: 3+ downloads and at least 3× what it usually has by this time of day (its 30-day daily average, scaled by your typical hourly pattern). Once per model per day, linked to the model. Needs the creator analytics (the cookie) |
+| `summary` | **Opt-in.** Once a day at `summary_time` (default 21:00): today's totals against yesterday, points, followers and ratings, the most downloaded models, any model that spiked (3+ downloads and at least 3× its usual pace for that time of day), unanswered comments, and the page most worth improving. Not sent unless a channel's `events` (or the default `events`) lists it |
 | `health` | The cookie expired, or there was no fresh data for 3 poll intervals, and again when each recovers |
 
 Each poll sends **at most one message per channel**, with everything grouped by type. Every type has its own emoji and color. The first poll after startup, and the first poll after a long gap, only set a baseline, so old activity is never sent as new.
@@ -39,6 +39,7 @@ notifications:
   quiet_hours: "23:00-07:00"
   quiet_digest: true
   urgent: [health]
+  summary_time: "21:00"   # when the opt-in daily summary goes out (local time)
   min_count: {download: 5}
 
   channels:
