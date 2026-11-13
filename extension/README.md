@@ -4,6 +4,8 @@ Chrome MV3 extension that watches MakerWorld cookies and POSTs them to your LAN 
 
 It does **not** scrape stats or talk to the CrowPanel. That is the poller’s job.
 
+Other MakerWorld stat extensions read the numbers off a MakerWorld page you keep open. This one only passes your login along (straight from Chrome's cookie store), and the poller fetches the stats itself, so you can close the tab once you're logged in.
+
 ## Install (Chrome / Edge / Brave)
 
 1. Open `chrome://extensions`

@@ -96,6 +96,8 @@ The **poller** is the only part that has to keep running, on any always-on machi
 
 The **browser extension** keeps the poller logged in: when you visit MakerWorld, it hands your session cookie to the poller on your network. Without it you still get public counts; with it you also get points, views and impressions, and MakerWorld's per-model creator analytics.
 
+**No MakerWorld tab needs to stay open.** Other MakerWorld stat tools use an extension that reads the numbers off a MakerWorld page you keep open. Here the extension only passes your login along and the poller fetches the stats itself, so they keep updating with the tab (or the whole browser) closed. Log in once and come back only when MakerWorld logs you out.
+
 More detail in [`docs/architecture.md`](docs/architecture.md).
 
 ## Quick setup
@@ -133,7 +135,7 @@ Visit `http://<poller-host>:8787/?token=<api_token>` once. Your browser remember
 
 ### 3. Install the browser extension
 
-Load [`extension/`](extension/) as an unpacked extension in Chrome, Edge or Brave, set the poller URL (`http://<poller-host>:8787`) and the same `api_token`, then visit MakerWorld. Steps are in [`extension/README.md`](extension/README.md).
+Load [`extension/`](extension/) as an unpacked extension in Chrome, Edge or Brave, set the poller URL (`http://<poller-host>:8787`) and the same `api_token`, then visit MakerWorld. After that you can close the tab; nothing needs to stay open. Steps are in [`extension/README.md`](extension/README.md).
 
 ### 4. Add a panel
 
