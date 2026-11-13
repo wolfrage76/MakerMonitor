@@ -25,6 +25,7 @@ STYLES = {
     "like": Style("❤️", 0xEF4444, "like", "likes"),
     "collect": Style("📌", 0x8B5CF6, "collect", "collects"),
     "rating": Style("🌟", 0xFACC15, "rating", "ratings"),
+    "spike": Style("📈", 0x14B8A6, "model spiking", "models spiking"),
     "comment": Style("💬", 0x06B6D4, "comment", "comments"),
     "follower": Style("👤", 0xEC4899, "follower", "followers"),
     "points": Style("⭐", 0xEAB308, "point", "points"),
@@ -108,10 +109,12 @@ def build_digest(events: list[Event], handle: str = "", heading: str = "") -> Di
             st = HEALTH_OK if e.level == "ok" else HEALTH_WARN
             sections.append(Section(e.type, st, f"{st.emoji} {e.title}", [e.text] if e.text else []))
             continue
-        totals[e.type] = totals.get(e.type, 0) + e.count
+        totals[e.type] = totals.get(e.type, 0) + (1 if e.type == "spike" else e.count)  # spikes count models
         if e.type == "rating":
             star_total += e.stars
-        if e.type == "comment":
+        if e.type == "spike":
+            sections.append(Section(e.type, st, f"{st.emoji} {e.model} is spiking", [e.text], url=e.url))
+        elif e.type == "comment":
             sections.append(Section(e.type, st, f"{st.emoji} New comment on {e.model}", [e.text],
                                     url=e.url, author=e.user))
         elif e.type == "follower":
@@ -149,7 +152,7 @@ def build_digest(events: list[Event], handle: str = "", heading: str = "") -> Di
         if t in totals and t != "health":
             n = totals[t]
             st = STYLES[t]
-            parts.append(f"{num(n)} new {st.label(n)}" if t == "comment" else f"{signed(n)} {st.label(n)}"
+            parts.append(f"{num(n)} new {st.label(n)}" if t == "comment" else f"{num(n)} {st.label(n)}" if t == "spike" else f"{signed(n)} {st.label(n)}"
                          + (f" ({stars(star_total, n)}{'' if n == 1 else ' avg'})" if t == "rating" and stars(star_total, n) else ""))
     summary = ", ".join(parts)
     if heading:
@@ -173,7 +176,7 @@ def render_text(digest: Digest, markdown: bool = False) -> str:
             body = [f"{s.author}: " + (f"_{s.lines[0]}_" if markdown else f"“{s.lines[0]}”")]
         else:
             body = s.lines if markdown else [plain(ln) for ln in s.lines]
-        if markdown and s.url and s.type in ("comment", "follower"):
+        if markdown and s.url and s.type in ("comment", "follower", "spike"):
             head = f"**[{s.title}]({s.url})**"
         blocks.append("\n".join([head, *body]))
     return "\n\n".join(blocks)

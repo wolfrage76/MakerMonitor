@@ -416,7 +416,7 @@ dialog.dlg .row{justify-content:flex-end}
 const K=[["downloads","Downloads","d"],["prints","Prints","p"],["boosts","Boosts","b"],["likes","Likes","l"],["collects","Collects","c"]];
 const KC={boosts:"b",likes:"l",collects:"c",downloads:"d",prints:"p",comment:"f",ratings:"r"};
 const WD=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],WDL=["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
-const EV={health:"Health alerts",comment:"Comments",follower:"Followers",download:"Downloads",print:"Prints",boost:"Boosts",like:"Likes",collect:"Collects",rating:"Ratings",points:"Points"};
+const EV={health:"Health alerts",spike:"Spikes",comment:"Comments",follower:"Followers",download:"Downloads",print:"Prints",boost:"Boosts",like:"Likes",collect:"Collects",rating:"Ratings",points:"Points"};
 let S=null,C=null,topMode="today",bestM="downloads",mSort="d30",mDir=-1,mView="30",mQ="",mAct=false;
 const SP={};  // model id -> [daily downloads] for sparklines
 const $=id=>document.getElementById(id),fmt=n=>(+n||0).toLocaleString(),sg=n=>(n>0?"+":"")+fmt(n);
@@ -564,17 +564,15 @@ function diag(){const ms=Object.values(C&&C.models||{}),has=ms.filter(r=>r.has);
  const lowP=r=>mp&&r.life.d>=15&&r.ppd!=null&&r.ppd<mp*.5,lowR=r=>r.rt>=3&&r.ra!=null&&r.ra<4.5;
  const prn=ms.filter(r=>lowP(r)||lowR(r)).sort((a,b)=>b.life.d-a.life.d);
  return {ms,has,md,mp,under,prn,miss,lowP,lowR}}
-// Models running well ahead of their own 30-day pace today. A model's expected downloads by now
-// is its daily average times the share of a typical day's downloads (all models) done by this hour.
-function spikes(){if(!C||!S)return[];const hr=((S.insights||{}).downloads||{}).hour||[],tot=sum(hr,24);if(!tot)return[];
- const sec=pSec(),h=Math.floor(sec/3600),share=(sum(hr,h)+(+hr[h]||0)*(sec%3600)/3600)/tot,x=r=>r.todayD/Math.max(r.exp,.5);
- return Object.values(C.models||{}).filter(r=>r.has).map(r=>({...r,exp:r.m.d/30*share})).filter(r=>r.todayD>=3&&x(r)>=3).sort((a,b)=>x(b)-x(a))}
+// Models running well ahead of their own pace today (creator.find_spikes, the same check
+// that sends the "spike" notification).
+const spikes=()=>((C&&C.acct)||{}).spikes||[];
 const PARTS=["Night","Morning","Afternoon","Evening"],PARTH=["midnight to 6 AM","6 AM to noon","noon to 5 PM","5 PM to midnight"];
 function renderActs(){const el=$("acts");if(!C){el.innerHTML=`<li><div><span>Waiting for creator stats</span></div></li>`;$("actn").textContent="";return}
  const D=diag(),a=C.acct||{},it=[],add=(k,o,t,w)=>it.push({k,o,t,w});
  if(a.unans)add("now",0,`<a href="#activity">Reply to ${a.unans} comment${a.unans==1?"":"s"}</a>`,"Comments on your models with no answer from you yet.");
  const sp=spikes(),spk=new Set(sp.map(r=>r.id));
- sp.slice(0,2).forEach(r=>add("now",1,`${mwLink(r.id,r.n)} is spiking today`,`${fmt(r.todayD)} downloads so far, against about ${nf(r.exp)} by this time on a normal day. It may have been featured or linked somewhere, so answer its comments while people are looking.`));
+ sp.slice(0,2).forEach(r=>add("now",1,`${mwLink(r.id,r.n)} is spiking today`,`${fmt(r.today)} downloads so far, against about ${nf(r.exp)} by this time on a normal day. It may have been featured or linked somewhere, so answer its comments while people are looking.`));
  D.has.filter(r=>r.mom&&r.mom.rising&&!spk.has(r.id)).sort((x,y)=>y.mom.y-x.mom.y).slice(0,2).forEach(r=>
   add("now",1,`${mwLink(r.id,r.n)} is taking off`,`${fmt(r.mom.y)} downloads yesterday against ${nf(r.mom.avg)} a day before. A good moment to answer its comments and share it.`));
  const la=a.launch;if(la&&la.day>=2&&la.pct!=null&&la.pct<25)

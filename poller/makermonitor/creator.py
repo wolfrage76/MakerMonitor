@@ -68,6 +68,30 @@ def _pub_local(m: Any) -> datetime | None:
         return None
 
 
+def find_spikes(rows: dict[str, dict[str, Any]], hour_profile: list[int] | None,
+                now: datetime | None = None) -> list[dict[str, Any]]:
+    """Models well ahead of their own pace today: 3+ downloads and at least 3x
+    what they'd have by this time on a normal day. "Normal" is the model's
+    30-day daily average times the share of a typical day's downloads (all
+    models, local time, from the hourly buckets) done by now."""
+    hp = list(hour_profile or [])[:24]
+    tot = sum(hp)
+    if not tot:
+        return []
+    now = now or datetime.now()
+    h = now.hour
+    share = (sum(hp[:h]) + hp[h] * (now.minute * 60 + now.second) / 3600) / tot
+    out = []
+    for r in rows.values():
+        if not r.get("has"):
+            continue
+        exp = r["m"]["d"] / 30 * share
+        td = int(r.get("todayD") or 0)
+        if td >= 3 and td >= 3 * max(exp, 0.5):
+            out.append({"id": r["id"], "n": r["n"], "today": td, "exp": round(exp, 1), "x": round(td / max(exp, 0.5), 1)})
+    return sorted(out, key=lambda s: -s["x"])
+
+
 def _publish_timing(launches: list[dict[str, Any]]) -> dict[str, Any]:
     """First-week downloads of finished launches, grouped by the local weekday
     and time of day they were published. Medians, so one hit doesn't decide."""
@@ -276,7 +300,8 @@ class CreatorStats:
         cache = self.d["models"]
         return {"have": sum(1 for m in snap.models if cache.get(m, {}).get("t")), "of": len(snap.models)}
 
-    def compute(self, snap: Snapshot, day_view: dict[str, Any], daily_days: list[dict[str, Any]]) -> dict[str, Any]:
+    def compute(self, snap: Snapshot, day_view: dict[str, Any], daily_days: list[dict[str, Any]],
+                hour_profile: list[int] | None = None) -> dict[str, Any]:
         """Per-model rows plus account-wide numbers."""
         with self._lock:
             cache = json.loads(json.dumps(self.d["models"]))
@@ -349,6 +374,7 @@ class CreatorStats:
             rows[mid] = r
 
         acct = self._account(rows, snap, daily_days, last7, last30)
+        acct["spikes"] = find_spikes(rows, hour_profile)
         return {"t": int(time.time()), "progress": self.progress(snap), "acct": acct, "models": rows}
 
     def _account(self, rows: dict[str, dict[str, Any]], snap: Snapshot, daily_days: list[dict[str, Any]],

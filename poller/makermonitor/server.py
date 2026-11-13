@@ -263,7 +263,8 @@ class AppContext:
         if not snap or not snap.models:
             return None
         try:
-            return self.creator.compute(snap, self.day.view(), list(self.day.d.get("days", [])))
+            return self.creator.compute(snap, self.day.view(), list(self.day.d.get("days", [])),
+                                        ((self.day.insights().get("downloads") or {}).get("hour")))
         except Exception as exc:  # noqa: BLE001 - never break the panels' state
             log.exception("creator stats failed: %s", exc)
             return None
@@ -653,7 +654,11 @@ class AppContext:
                 await self._push_color(snap, cevents, "needed", "public only - open MakerWorld")
             else:
                 await self._push_color(snap, cevents, "ok", "synced")
-            self.notifier.submit(prev, snap, self.health_view(), fresh, baseline=not prev.fetched_at or stale)
+            spikes = None
+            if self.notifier.channels:
+                spikes = ((self.creator_full() or {}).get("acct") or {}).get("spikes")
+            self.notifier.submit(prev, snap, self.health_view(), fresh, baseline=not prev.fetched_at or stale,
+                                 spikes=spikes, day=self.day.d.get("day", ""))
             self.creator.kick(client, snap)
 
             result["ok"] = True

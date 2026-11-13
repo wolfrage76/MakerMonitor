@@ -24,6 +24,7 @@ Supported services:
 | `comment` | A new comment on one of your models (your own replies are skipped). Shows who and what |
 | `follower` | Follower count changed (up or down) |
 | `points` | MakerWorld points went up |
+| `spike` | A model is running well ahead of its own pace today: 3+ downloads and at least 3× what it usually has by this time of day (its 30-day daily average, scaled by your typical hourly pattern). Once per model per day, linked to the model. Needs the creator analytics (the cookie) |
 | `health` | The cookie expired, or there was no fresh data for 3 poll intervals, and again when each recovers |
 
 Each poll sends **at most one message per channel**, with everything grouped by type. Every type has its own emoji and color. The first poll after startup, and the first poll after a long gap, only set a baseline, so old activity is never sent as new.
