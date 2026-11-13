@@ -415,7 +415,7 @@ dialog.dlg .row{justify-content:flex-end}
 "use strict";
 const K=[["downloads","Downloads","d"],["prints","Prints","p"],["boosts","Boosts","b"],["likes","Likes","l"],["collects","Collects","c"]];
 const KC={boosts:"b",likes:"l",collects:"c",downloads:"d",prints:"p",comment:"f",ratings:"r"};
-const WD=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+const WD=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],WDL=["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
 const EV={health:"Health alerts",comment:"Comments",follower:"Followers",download:"Downloads",print:"Prints",boost:"Boosts",like:"Likes",collect:"Collects",rating:"Ratings",points:"Points"};
 let S=null,C=null,topMode="today",bestM="downloads",mSort="d30",mDir=-1,mView="30",mQ="",mAct=false;
 const SP={};  // model id -> [daily downloads] for sparklines
@@ -564,10 +564,18 @@ function diag(){const ms=Object.values(C&&C.models||{}),has=ms.filter(r=>r.has);
  const lowP=r=>mp&&r.life.d>=15&&r.ppd!=null&&r.ppd<mp*.5,lowR=r=>r.rt>=3&&r.ra!=null&&r.ra<4.5;
  const prn=ms.filter(r=>lowP(r)||lowR(r)).sort((a,b)=>b.life.d-a.life.d);
  return {ms,has,md,mp,under,prn,miss,lowP,lowR}}
+// Models running well ahead of their own 30-day pace today. A model's expected downloads by now
+// is its daily average times the share of a typical day's downloads (all models) done by this hour.
+function spikes(){if(!C||!S)return[];const hr=((S.insights||{}).downloads||{}).hour||[],tot=sum(hr,24);if(!tot)return[];
+ const sec=pSec(),h=Math.floor(sec/3600),share=(sum(hr,h)+(+hr[h]||0)*(sec%3600)/3600)/tot,x=r=>r.todayD/Math.max(r.exp,.5);
+ return Object.values(C.models||{}).filter(r=>r.has).map(r=>({...r,exp:r.m.d/30*share})).filter(r=>r.todayD>=3&&x(r)>=3).sort((a,b)=>x(b)-x(a))}
+const PARTS=["Night","Morning","Afternoon","Evening"],PARTH=["midnight to 6 AM","6 AM to noon","noon to 5 PM","5 PM to midnight"];
 function renderActs(){const el=$("acts");if(!C){el.innerHTML=`<li><div><span>Waiting for creator stats</span></div></li>`;$("actn").textContent="";return}
  const D=diag(),a=C.acct||{},it=[],add=(k,o,t,w)=>it.push({k,o,t,w});
  if(a.unans)add("now",0,`<a href="#activity">Reply to ${a.unans} comment${a.unans==1?"":"s"}</a>`,"Comments on your models with no answer from you yet.");
- D.has.filter(r=>r.mom&&r.mom.rising).sort((x,y)=>y.mom.y-x.mom.y).slice(0,2).forEach(r=>
+ const sp=spikes(),spk=new Set(sp.map(r=>r.id));
+ sp.slice(0,2).forEach(r=>add("now",1,`${mwLink(r.id,r.n)} is spiking today`,`${fmt(r.todayD)} downloads so far, against about ${nf(r.exp)} by this time on a normal day. It may have been featured or linked somewhere, so answer its comments while people are looking.`));
+ D.has.filter(r=>r.mom&&r.mom.rising&&!spk.has(r.id)).sort((x,y)=>y.mom.y-x.mom.y).slice(0,2).forEach(r=>
   add("now",1,`${mwLink(r.id,r.n)} is taking off`,`${fmt(r.mom.y)} downloads yesterday against ${nf(r.mom.avg)} a day before. A good moment to answer its comments and share it.`));
  const la=a.launch;if(la&&la.day>=2&&la.pct!=null&&la.pct<25)
   add("fix",2,`${mwLink(la.id,la.n)} is launching slowly`,`Day ${la.day}: behind ${100-la.pct}% of your ${la.past} earlier launches. Share it, or try a stronger cover image.`);
@@ -577,6 +585,7 @@ function renderActs(){const el=$("acts");if(!C){el.innerHTML=`<li><div><span>Wai
   :add("fix",4,`Check the print profile for ${mwLink(r.id,r.n)}`,`${fmt(r.life.d)} downloads, ${pc(r.ppd,0)} printed, against ${pc(D.mp,0)} for your typical model. If it's meant to be printed as is, check its profile and plates.`));
  D.has.filter(r=>r.mom&&r.mom.stalled).sort((x,y)=>y.mom.avg-x.mom.avg).slice(0,1).forEach(r=>
   add("",5,`${mwLink(r.id,r.n)} has gone quiet`,`It averaged ${nf(r.mom.avg)} downloads a day and has none since yesterday. Check it's still listed and its files open.`));
+ const pt=a.pubt;if(pt&&pt.bestWd>=0)add("",7,`Publish on a ${WDL[pt.bestWd]}`,`Your ${WDL[pt.bestWd]} launches got a median ${nf(pt.wd[pt.bestWd].med,0)} downloads in their first week, against ${nf(pt.med,0)} overall (${pt.wd[pt.bestWd].n} of ${pt.n} launches).`);
  if(a.ptsTrend=="down")add("",6,"Points are down",`${nf(a.pts7avg)} a day over the last week, ${nf(a.ptsPrev7avg)} the week before.`);
  it.sort((x,y)=>x.o-y.o);const n=it.length;it.splice(6);
  $("actn").textContent=n?(n>6?`top 6 of ${n}`:`${n} item${n==1?"":"s"}`):"";
@@ -610,11 +619,12 @@ function renderModels(){if(!C){$("mtable").innerHTML=`<p class=mut>Waiting for c
  const nh=all.filter(r=>!r.has).length;
  $("mcount").textContent=(rows.length<all.length?`${rows.length} of ${all.length}`:all.length)+" models"+(nh?`, ${nh} still waiting for MakerWorld analytics`:"");
  const head=MCOLS.map(([k,l])=>k=="sp"?`<th class=nophone>${l}</th>`:`<th class="sort${mSort==k?" on":""}" data-k="${k}">${l}${mSort==k?(mDir<0?" ↓":" ↑"):""}</th>`).join("");
- const trend=m=>!m?"<span class=mut>–</span>":m.stalled?`<span class=down>stalled</span>`:m.rising?`<span class=up>rising fast</span>`:m.dir=="up"?`<span class=up>up</span>`:m.dir=="down"?`<span class=down>down</span>`:"<span class=mut>flat</span>";
+ const spk=new Set(spikes().map(r=>r.id));
+ const trend=(m,id)=>spk.has(id)?`<span class=up>spiking today</span>`:!m?"<span class=mut>–</span>":m.stalled?`<span class=down>stalled</span>`:m.rising?`<span class=up>rising fast</span>`:m.dir=="up"?`<span class=up>up</span>`:m.dir=="down"?`<span class=down>down</span>`:"<span class=mut>flat</span>";
  const nv=v=>v==null?"<span class=mut>–</span>":fmt(Math.round(v));
  $("mtable").innerHTML=`<table><thead><tr>${head}</tr></thead><tbody>`+(rows.map(r=>`<tr><td class=nm>${mwLink(r.id,r.n)}</td><td class=nophone>${spark(SP[r.id],"d")}</td>
   <td>${nv(r.d30)}</td><td>${nv(r.v30)}</td><td>${pc(r.dpv)}</td><td>${nv(r.p30)}</td><td>${nv(r.l30)}</td><td>${nv(r.c30)}</td><td>${r.pt30==null?"<span class=mut>–</span>":nf(r.pt30)}</td>
-  <td>${r.rt?`${fmt(r.rt)} <span class=mut>${nf(r.ra,1)}★</span>`:"<span class=mut>–</span>"}</td><td>${trend(r.momr)}</td><td>${r.un?`<b style="color:var(--warn)">${r.un}</b>`:"<span class=mut>0</span>"}</td></tr>`).join("")||`<tr><td colspan=12 class=empty>${all.length?"No models match the filter":"No models yet"}</td></tr>`)+"</tbody></table>";
+  <td>${r.rt?`${fmt(r.rt)} <span class=mut>${nf(r.ra,1)}★</span>`:"<span class=mut>–</span>"}</td><td>${trend(r.momr,r.id)}</td><td>${r.un?`<b style="color:var(--warn)">${r.un}</b>`:"<span class=mut>0</span>"}</td></tr>`).join("")||`<tr><td colspan=12 class=empty>${all.length?"No models match the filter":"No models yet"}</td></tr>`)+"</tbody></table>";
  $("mtable").querySelectorAll("th.sort").forEach(th=>th.onclick=()=>{const k=th.dataset.k;if(mSort==k)mDir=-mDir;else{mSort=k;mDir=k=="n"?1:-1}renderModels()});
  renderInsights()}
 function renderInsights(){const m=Object.values(C.models||{}),has=m.filter(r=>r.has),top=(arr,f,n=8)=>arr.sort(f).slice(0,n);
@@ -634,16 +644,25 @@ function renderInsights(){const m=Object.values(C.models||{}),has=m.filter(r=>r.
  if(la){const mx=Math.max(1,...la.cur,...la.med);const nd=la.cur[la.day-1]||0;lc=`<p class=ink2 style="margin-top:0">${mwLink(la.id,la.n)}: day ${la.day} of 7, ${fmt(nd)} download${nd==1?"":"s"} so far`+
   (la.pct!=null&&(nd>0||la.day>1)?`, ahead of ${la.pct}% of ${la.past} earlier launches`:la.past?`. The median of ${la.past} earlier launches is shown in grey.`:"")+`</p><div class=lc>${[0,1,2,3,4,5,6].map(i=>`<div title="day ${i+1}"><i style="background:var(--acc);height:${la.cur[i]!=null?Math.max(3,la.cur[i]/mx*100):0}%"></i><i style="background:var(--line);height:${la.med.length?Math.max(3,la.med[i]/mx*100):0}%"></i></div>`).join("")}</div>
   <div class=axis><span>day 1</span><span>day 7</span></div><div class=legend style="margin-top:10px"><span><i style="background:var(--acc)"></i>this launch</span><span><i style="background:var(--line)"></i>median launch</span></div>`}
+ const pt=(C.acct||{}).pubt,ins=((S&&S.insights)||{}).downloads;let pub="<p class=mut>Shows once models have finished their first week.</p>";
+ if(pt&&pt.n){const cell=(g,i,lab,tip)=>`<div class="${i==g.best?"hi":""}" title="${tip}: ${g.v[i].n} launch${g.v[i].n==1?"":"es"}${g.v[i].n?", median "+nf(g.v[i].med,1)+", best "+g.v[i].max:""}">${lab}<b>${g.v[i].n?nf(g.v[i].med,g.v[i].med%1?1:0):"–"}</b></div>`;
+  const W={v:pt.wd,best:pt.bestWd},P={v:pt.part,best:pt.bestPart};
+  const verdict=[pt.bestWd>=0?`${WDL[pt.bestWd]} launches did best`:"",pt.bestPart>=0?`${PARTS[pt.bestPart].toLowerCase()} launches (${PARTH[pt.bestPart]}) did best`:""].filter(Boolean);
+  pub=`<p class=ink2 style="margin-top:0">Median downloads in the first week, by when the model was published. ${pt.n} launches so far.</p>
+  <div class=wk>${pt.wd.map((_,i)=>cell(W,i,WD[i],WDL[i])).join("")}</div>
+  <div class=wk style="grid-template-columns:repeat(4,1fr)">${PARTS.map((l,i)=>cell(P,i,l,PARTH[i])).join("")}</div>
+  <p class=mut style="margin:12px 0 0">${verdict.length?cap(verdict.join("; "))+`, against a median of ${nf(pt.med,pt.med%1?1:0)} overall. That's a small sample, so treat it as a hint.`:`No publish time stands out yet: the differences are too small for ${pt.n} launches to tell apart.`}${ins&&ins.bestHour>=0?` Your downloads peak around ${hh(ins.bestHour)}, so a model published a few hours before that gets its first day in your busiest window.`:""}</p>`}
  const t=(C.acct||{}).tail||{},tb=(l,v)=>{v=v||[0,0];const s=v[0]+v[1],o=s?Math.round(100*v[0]/s):0;return `<div class=ink2>${l}: <b>${o}%</b> from models older than 30 days <span class=mut>(${fmt(v[0])} of ${fmt(s)})</span></div><div class=tail><i style="width:${o}%;background:var(--c)"></i><i style="width:${100-o}%;background:var(--d)"></i></div>`};
  const card=(h,sub,b)=>`<div class="card fit"><h2>${h}<span class=sp></span><small>${sub}</small></h2><div class=tw>${b}</div></div>`;
  $("cgrid").innerHTML=[
   card("Best converting","downloads per view, 30 days",table(["Model","DL/view","Views","DL","Prints/DL"],conv,"Needs models with 30+ views")),
   card("Most engaging","per 100 downloads, 30 days",table(["Model","Likes","Coll.","Comm.","Lifetime"],eng,"Needs models with 5+ downloads")),
   card("Pages to improve",D.md?`DL/view under half your ${pc(D.md)}`:"downloads per view",table(["Model","Views","DL/view","Missed DL"],under,"No page with 150+ views is lagging")),
-  card("Printing problems?",D.mp?`printed under half your ${pc(D.mp,0)}, or under 4.5★`:"print rate and rating",table(["Model","DL","Printed","Rating"],prn,"No model stands out")),
+  card("Print problems",D.mp?`under half your ${pc(D.mp,0)} printed, or under 4.5★`:"print rate and rating",table(["Model","DL","Printed","Rating"],prn,"No model stands out")),
   card("Rising","yesterday against the 7-day average",table(["Model","Yday","Avg","Ratio"],rise,"Nothing rising right now")),
   card("Stalled","averaged 1+ a day, none since yesterday",table(["Model","Was / day"],stall,"Nothing stalled")),
   card("Launch curve","first 7 days",lc),
+  card("When to publish","first-week downloads by publish time",pub),
   card("Points by model","MakerWorld attribution",table(["Model","7 days","30 days"],pts)),
   card("Best rated","3 or more ratings",table(["Model","Average","Ratings"],rated,"No model has 3 ratings yet")),
   card("Where followers come from","by model",table(["Model","7 days","30 days"],fol)),

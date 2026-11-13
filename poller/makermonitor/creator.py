@@ -60,6 +60,39 @@ def _pub_date(m: Any) -> date | None:
         return None
 
 
+def _pub_local(m: Any) -> datetime | None:
+    s = getattr(m, "published", "") or ""
+    try:
+        return datetime.fromisoformat(s.replace("Z", "+00:00")).astimezone()
+    except ValueError:
+        return None
+
+
+def _publish_timing(launches: list[dict[str, Any]]) -> dict[str, Any]:
+    """First-week downloads of finished launches, grouped by the local weekday
+    and time of day they were published. Medians, so one hit doesn't decide."""
+    done = [r for r in launches if len(r["launch"]) == 7 and r.get("pubWd") is not None]
+    vals = [r["launch"][6] for r in done]
+    overall = statistics.median(vals) if vals else None
+
+    def group(key: str, n: int) -> list[dict[str, Any]]:
+        out = []
+        for i in range(n):
+            v = [r["launch"][6] for r in done if r[key] == i]
+            out.append({"n": len(v), "med": statistics.median(v) if v else None, "max": max(v) if v else None})
+        return out
+
+    wd, part = group("pubWd", 7), group("pubPart", 4)
+
+    def best(g: list[dict[str, Any]]) -> int:
+        # A winner needs 3+ launches and a median at least double the overall one (and 2+).
+        ok = [i for i, x in enumerate(g) if x["n"] >= 3 and x["med"] is not None and x["med"] >= 2
+              and x["med"] >= 2 * (overall or 0)]
+        return max(ok, key=lambda i: g[i]["med"]) if ok else -1
+
+    return {"n": len(done), "med": overall, "wd": wd, "part": part, "bestWd": best(wd), "bestPart": best(part)}
+
+
 def _days_from(model_data: dict[str, Any]) -> dict[str, dict[str, float]]:
     out: dict[str, dict[str, float]] = {}
     for row in model_data.get("dateList") or []:
@@ -265,6 +298,7 @@ class CreatorStats:
             c = cache.get(mid, {})
             days = c.get("days") or {}
             pub = _pub_date(m)
+            pdt = _pub_local(m)
             age = (today - pub).days if pub else None
             today_d = max(0, now_c[mid]["d"] - int((base.get(mid) or {}).get("downloads", now_c[mid]["d"])))
             r: dict[str, Any] = {"id": mid, "n": ascii_text(m.name or mid)[:60], "age": age,
@@ -272,6 +306,9 @@ class CreatorStats:
                                  "life": {"d": m.downloads, "p": m.prints, "l": m.likes, "c": m.collects,
                                           "m": m.comments, "b": m.boosts},
                                  # ratings: count and average stars (None without ratings)
+                                 # publish weekday (Mon = 0) and part of day: 0 night, 1 morning, 2 afternoon, 3 evening
+                                 "pubWd": pdt.weekday() if pdt else None,
+                                 "pubPart": (0 if pdt.hour < 6 else 1 if pdt.hour < 12 else 2 if pdt.hour < 17 else 3) if pdt else None,
                                  "rt": m.ratings, "ra": round(m.rating_sum / m.ratings, 2) if m.ratings else None}
             for tag, keys in (("w", last7), ("m", last30)):
                 r[tag] = {f: round(tsum(days, keys, f), 2) for _, f in _DAY_KEYS}
@@ -336,6 +373,7 @@ class CreatorStats:
                 pct = round(100 * sum(1 for c in past if c[n - 1] < at) / len(past))
             launch = {"id": cur["id"], "n": cur["n"], "day": n, "cur": cur["launch"], "med": med,
                       "pct": pct, "past": len(past)}
+        pubt = _publish_timing(launches)
         # 5. account points per day (balance change; spending shows up as a dip)
         pts_days = [round(float(d.get("points", 0)), 1) for d in daily_days][-30:]
         a7 = sum(pts_days[-7:]) / max(1, len(pts_days[-7:]))
@@ -361,6 +399,7 @@ class CreatorStats:
             "e100": {"life": _per100(life["l"], life["c"], life["m"], life["d"]),
                      "w": _per100(w["l"], w["c"], wm, w["d"]), "m": _per100(m["l"], m["c"], mm, m["d"])},
             "launch": launch,
+            "pubt": pubt,
             "ptsDays": pts_days, "pts7avg": round(a7, 1), "ptsPrev7avg": round(a_prev, 1),
             "ptsTrend": _trend(a7, a_prev),
             "pts7": round(w["pt"], 1), "pts30": round(m["pt"], 1),
