@@ -565,7 +565,7 @@ const pHour=()=>Math.floor(pSec()/3600);
 function byNow(yk,total){const sec=pSec(),h=Math.floor(sec/3600),all=sum(yk,24);if(!all||total==null)return null;
  return Math.round(total*(sum(yk,h)+(+yk[h]||0)*((sec%3600)/3600))/all)}
 const sum=(a,n)=>(a||[]).slice(0,n).reduce((x,v)=>x+(+v||0),0);
-// The day as a row of peg holes, one per hour: yesterday's count is the dashed outline,
+// The day as a row of peg holes, one per hour: yesterday's count is the outline ring,
 // today's (up to now) the filled peg, and the current hour gets a tick underneath.
 const ARR=d=>`<svg width=10 height=10 viewBox="0 0 10 10" aria-hidden=true><path d="${d>0?"M5 1.2L9.2 7.6H.8z":"M5 8.8L.8 2.4h8.4z"}" fill=currentColor /></svg>`;
 function pegs(td,yd,color,h,o={}){const W=240,H=o.big?24:20,cy=H/2-(o.big?0:1),R=o.big?4.8:3.4,r0=o.big?.9:1.3,t=td||[],y=yd||[];
