@@ -121,7 +121,7 @@ section.view{display:none}section.view.on{display:block;animation:in .16s cubic-
 .blegend{display:flex;gap:16px;flex-wrap:wrap;justify-content:flex-end;color:var(--ink3);font-size:12px}
 .blegend span{display:inline-flex;align-items:center;gap:6px}
 @media (max-width:760px){.brow{grid-template-columns:minmax(0,1fr) auto;padding:10px 0 8px}.brow .pegs,.brow .note{grid-column:1/-1;grid-row:2}
- #top th:nth-child(n+5),#top td:nth-child(n+5){display:none}.brow .val{font-size:24px}
+ #top th:nth-child(n+5),#top td:nth-child(n+5){display:none}#top th:nth-child(2),#periods th:nth-child(2){display:none}.brow .val{font-size:24px}
  .baxis{grid-template-columns:minmax(0,1fr)}.baxis>span{display:none}}
 .ov{display:grid;grid-template-columns:minmax(0,7fr) minmax(0,5fr);gap:16px;align-items:start}.ovl,.ovr{display:flex;flex-direction:column;gap:16px;min-width:0}.ovw{grid-column:1/-1}
 @media (max-width:1000px){.ov{display:flex;flex-direction:column}.ovl,.ovr{display:contents}.o1{order:1}.o2{order:2}.o3{order:3}.o4{order:4}.o5{order:5}.o6{order:6}.o7{order:7}.o8{order:8}}
@@ -146,7 +146,7 @@ th .sb svg{flex:none;color:var(--acc)}
 td svg.spark{width:90px;height:22px;vertical-align:middle}
 td svg.wk7{width:64px;height:20px;vertical-align:middle}
 .fit table td.nm,.fit table th:first-child{max-width:0;width:100%}
-@media (max-width:760px){.nophone{display:none}.fit table td.nm,.fit table th:first-child{min-width:100px}#periods td.nm{white-space:normal;overflow:visible}
+@media (max-width:760px){.nophone{display:none}.fit table td.nm,.fit table th:first-child{min-width:100px}#periods td.nm{white-space:nowrap;overflow:visible;max-width:none;width:auto}
  #mtable td.nm{white-space:normal;max-width:none;min-width:118px}#mtable th,#mtable td{padding:8px 5px;font-size:13px}#mtable td.nm>a,#mtable td.nm>span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.35}}
 .kdot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--k);margin-right:6px;vertical-align:1px}
 .empty{padding:18px 4px;color:var(--ink3);text-align:center}
@@ -432,12 +432,12 @@ dialog.dlg .row{justify-content:flex-end}
   <div class=board id=hero></div><div class=herofoot id=herofoot></div></div>
  <div class="card o3"><h2>Top models<span class=sp></span><span class=seg id=topseg role=group aria-label="Top models period"></span></h2><div class="tw fit" id=top></div></div>
  <div class="card o5"><h2>Best times<span class=sp></span><span class=seg id=bestseg role=group aria-label="Best times metric"></span></h2><div id=best></div></div>
- <div class="card o6"><h2>7 and 30 days<span class=sp></span><small>bars: last 7 days</small></h2><div class="tw fit" id=periods></div></div>
+ <div class="card o7"><h2>Followers<span class=sp></span><small>last 30 days</small></h2><div class=minis id=fol></div>
+  <div class=bars id=folbars style="height:70px"></div><div class=axis><span>30 days ago</span><span>today</span></div></div>
  </div><div class=ovr>
  <div class="card o2"><h2>Needs you<span class=sp></span><small id=actn></small></h2><ul class=acts id=acts></ul></div>
  <div class="card o4"><h2>Funnel<span class=sp></span><small>30 days, and yesterday</small></h2><div class=fn id=fun></div></div>
- <div class="card o7"><h2>Followers<span class=sp></span><small>last 30 days</small></h2><div class=minis id=fol></div>
-  <div class=bars id=folbars style="height:70px"></div><div class=axis><span>30 days ago</span><span>today</span></div></div>
+ <div class="card o6"><h2>7 and 30 days<span class=sp></span><small>bars: last 7 days</small></h2><div class="tw fit" id=periods></div></div>
  </div>
  <div class="card ovw o8"><h2>Creator at a glance<span class=sp></span><small id=cprog></small></h2><div class=facts id=ckp></div></div>
 </div></section>
