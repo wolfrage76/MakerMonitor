@@ -124,7 +124,7 @@ section.view{display:none}section.view.on{display:block;animation:in .16s cubic-
  #top th:nth-child(n+5),#top td:nth-child(n+5){display:none}#top th:nth-child(2),#periods th:nth-child(2){display:none}.brow .val{font-size:24px}
  .baxis{grid-template-columns:minmax(0,1fr)}.baxis>span{display:none}}
 .ov{display:grid;grid-template-columns:minmax(0,7fr) minmax(0,5fr);gap:16px;align-items:start}.ovl,.ovr{display:flex;flex-direction:column;gap:16px;min-width:0}.ovw{grid-column:1/-1}
-@media (max-width:1000px){.ov{display:flex;flex-direction:column}.ovl,.ovr{display:contents}.o1{order:1}.o2{order:2}.o3{order:3}.o4{order:4}.o5{order:5}.o6{order:6}.o7{order:7}.o8{order:8}}
+@media (max-width:1000px){.ov{display:flex;flex-direction:column;align-items:stretch}.ovl,.ovr{display:contents}.o1{order:1}.o2{order:2}.o3{order:3}.o4{order:4}.o5{order:5}.o6{order:6}.o7{order:7}.o8{order:8}}
 .herofoot{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:10px 18px;margin:14px -18px 0;padding:12px 18px 0;border-top:1px solid var(--line2)}
 .herofoot span{display:flex;flex-direction:column;font-size:12.5px;color:var(--ink3)}
 .herofoot b{font:650 16px var(--sans);color:var(--ink)}
