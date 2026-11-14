@@ -146,7 +146,7 @@ curl -H "X-Api-Token: <api_token>" -OJ "http://<poller-host>:8787/api/export.csv
 
 ### Kiosk
 
-`http://<poller-host>:8787/kiosk` is a full-screen view for a wall screen or TV, opened with the same token or cookie as the dashboard. It shows what needs attention (unanswered comments, cookie or polling problems, offline panels), the next round-number milestones with an ETA from the recent daily pace, milestones crossed this week, and the headline totals with 7-day bars. It refreshes every 60 s, drifts a few pixels every few minutes against burn-in, and toggles full screen with the button or the F key.
+`http://<poller-host>:8787/kiosk` is a full-screen view for a wall screen or TV, opened with the same token or cookie as the dashboard. It shows what needs attention (unanswered comments, cookie or polling problems, offline panels), the next round-number milestones with an ETA from the recent daily pace, milestones crossed this week, and the headline totals with 7-day bars. It refreshes every 60 s, drifts a few pixels every few minutes against burn-in, toggles full screen with the button or the F key, and goes back to the dashboard with the ← Dashboard button or the H key (Esc too, outside full screen).
 
 ## Notifications (optional)
 

@@ -139,11 +139,12 @@ footer .dot{display:inline-block;width:calc(10*var(--u));height:calc(10*var(--u)
 footer .sp{flex:1}
 #conn{display:none;color:var(--warn)}#conn.on{display:inline}
 /* fullscreen button */
-#fs{position:fixed;right:24px;bottom:24px;z-index:5;font:600 15px var(--sans);color:var(--ink);background:var(--panel2);
- border:1px solid var(--line);border-radius:999px;padding:10px 18px;display:flex;gap:10px;align-items:center;cursor:pointer;
- opacity:1;transition:opacity .4s}
-#fs:hover{border-color:var(--acc)}#fs kbd{font:600 12px var(--sans);color:var(--ink3);border:1px solid var(--line);border-radius:5px;padding:1px 6px}
-body.idle #fs{opacity:0;pointer-events:none}
+#ctl{position:fixed;right:24px;bottom:24px;z-index:5;display:flex;gap:10px;opacity:1;transition:opacity .4s}
+.cb{font:600 15px var(--sans);color:var(--ink);background:var(--panel2);text-decoration:none;
+ border:1px solid var(--line);border-radius:999px;padding:10px 18px;display:flex;gap:10px;align-items:center;cursor:pointer}
+.cb:hover,.cb:focus-visible{border-color:var(--acc);outline:none}.cb kbd{font:600 12px var(--sans);color:var(--ink3);border:1px solid var(--line);border-radius:5px;padding:1px 6px}
+body.idle #ctl{opacity:0;pointer-events:none}
+body:not(.idle) #pnl{opacity:0}#pnl{transition:opacity .4s}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style></head><body>
 <div id=stage>
@@ -164,7 +165,7 @@ body.idle #fs{opacity:0;pointer-events:none}
   <span id=fresh></span><span id=conn>Reconnecting…</span><span class=sp></span><span id=pnl></span>
  </footer>
 </div>
-<button id=fs type=button aria-label="Toggle full screen"><span id=fstx>Full screen</span><kbd>F</kbd></button>
+<div id=ctl><a class=cb id=home href="/" aria-label="Back to the dashboard">← Dashboard<kbd>H</kbd></a><button class=cb id=fs type=button aria-label="Toggle full screen"><span id=fstx>Full screen</span><kbd>F</kbd></button></div>
 <script>
 "use strict";
 const $=id=>document.getElementById(id);
@@ -377,7 +378,11 @@ setInterval(()=>{si=(si+1)%SHIFT.length;const s=document.getElementById("stage")
 // Full screen: button and F key; the button and the cursor hide when idle.
 function toggleFs(){if(document.fullscreenElement)document.exitFullscreen();else document.documentElement.requestFullscreen().catch(()=>{})}
 $("fs").addEventListener("click",toggleFs);
-addEventListener("keydown",e=>{if((e.key=="f"||e.key=="F")&&!e.ctrlKey&&!e.metaKey&&!e.altKey)toggleFs()});
+function home(){location.href="/"+(TOK?"?token="+encodeURIComponent(TOK):"")}
+$("home").href="/"+(TOK?"?token="+encodeURIComponent(TOK):"");
+// F toggles full screen; H (or Esc outside full screen, where the browser uses Esc to leave it) goes back to the dashboard.
+addEventListener("keydown",e=>{if(e.ctrlKey||e.metaKey||e.altKey)return;const k=e.key.toLowerCase();
+ if(k=="f")toggleFs();else if(k=="h"||(e.key=="Escape"&&!document.fullscreenElement))home()});
 document.addEventListener("fullscreenchange",()=>{$("fstx").textContent=document.fullscreenElement?"Exit full screen":"Full screen"});
 let idleT;function wake(){document.body.classList.remove("idle");clearTimeout(idleT);idleT=setTimeout(()=>document.body.classList.add("idle"),3000)}
 ["mousemove","mousedown","touchstart","keydown"].forEach(ev=>addEventListener(ev,wake,{passive:true}));wake();
