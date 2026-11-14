@@ -352,6 +352,24 @@ dialog.dlg h2{margin:0 0 8px;font:700 17px var(--display)}dialog.dlg p{margin:0 
 dialog.dlg .row{justify-content:flex-end}
 @media (max-width:760px){main{padding:14px}.bar{padding:10px 14px 0}.card{padding:14px}nav.tabs{padding:4px 6px 0;gap:0}
  nav.tabs a{padding:8px 10px 10px}.acct{display:none}}
+/* ---- export ---- */
+.xp{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px;align-items:start}
+@media (max-width:900px){.xp{grid-template-columns:1fr}}
+.xp .fields{grid-template-columns:repeat(auto-fill,minmax(200px,1fr))}
+.xp input[type=date]{width:100%;min-height:40px;padding:8px 11px;border-radius:9px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);outline:none;font:inherit}
+.xp input[type=date]:focus{border-color:var(--acc);box-shadow:0 0 0 3px color-mix(in srgb,var(--acc) 24%,transparent)}
+.xp .hint{font-size:12.5px;color:var(--ink3);margin:0}
+.xchips{display:flex;flex-wrap:wrap;gap:6px 14px}
+.xmods{max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:10px;background:var(--panel2);padding:4px 10px}
+.xmods label{display:flex;gap:8px;align-items:center;min-height:30px;font-size:13px;cursor:pointer}
+.xmods label span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.xsum{display:flex;flex-direction:column;gap:12px;position:sticky;top:110px}
+@media (max-width:900px){.xsum{position:static}}
+.xsum dl{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;margin:0;font-size:13px}
+.xsum dt{color:var(--ink3)}.xsum dd{margin:0;color:var(--ink);font-weight:600;overflow-wrap:anywhere}
+.xsum .btn{width:100%}.xsum .btn.dis{opacity:.55;pointer-events:none}
+.xp [hidden]{display:none!important}
+.xprev td,.xprev th{white-space:nowrap;padding:6px 8px;text-align:left}
 </style></head><body>
 <a class=skip href="#main">Skip to content</a>
 <div class=top>
@@ -360,6 +378,7 @@ dialog.dlg .row{justify-content:flex-end}
  <nav class=tabs id=tabs aria-label="Dashboard">
   <a href="#overview" data-v=overview>Overview</a><a href="#models" data-v=models>Models</a>
   <a href="#activity" data-v=activity>Activity<span class=ct id=ctact hidden></span></a>
+  <a href="#export" data-v=export>Export</a>
   <a href="#health" data-v=health>Health<span class=ct id=cthl hidden></span></a><a href="#settings" data-v=settings id=tab-settings>Settings<span class=ct id=ctset hidden title="Unsaved changes">Unsaved</span></a></nav>
 </div>
 <main id=main tabindex=-1>
@@ -390,6 +409,32 @@ dialog.dlg .row{justify-content:flex-end}
  <div class="s5" style="display:flex;flex-direction:column;gap:16px;min-width:0">
   <div class=card><h2>Needs a reply<span class=sp></span><small id=unans></small></h2><div class=reply id=reply></div></div>
   <div class=card><h2>Recent comments</h2><div id=comments></div></div></div>
+</div></section>
+
+<section class=view id=v-export aria-labelledby=xh><div class=xp>
+ <div class=card><h2 id=xh>Export analytics<span class=sp></span><small>CSV</small></h2>
+  <div class=fields>
+   <div class=fld><label for=xds>Data</label><select id=xds>
+    <option value=account>Account, per day</option><option value=models>Models, per day</option>
+    <option value=hourly>Account, per hour</option><option value=lifetime>Models, all-time totals</option></select></div>
+   <div class=fld id=xgf><label for=xgr>Rows</label><select id=xgr></select></div>
+   <div class=fld id=xrf><label for=xrg>Date range</label><select id=xrg>
+    <option value=today>Today</option><option value=7d>Last 7 days</option><option value=30d selected>Last 30 days</option>
+    <option value=90d>Last 90 days</option><option value=this_month>This month</option><option value=last_month>Last month</option>
+    <option value=all>All stored data</option><option value=custom>Custom</option></select></div>
+   <div class=fld id=xcf hidden><label for=xa>From</label><input type=date id=xa></div>
+   <div class=fld id=xcf2 hidden><label for=xb>To</label><input type=date id=xb></div>
+   <div class="fld wide"><span class=lt id=xml>Metrics</span><div class=xchips id=xmets role=group aria-labelledby=xml></div></div>
+   <div class="fld wide" id=xmf><span class=lt id=xmdl>Models <span class=opt id=xmn>(all)</span></span>
+    <div class=mtools style="margin:0"><label class=sr for=xq>Filter models</label><input type=search id=xq placeholder="Filter by name" autocomplete=off>
+     <button class="btn sm ghost" type=button id=xall>Select shown</button><button class="btn sm ghost" type=button id=xnone>Clear</button></div>
+    <div class=xmods id=xmods role=group aria-labelledby=xmdl></div><p class=hint>With none ticked, every model is exported.</p></div>
+   <p class="hint fld wide" id=xnote aria-live=polite></p>
+  </div></div>
+ <div class=xsum><div class=card><h2>Your file</h2><dl id=xinfo></dl></div>
+  <a class="btn pri" id=xgo href="#export" download>Download CSV</a>
+  <button class=btn type=button id=xpv>Preview</button></div>
+ <div class=card id=xpcard hidden style="grid-column:1/-1"><h2>Preview<span class=sp></span><small id=xpn></small></h2><div class="tw xprev" id=xptab></div></div>
 </div></section>
 
 <section class=view id=v-health><div class=hsum id=hsum></div><div class=grid>
@@ -1028,4 +1073,73 @@ addEventListener("beforeunload",e=>{if(changedSecs().length){e.preventDefault();
 addEventListener("resize",()=>{setTop();spy()});
 
 setTop();route();load();setInterval(load,60000);
+</script>
+<script>
+"use strict";
+/* ---------- export ---------- */
+(()=>{const XM={impressions:"Impressions",views:"Views",downloads:"Downloads",prints:"Prints",likes:"Likes",collects:"Collects",boosts:"Boosts",points:"Points",followers:"Followers",ratings:"Ratings",comments:"Comments"};
+ const XG={daily:"Per day",total:"Range totals",hourly:"Per hour"};
+ const XGM={daily:"Per model, per day",total:"Per model, range totals"};
+ const XN={account:"Account totals from the poller's own tracking (about 30 days kept), plus today so far. Views and impressions come from MakerWorld's analytics where fetched.",
+  models:"MakerWorld's own per-model analytics (about 35 days, complete days only), filled in from the poller's tracking for days MakerWorld hasn't finished, including today. The source column says which.",
+  hourly:"Activity by hour of the day (about 35 days kept), plus today so far.",
+  lifetime:"Every model's all-time totals from the last poll, with comments, ratings and publish date. No date range."};
+ let M=null;const pick=new Set(),mets={},x=$;
+ const dfmt=d=>{if(!d)return"";const[y,m,dd]=d.split("-").map(Number);return new Date(y,m-1,dd).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})};
+ const iso=(Y,Mo,Da)=>{const z=new Date(Y,Mo,Da);return z.getFullYear()+"-"+String(z.getMonth()+1).padStart(2,"0")+"-"+String(z.getDate()).padStart(2,"0")};
+ function range(){const t=M.today,[y,m,d]=t.split("-").map(Number);
+  switch(x("xrg").value){case"today":return[t,t];case"7d":return[iso(y,m-1,d-6),t];case"30d":return[iso(y,m-1,d-29),t];case"90d":return[iso(y,m-1,d-89),t];
+   case"this_month":return[iso(y,m-1,1),t];case"last_month":return[iso(y,m-2,1),iso(y,m-1,0)];case"custom":return[x("xa").value||null,x("xb").value||null];default:return[null,null]}}
+ const hasMods=ds=>ds=="models"||ds=="lifetime";
+ function q(){const ds=x("xds").value,info=M.datasets[ds],p=new URLSearchParams({dataset:ds});
+  if(ds!="lifetime"){p.set("range",x("xrg").value);if(x("xrg").value=="custom"){if(x("xa").value)p.set("start",x("xa").value);if(x("xb").value)p.set("end",x("xb").value)}}
+  const on=info.metrics.filter(k=>mets[ds].has(k));if(on.length<info.metrics.length)p.set("metrics",on.join(","));
+  if(info.granularity.length>1)p.set("granularity",x("xgr").value);
+  if(hasMods(ds)&&pick.size)p.set("models",[...pick].join(","));return p}
+ function update(){if(!M)return;const ds=x("xds").value,info=M.datasets[ds],nr=ds=="lifetime",cu=!nr&&x("xrg").value=="custom";
+  x("xrf").hidden=nr;x("xcf").hidden=x("xcf2").hidden=!cu;x("xgf").hidden=info.granularity.length<2;x("xmf").hidden=!hasMods(ds);
+  const on=info.metrics.filter(k=>mets[ds].has(k)),[a,b]=nr?[null,null]:range(),sp=info.span,lo=a||(sp&&sp.from),hi=b||(sp&&sp.to);
+  let warn="";if(sp&&a&&a<sp.from)warn=`Stored data starts ${dfmt(sp.from)}, so earlier days are not in the file.`;
+  if(!on.length)warn="Pick at least one metric.";
+  x("xnote").textContent=XN[ds]+(warn?" "+warn:"");
+  const rows=ds=="models"?XGM[x("xgr").value]:ds=="lifetime"?"Per model":XG[x("xgr").value];
+  x("xinfo").innerHTML=`<dt>Data</dt><dd>${esc(x("xds").selectedOptions[0].text)}</dd>`+
+   (nr?"":`<dt>Dates</dt><dd>${lo?esc(dfmt(lo))+(hi&&hi!=lo?" – "+esc(dfmt(hi)):""):"All stored"}</dd>`)+
+   `<dt>Rows</dt><dd>${esc(rows)}</dd><dt>Columns</dt><dd>${on.length?esc(on.map(k=>XM[k]).join(", ")):"None"}</dd>`+
+   (hasMods(ds)?`<dt>Models</dt><dd>${pick.size?pick.size+" of "+M.models.length:"All "+M.models.length}</dd>`:"");
+  x("xmn").textContent=pick.size?`(${pick.size} selected)`:"(all)";
+  const ok=on.length>0;x("xgo").href=ok?"/api/export.csv?"+q():"#export";x("xgo").classList.toggle("dis",!ok);
+  ok?x("xgo").removeAttribute("aria-disabled"):x("xgo").setAttribute("aria-disabled","true");x("xpv").disabled=!ok}
+ function renderDs(){const ds=x("xds").value,info=M.datasets[ds],G=ds=="models"?XGM:XG;
+  x("xgr").innerHTML=info.granularity.map(g=>`<option value=${g}>${G[g]}</option>`).join("");
+  x("xmets").innerHTML=info.metrics.map(k=>`<label class=chk><input type=checkbox value=${k} ${mets[ds].has(k)?"checked":""}> ${XM[k]}</label>`).join("");
+  x("xmets").querySelectorAll("input").forEach(i=>i.onchange=()=>{i.checked?mets[ds].add(i.value):mets[ds].delete(i.value);x("xpcard").hidden=true;update()});
+  x("xpcard").hidden=true;update()}
+ const shown=()=>{const f=x("xq").value.trim().toLowerCase();return M.models.filter(m=>!f||(m.name||m.id).toLowerCase().includes(f))};
+ function renderMods(){const ms=shown();
+  x("xmods").innerHTML=ms.map(m=>`<label><input type=checkbox value="${esc(m.id)}" ${pick.has(m.id)?"checked":""}><span title="${esc(m.name)}">${esc(m.name||"Model "+m.id)}</span></label>`).join("")||`<p class=hint>No models match.</p>`;
+  x("xmods").querySelectorAll("input").forEach(i=>i.onchange=()=>{i.checked?pick.add(i.value):pick.delete(i.value);x("xpcard").hidden=true;update()})}
+ function parse(t){const rows=[];let r=[],c="",qt=false;for(let i=0;i<t.length;i++){const ch=t[i];
+  if(qt){if(ch=='"'){if(t[i+1]=='"'){c+='"';i++}else qt=false}else c+=ch}
+  else if(ch=='"')qt=true;else if(ch==","){r.push(c);c=""}else if(ch=="\n"){r.push(c.replace(/\r$/,""));rows.push(r);r=[];c=""}else c+=ch}
+  if(c||r.length){r.push(c);rows.push(r)}return rows}
+ async function preview(){const b=x("xpv");b.disabled=true;b.textContent="Loading…";
+  try{const r=await fetch("/api/export.csv?"+q(),{credentials:"same-origin"}),t=(await r.text()).replace(/^\uFEFF/,"");
+   if(!r.ok){let m=t;try{m=JSON.parse(t).detail}catch(e){}throw new Error(m)}
+   const rows=parse(t),head=rows.shift()||[],n=rows.length;
+   x("xpn").textContent=n?`first ${Math.min(n,10)} of ${fmt(n)} rows`:"no rows";
+   x("xptab").innerHTML=table(head.map(esc),rows.slice(0,10).map(r=>"<tr>"+r.map(v=>`<td>${esc(v)}</td>`).join("")+"</tr>"),"No data in this range");
+   x("xpcard").hidden=false}
+  catch(e){toast("Preview failed: "+e.message,"err")}
+  finally{b.disabled=false;b.textContent="Preview"}}
+ async function load(){if(M)return;try{const r=await fetch("/api/export/meta",{credentials:"same-origin"});if(!r.ok)throw new Error("HTTP "+r.status);M=await r.json()}
+  catch(e){x("xnote").textContent="Couldn't load export options ("+e.message+"). Reload the page to try again.";return}
+  for(const k in M.datasets)mets[k]=new Set(M.datasets[k].metrics);
+  x("xb").value=M.today;x("xa").max=x("xb").max=M.today;renderMods();renderDs()}
+ ["xrg","xa","xb","xgr"].forEach(i=>x(i).addEventListener("change",()=>{x("xpcard").hidden=true;update()}));
+ x("xds").onchange=renderDs;x("xq").oninput=renderMods;x("xpv").onclick=preview;
+ x("xall").onclick=()=>{shown().forEach(m=>pick.add(m.id));renderMods();update()};
+ x("xnone").onclick=()=>{pick.clear();renderMods();update()};
+ x("xgo").onclick=e=>{if(x("xgo").classList.contains("dis"))e.preventDefault()};
+ const chk=()=>{if(document.body.dataset.view=="export")load()};addEventListener("hashchange",chk);chk()})();
 </script></body></html>"""

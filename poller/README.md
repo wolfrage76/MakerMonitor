@@ -99,11 +99,12 @@ The regular poll keeps its own cadence and only waits for the gap (it skips an e
 
 ## Dashboard
 
-`http://<poller-host>:8787/` (or `/dashboard`) is a LAN page that works on a phone (two-column tiles and sticky section links there). Open it once as `http://<poller-host>:8787/?token=<api_token>`; the browser then keeps a cookie (180 days). Without the token it answers 401. It is plain HTML/JS with no external assets, follows the system light or dark theme, shows times in 12-hour format, and refreshes every 60 s. It has five views (each has its own link, such as `/#models`):
+`http://<poller-host>:8787/` (or `/dashboard`) is a LAN page that works on a phone (two-column tiles and sticky section links there). Open it once as `http://<poller-host>:8787/?token=<api_token>`; the browser then keeps a cookie (180 days). Without the token it answers 401. It is plain HTML/JS with no external assets, follows the system light or dark theme, shows times in 12-hour format, and refreshes every 60 s. It has six views (each has its own link, such as `/#models`):
 
 - **Overview:** today's downloads, prints, boosts, likes and collects, each against yesterday's total by the same time of day (the hourly line shows yesterday dashed underneath), and ratings with the average, points, views and impressions yesterday; a To do list (unanswered comments, models spiking today against their own pace for this hour, models taking off, a slow launch, pages with many views but few downloads, models downloaded but rarely printed or rated under 4.5, a model gone quiet, points falling, the best publish day once one stands out), each measured against your own typical model; a funnel from impressions to views, downloads and prints, 30 days against yesterday, naming the weakest step; top models with a 30-day download sparkline; followers (with a bar per day for 30 days); a 7 / 30 day / lifetime table with a bar per day for the last week, including views, impressions and points; best times (busiest hour, and each weekday as a daily average so weekdays seen fewer times aren't undercounted); and the creator numbers grouped as conversion, points and audience.
 - **Models:** every model in one sortable table (downloads, views, downloads per view, prints, likes, collects and points for 7 or 30 days, ratings with their average, trend, unanswered comments, sparkline) with a name filter and a switch to hide models with no downloads, then the creator lists: best converting, most engaging, pages to improve (with the downloads missed against your typical rate), print problems, when to publish (median first-week downloads by publish weekday and time of day; it names a winner only with 3+ launches and double the overall median), rising, stalled, launch curve, points and followers by model, best rated, and long tail. Model names link to MakerWorld.
 - **Activity:** all of today's events with today's total per kind (the list shows the last 40 events), models with unanswered comments, and the latest comments.
+- **Export:** download analytics as CSV (see below).
 - **Health:** a summary line (sources, cookie, panels answering, request budget), then each MakerWorld source with its last good fetch, failures and the last error text, the cookie, the request budget and backoffs, and each panel (answering ones first).
 - **Settings:** see below.
 
@@ -121,6 +122,27 @@ The Settings view edits `config.yaml` from the browser: the MakerWorld handle an
 - `listen_host`, `listen_port`, `data_dir` and `api_token` stay file-only (a change needs a restart, and a new token would lock the dashboard and extension out).
 - If `config.yaml` changed on disk after the page loaded, saving is refused until you reload.
 - The settings endpoints (`/api/settings`, `/api/settings/test`, `/api/settings/panel`, `/api/settings/cookie`) take the dashboard token or cookie. Their POSTs also need an `X-MM` header, which the page sends.
+
+### Export (CSV)
+
+The Export view downloads what the poller has stored as a CSV file (UTF-8 with a BOM so Excel reads model names correctly). Pick the data, a date range (today, last 7 / 30 / 90 days, this month, last month, all stored data, or custom dates), the metric columns and, for model data, which models; **Preview** shows the first rows. The file is named after the data and range, such as `makermonitor-models-2026-11-01_to_2026-11-07.csv`.
+
+| Data | Rows | Metrics | Kept |
+|---|---|---|---|
+| Account, per day | per day or range totals | impressions, views, downloads, prints, likes, collects, boosts, points, followers, ratings | about 30 days, plus today so far |
+| Models, per day | per model per day, or per model range totals | impressions, views, downloads, prints, likes, collects, boosts, points, followers | about 35 days |
+| Account, per hour | per hour (12-hour times) | downloads, prints, likes, collects, boosts | about 35 days, plus today |
+| Models, all-time totals | per model (no date range) | downloads, prints, likes, collects, boosts, comments, ratings, plus average rating and publish date | last poll |
+
+Model days come from MakerWorld's own analytics (complete days only) and fall back to the poller's tracking for days MakerWorld hasn't filled yet, including today; the `source` column says which (views, impressions, points and followers are blank on poller days). Account views and impressions are summed from the same per-model analytics. A `partial` column marks today. Comments exist only as all-time counts. Ranges reach back only as far as the data kept, so "Last 90 days" currently gives what is stored.
+
+The same file is available to scripts, with the token as a header (or the dashboard cookie):
+
+```
+curl -H "X-Api-Token: <api_token>" -OJ "http://<poller-host>:8787/api/export.csv?dataset=models&range=custom&start=2026-11-01&end=2026-11-07&metrics=views,downloads&models=<id>,<id>&granularity=daily"
+```
+
+`dataset` is `account`, `models`, `hourly` or `lifetime`; `range` is `today`, `7d`, `30d`, `90d`, `this_month`, `last_month`, `all` or `custom` (with `start` / `end` as `YYYY-MM-DD`); `granularity` is `daily` or `total`; `metrics` and `models` are comma-separated and optional (all when left out). `GET /api/export/meta` lists the datasets, the dates each one holds and the models.
 
 ## Notifications (optional)
 
