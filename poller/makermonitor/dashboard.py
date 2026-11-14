@@ -88,7 +88,7 @@ section.view{display:none}section.view.on{display:block;animation:in .16s cubic-
 @media (max-width:1000px){.s8,.s7,.s6,.s5,.s4{grid-column:span 12}}
 /* panels: flat on hairlines, a header strip instead of a floating title */
 .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--rad);padding:0 18px 16px;min-width:0}
-.card>h2,.h2{display:flex;align-items:center;gap:10px;margin:0 -18px 14px;padding:11px 18px;min-height:48px;border-bottom:1px solid var(--line2);font:650 15.5px/1.3 var(--sans)}
+.card>h2,.h2{display:flex;align-items:center;gap:10px;margin:0 -18px 14px;padding:11px 18px;min-height:48px;border-bottom:1px solid var(--line2);font:650 17px/1.3 var(--sans)}
 .h2 small,.card>h2 small{font:500 12.5px var(--sans);color:var(--ink3)}
 .card>h2 .sp{flex:1}
 .mut{color:var(--ink3)}.ink2{color:var(--ink2)}.num{font-variant-numeric:tabular-nums}
@@ -112,7 +112,7 @@ section.view{display:none}section.view.on{display:block;animation:in .16s cubic-
 .brow .cmp{font-size:12.5px;color:var(--ink3);text-align:right;line-height:1.35}
 .brow .cmp b{display:inline-flex;align-items:center;gap:3px;font-size:14px;font-weight:700;color:var(--ink2)}
 .brow .cmp b.up{color:var(--ok)}.brow .cmp b.down{color:var(--err)}
-.brow .note{font-size:13px;color:var(--ink2)}
+.brow .note{font-size:12.5px;color:var(--ink3)}
 .pegs{display:block;width:100%;height:auto;overflow:visible}
 .brow.zero .pegs{opacity:.85}
 .baxis{display:grid;grid-template-columns:140px minmax(0,1fr) 160px;gap:0 18px;padding-top:2px}
@@ -123,7 +123,8 @@ section.view{display:none}section.view.on{display:block;animation:in .16s cubic-
 @media (max-width:760px){.brow{grid-template-columns:minmax(0,1fr) auto;padding:10px 0 8px}.brow .pegs,.brow .note{grid-column:1/-1;grid-row:2}
  #top th:nth-child(n+5),#top td:nth-child(n+5){display:none}.brow .val{font-size:24px}
  .baxis{grid-template-columns:minmax(0,1fr)}.baxis>span{display:none}}
-.todayc{align-self:stretch;display:flex;flex-direction:column}.todayc .herofoot{margin-top:auto}.todayc .board{margin-bottom:6px}
+.ov{display:grid;grid-template-columns:minmax(0,7fr) minmax(0,5fr);gap:16px;align-items:start}.ovl,.ovr{display:flex;flex-direction:column;gap:16px;min-width:0}.ovw{grid-column:1/-1}
+@media (max-width:1000px){.ov{display:flex;flex-direction:column}.ovl,.ovr{display:contents}.o1{order:1}.o2{order:2}.o3{order:3}.o4{order:4}.o5{order:5}.o6{order:6}.o7{order:7}.o8{order:8}}
 .herofoot{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:10px 18px;margin:14px -18px 0;padding:12px 18px 0;border-top:1px solid var(--line2)}
 .herofoot span{display:flex;flex-direction:column;font-size:12.5px;color:var(--ink3)}
 .herofoot b{font:650 16px var(--sans);color:var(--ink)}
@@ -145,7 +146,7 @@ th .sb svg{flex:none;color:var(--acc)}
 td svg.spark{width:90px;height:22px;vertical-align:middle}
 td svg.wk7{width:64px;height:20px;vertical-align:middle}
 .fit table td.nm,.fit table th:first-child{max-width:0;width:100%}
-@media (max-width:760px){.nophone{display:none}.fit table td.nm,.fit table th:first-child{min-width:100px}
+@media (max-width:760px){.nophone{display:none}.fit table td.nm,.fit table th:first-child{min-width:100px}#periods td.nm{white-space:normal;overflow:visible}
  #mtable td.nm{white-space:normal;max-width:none;min-width:118px}#mtable th,#mtable td{padding:8px 5px;font-size:13px}#mtable td.nm>a,#mtable td.nm>span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.35}}
 .kdot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--k);margin-right:6px;vertical-align:1px}
 .empty{padding:18px 4px;color:var(--ink3);text-align:center}
@@ -156,7 +157,7 @@ td svg.wk7{width:64px;height:20px;vertical-align:middle}
 .axis{display:flex;justify-content:space-between;color:var(--ink3);font-size:12px;margin-top:6px}
 .wk{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-top:14px}
 .wk div{background:var(--panel2);border:1px solid var(--line2);border-radius:6px;padding:7px 0;text-align:center;font-size:12px;color:var(--ink3)}
-.wk div.hi{background:var(--acc-soft);border-color:color-mix(in srgb,var(--acc) 45%,transparent);color:var(--ink)}
+.wk div.hi{background:var(--panel);border-color:var(--ink2);color:var(--ink);font-weight:650}
 .wk b{display:block;font:650 15px var(--sans);color:var(--ink)}
 .minis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
 .mini{border-left:1px solid var(--line2);padding:2px 0 2px 12px}.mini:first-child{border-left:0;padding-left:0}
@@ -164,7 +165,7 @@ td svg.wk7{width:64px;height:20px;vertical-align:middle}
 @media (max-width:760px){.minis{grid-template-columns:repeat(2,1fr)}.mini:nth-child(3){border-left:0;padding-left:0}}
 .facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px 28px}
 @media (max-width:900px){.facts{grid-template-columns:minmax(0,1fr)}}
-.facts h3{margin:0 0 2px;font:650 13px var(--sans);color:var(--ink2)}
+.facts h3{margin:0 0 2px;font:600 12.5px var(--sans);color:var(--ink3);letter-spacing:.02em}
 .facts .fr{display:flex;justify-content:space-between;align-items:baseline;gap:16px;padding:9px 0;border-bottom:1px solid var(--line2)}
 .facts .fr:last-child{border-bottom:0}
 .facts .fr>span{color:var(--ink2);min-width:0}.facts .fr>span small{display:block;color:var(--ink3);font-size:12.5px}
@@ -210,8 +211,8 @@ td svg.wk7{width:64px;height:20px;vertical-align:middle}
 .cm{padding:12px 0;border-bottom:1px solid var(--line2)}.cm:last-child{border:0}
 .cm .who{font-weight:650}.cm .on{color:var(--ink3);font-size:12.5px}.cm p{margin:4px 0 0;color:var(--ink2)}
 /* ---- health ---- */
-.src{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
-.src>div{background:var(--panel2);border:1px solid var(--line2);border-radius:7px;padding:14px;--st:var(--ok)}
+.src{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0 24px}
+.src>div{padding:12px 0;border-top:1px solid var(--line2);--st:var(--ok)}
 .src>div.warn{--st:var(--warn)}.src>div.err{--st:var(--err)}.src>div.idle{--st:var(--ink3)}
 .src b{display:flex;align-items:center;gap:8px;font-weight:650;margin-bottom:4px;min-width:0;overflow-wrap:anywhere}
 .src b:before{content:"";flex:none;width:9px;height:9px;border-radius:50%;background:var(--st)}
@@ -426,17 +427,19 @@ dialog.dlg .row{justify-content:flex-end}
 <main id=main tabindex=-1>
 <div class=banner id=banner role=status></div>
 
-<section class=view id=v-overview aria-label=Overview><div class=grid>
- <div class="card s7 todayc"><h2>Today<small id=since></small><span class=sp></span><small id=ydaynote></small></h2>
+<section class=view id=v-overview aria-label=Overview><div class=ov><div class=ovl>
+ <div class="card todayc o1"><h2>Today<small id=since></small><span class=sp></span><small id=ydaynote></small></h2>
   <div class=board id=hero></div><div class=herofoot id=herofoot></div></div>
- <div class="card s5"><h2>Needs you<span class=sp></span><small id=actn></small></h2><ul class=acts id=acts></ul></div>
- <div class="card s7"><h2>Top models<span class=sp></span><span class=seg id=topseg role=group aria-label="Top models period"></span></h2><div class="tw fit" id=top></div></div>
- <div class="card s5"><h2>Funnel<span class=sp></span><small>30 days, and yesterday</small></h2><div class=fn id=fun></div></div>
- <div class="card s7"><h2>Best times<span class=sp></span><span class=seg id=bestseg role=group aria-label="Best times metric"></span></h2><div id=best></div></div>
- <div class="card s5"><h2>7 and 30 days<span class=sp></span><small>bars: last 7 days</small></h2><div class="tw fit" id=periods></div></div>
- <div class="card s4"><h2>Followers<span class=sp></span><small>last 30 days</small></h2><div class=minis id=fol></div>
+ <div class="card o3"><h2>Top models<span class=sp></span><span class=seg id=topseg role=group aria-label="Top models period"></span></h2><div class="tw fit" id=top></div></div>
+ <div class="card o5"><h2>Best times<span class=sp></span><span class=seg id=bestseg role=group aria-label="Best times metric"></span></h2><div id=best></div></div>
+ <div class="card o6"><h2>7 and 30 days<span class=sp></span><small>bars: last 7 days</small></h2><div class="tw fit" id=periods></div></div>
+ </div><div class=ovr>
+ <div class="card o2"><h2>Needs you<span class=sp></span><small id=actn></small></h2><ul class=acts id=acts></ul></div>
+ <div class="card o4"><h2>Funnel<span class=sp></span><small>30 days, and yesterday</small></h2><div class=fn id=fun></div></div>
+ <div class="card o7"><h2>Followers<span class=sp></span><small>last 30 days</small></h2><div class=minis id=fol></div>
   <div class=bars id=folbars style="height:70px"></div><div class=axis><span>30 days ago</span><span>today</span></div></div>
- <div class="card s8"><h2>Creator at a glance<span class=sp></span><small id=cprog></small></h2><div class=facts id=ckp></div></div>
+ </div>
+ <div class="card ovw o8"><h2>Creator at a glance<span class=sp></span><small id=cprog></small></h2><div class=facts id=ckp></div></div>
 </div></section>
 
 <section class=view id=v-models aria-label=Models><div class=grid>
@@ -565,13 +568,13 @@ const sum=(a,n)=>(a||[]).slice(0,n).reduce((x,v)=>x+(+v||0),0);
 // The day as a row of peg holes, one per hour: yesterday's count is the dashed outline,
 // today's (up to now) the filled peg, and the current hour gets a tick underneath.
 const ARR=d=>`<svg width=10 height=10 viewBox="0 0 10 10" aria-hidden=true><path d="${d>0?"M5 1.2L9.2 7.6H.8z":"M5 8.8L.8 2.4h8.4z"}" fill=currentColor /></svg>`;
-function pegs(td,yd,color,h,o={}){const W=240,H=o.big?24:20,cy=H/2-(o.big?0:1),R=o.big?4.8:4.5,r0=o.big?.9:1.4,t=td||[],y=yd||[];
+function pegs(td,yd,color,h,o={}){const W=240,H=o.big?24:20,cy=H/2-(o.big?0:1),R=o.big?4.8:3.4,r0=o.big?.9:1.3,t=td||[],y=yd||[];
  const mx=Math.max(1,...t.slice(0,h+1).map(v=>+v||0),...y.map(v=>+v||0)),rad=v=>r0+(R-r0)*(o.lin?Math.max(0,+v||0)/mx:Math.sqrt(Math.max(0,+v||0)/mx));
  let s=`<svg class=pegs viewBox="0 0 ${W} ${H}" aria-hidden=true>`;
  for(let i=0;i<24;i++){const x=i*10+5,tv=i<=h?+t[i]||0:0,yv=+y[i]||0;s+=o.tip?`<g><title>${esc(o.tip(i))}</title>`:"<g>";
   s+=`<circle cx=${x} cy=${cy} r=${r0} fill="var(--line)"/>`;
-  if(yv>0)s+=`<circle cx=${x} cy=${cy} r=${rad(yv).toFixed(2)} fill=none stroke="var(--ink3)" stroke-width=.9 stroke-dasharray="1.5 1.1"/>`;
-  if(tv>0)s+=`<circle cx=${x} cy=${cy} r=${rad(tv).toFixed(2)} style="fill:var(--${i===o.hi?"acc":color})"/>`;
+  if(yv>0)s+=`<circle cx=${x} cy=${cy} r=${Math.min(4.9,Math.max(rad(yv),tv>0?rad(tv)+1.5:0)).toFixed(2)} fill=none stroke="var(--ink3)" stroke-width=1.3 />`;
+  if(tv>0)s+=`<circle cx=${x} cy=${cy} r=${rad(tv).toFixed(2)} style="fill:var(--${color})"${i===o.hi?` stroke="var(--ink)" stroke-width=1.4`:""}/>`;
   s+="</g>"}
  if(o.now!==false&&h>=0&&h<24)s+=`<rect x=${h*10+1.5} y=${H-1.8} width=7 height=1.8 rx=.9 fill="var(--acc)"/>`;
  return s+"</svg>"}
@@ -582,14 +585,14 @@ function wk7(vals,color){const mx=Math.max(1,...vals),n=vals.length,bw=64/7;
  return `<svg class=wk7 viewBox="0 0 64 20" aria-hidden=true>${vals.map((v,i)=>`<rect x="${(i*bw+1).toFixed(1)}" y="${(20-Math.max(1.5,v/mx*19)).toFixed(1)}" width="${(bw-2).toFixed(1)}" height="${Math.max(1.5,v/mx*19).toFixed(1)}" rx=1.5 style="fill:var(--${color})" opacity="${i==n-1?1:.55}"/>`).join("")}</svg>`}
 function renderOverview(){const t=S.today||{},y=S.yday||{},hr=S.hours||{},X=S.dash||{},yh=X.yhours,h=pHour();
  $("since").textContent=S.midnight?"since midnight":"since "+hm(S.since||0);
- $("ydaynote").innerHTML=`<span class=blegend aria-hidden=true><span><svg width=10 height=10><circle cx=5 cy=5 r=4 fill="var(--ink2)"/></svg>today</span>${yh?`<span><svg width=10 height=10><circle cx=5 cy=5 r=4 fill=none stroke="var(--ink3)" stroke-dasharray="1.6 1.2"/></svg>yesterday</span>`:""}<span><svg width=10 height=4><rect width=10 height=3 rx=1.5 fill="var(--acc)"/></svg>now</span></span>`;
+ $("ydaynote").innerHTML=`<span class=blegend aria-hidden=true><span><svg width=10 height=10><circle cx=5 cy=5 r=4 fill="var(--ink2)"/></svg>today</span>${yh?`<span><svg width=10 height=10><circle cx=5 cy=5 r=3.8 fill=none stroke="var(--ink3)" stroke-width=1.3 /></svg>yesterday</span>`:""}<span><svg width=10 height=4><rect width=10 height=3 rx=1.5 fill="var(--acc)"/></svg>now</span></span>`;
  const tot=S.total||{},m=S.month||{},ra=+tot.ratingAvg||0,rv=t.ratings||0;
  $("hero").innerHTML=K.map(([k,l,c])=>{const v=t[k]||0,yv=y[k],yk=yh&&yh[k];
   let cmp="";const by=yk?byNow(yk,yv):null;
   if(by!=null){const d=v-by;cmp=d?`<b class="${d>0?"up":"down"}">${ARR(d)}${sg(d)}</b><br>vs ${fmt(by)} by now yesterday`:`<b>even</b><br>with ${fmt(by)} by now yesterday`}
   else if(yv!=null)cmp=`<b>${fmt(yv)}</b><br>all day yesterday`;
   return brow(l,c,v?sg(v):"0",!v,pegs(hr[k],yk,c,h),cmp)}).join("")+
-  brow("Ratings","r",rv?sg(rv):"0",!rv,`<div class=note>${ra?`${ra.toFixed(2)} average from ${fmt(tot.ratings)} ratings`:"No ratings yet"}</div>`,y.ratings!=null?`<b>${fmt(y.ratings)}</b><br>all day yesterday`:"")+
+  brow("Ratings","r",rv?sg(rv):"0",!rv,`<div class=note>Ratings aren't counted by the hour, so there is no day strip.</div>`,(y.ratings!=null?`<b>${fmt(y.ratings)}</b> all day yesterday<br>`:"")+(ra?`${ra.toFixed(2)} average from ${fmt(tot.ratings)}`:"no ratings yet"))+
   `<div class=baxis><span></span>${HAX}<span></span></div>`;
  $("herofoot").innerHTML=[t.points!=null?`<span>Points today<b>${sg(+(+t.points).toFixed(1))}${y.points!=null?`<small>yesterday ${nf(y.points)}</small>`:""}</b></span>`:"",
   m.yday_views!=null?`<span>Views yesterday<b>${fmt(m.yday_views)}</b></span>`:"",
@@ -620,7 +623,7 @@ function renderOverview(){const t=S.today||{},y=S.yday||{},hr=S.hours||{},X=S.da
  if(!ins.has||!b){$("best").innerHTML=`<p class=mut>Best times show after a week of data. ${ins.days||0} of 7 days collected so far.</p>`}else{
   const mx=Math.max(1,...b.hour),wn=X.wdayN||[],tw=X.todayWd,tsum=sum((S.hours||{})[bestM],24),
    av=b.wday.map((v,i)=>wn[i]?(v-(i===tw?tsum:0))/wn[i]:null),bd=av.some(v=>v!=null)?av.indexOf(Math.max(...av.filter(v=>v!=null))):b.bestDay;
-  $("best").innerHTML=`<p class=mut style="margin:0 0 6px;font-size:12.5px">${cap(bestM)} by hour of the day, all ${ins.days} days added up. The busiest hour is in orange.</p>
+  $("best").innerHTML=`<p class=mut style="margin:0 0 6px;font-size:12.5px">${cap(bestM)} by hour of the day, all ${ins.days} days added up. The busiest hour is outlined.</p>
   ${pegs(b.hour,null,KC[bestM],23,{big:true,lin:true,hi:b.bestHour,now:false,tip:i=>`${hh(i)}: ${fmt(b.hour[i])} over ${ins.days} days`})}${HAX}
   <div class=wk>${b.wday.map((v,i)=>`<div class="${i==bd?"hi":""}" title="${av[i]!=null?nf(av[i])+" a day over "+wn[i]+" full "+WD[i]+(wn[i]==1?"":"s"):fmt(v)}">${WD[i]}<b>${av[i]!=null?nf(av[i]):fmt(v)}</b></div>`).join("")}</div>
   <p class=mut style="margin:12px 0 0">Busiest hour ${hh(b.bestHour)}, busiest day ${WDL[bd]||"–"}. Day cells show ${wn.length?"the average a day":"the total"}, over the last ${ins.days} days.</p>`}
