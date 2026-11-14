@@ -379,7 +379,8 @@ dialog.dlg .row{justify-content:flex-end}
   <a href="#overview" data-v=overview>Overview</a><a href="#models" data-v=models>Models</a>
   <a href="#activity" data-v=activity>Activity<span class=ct id=ctact hidden></span></a>
   <a href="#export" data-v=export>Export</a>
-  <a href="#health" data-v=health>Health<span class=ct id=cthl hidden></span></a><a href="#settings" data-v=settings id=tab-settings>Settings<span class=ct id=ctset hidden title="Unsaved changes">Unsaved</span></a></nav>
+  <a href="#health" data-v=health>Health<span class=ct id=cthl hidden></span></a><a href="#settings" data-v=settings id=tab-settings>Settings<span class=ct id=ctset hidden title="Unsaved changes">Unsaved</span></a>
+  <a href="/kiosk" style="margin-left:auto" title="Full-screen view for a wall screen or TV">Kiosk ↗</a></nav>
 </div>
 <main id=main tabindex=-1>
 <div class=banner id=banner></div>
