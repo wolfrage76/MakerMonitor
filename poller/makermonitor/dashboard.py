@@ -69,6 +69,7 @@ DASHBOARD_HTML = r"""<!doctype html><html lang=en><head><meta charset=utf-8>
 .pill.ok .dot{background:#4ade80}.pill.warn .dot{background:#fbbf24}.pill.err{background:color-mix(in srgb,#ff6b7d 22%,transparent)}.pill.err .dot{background:#ff8a98}
 .kio{display:inline-flex;align-items:center;gap:7px;min-height:34px;padding:5px 12px;border-radius:7px;color:var(--hb-ink);text-decoration:none;font-weight:600;font-size:13px;
  border:1px solid color-mix(in srgb,var(--hb-ink) 28%,transparent)}
+.kio:focus-visible,nav.tabs a:focus-visible{outline-color:var(--hb-ink)}
 .kio:hover{background:color-mix(in srgb,var(--hb-ink) 12%,transparent)}
 nav.tabs{max-width:1280px;margin:0 auto;display:flex;gap:2px;padding:0 14px;overflow-x:auto;scrollbar-width:none}
 nav.tabs::-webkit-scrollbar{display:none}
@@ -390,6 +391,7 @@ dialog.dlg .row{justify-content:flex-end}
  nav.tabs a.on:before{content:"";position:absolute;top:0;left:22%;right:22%;height:3px;border-radius:0 0 3px 3px;background:var(--acc2)}
  nav.tabs a .ct{position:absolute;top:5px;left:calc(50% + 6px);padding:0 5px;font-size:11px;line-height:16px}
  nav.tabs a.on .ct{background:color-mix(in srgb,var(--hb-ink) 16%,transparent);color:var(--hb-ink);box-shadow:none}
+ nav.tabs a #ctset{font-size:0;width:10px;height:10px;padding:0;top:9px;background:var(--warn);box-shadow:0 0 0 2px var(--hb)}
  .savebar{bottom:calc(76px + env(safe-area-inset-bottom))!important}.toast{bottom:calc(76px + env(safe-area-inset-bottom))!important}
  body[data-view=settings].dirty .toast{bottom:calc(140px + env(safe-area-inset-bottom))!important}}
 /* ---- export ---- */
@@ -414,7 +416,7 @@ dialog.dlg .row{justify-content:flex-end}
 <a class=skip href="#main">Skip to content</a>
 <header class=top>
  <div class=bar><div class=brand><svg class=mark width=24 height=24 viewBox="0 0 24 24" aria-hidden=true><rect width=24 height=24 rx=6 fill="var(--hb2)"/><circle cx=7 cy=7 r=2.6 fill="var(--d)"/><circle cx=17 cy=7 r=2.6 fill="var(--p)"/><circle cx=7 cy=17 r=2.6 fill="var(--l)"/><circle cx=17 cy=17 r=1.5 fill="none" stroke="var(--hb-ink2)" stroke-width=1.2/></svg>MakerMonitor</div><span class=acct id=acct></span>
-  <span class=pill id=pill role=status><span class=dot></span><span id=pilltx>Loading</span></span>
+  <span class=pill id=pill><span class=dot></span><span id=pilltx>Loading</span></span>
   <a class=kio href="/kiosk" title="Full-screen view for a wall screen or TV"><svg width=16 height=16 viewBox="0 0 16 16" aria-hidden=true><rect x="1.5" y="2.5" width="13" height="8.5" rx="1.5" fill=none stroke=currentColor stroke-width="1.5"/><path d="M5.5 14h5M8 11v3" stroke=currentColor stroke-width="1.5" stroke-linecap=round /></svg><span>Kiosk</span></a></div>
  <nav class=tabs id=tabs aria-label="Dashboard">
   <a href="#overview" data-v=overview><svg width=18 height=18 viewBox="0 0 18 18" aria-hidden=true><g fill=none stroke=currentColor stroke-width="1.6"><rect x="2" y="2" width="6" height="7" rx="1.5"/><rect x="10" y="2" width="6" height="4" rx="1.5"/><rect x="2" y="11" width="6" height="5" rx="1.5"/><rect x="10" y="8" width="6" height="8" rx="1.5"/></g></svg>Overview</a>
@@ -573,8 +575,9 @@ function pegs(td,yd,color,h,o={}){const W=240,H=o.big?24:20,cy=H/2-(o.big?0:1),R
  let s=`<svg class=pegs viewBox="0 0 ${W} ${H}" aria-hidden=true>`;
  for(let i=0;i<24;i++){const x=i*10+5,tv=i<=h?+t[i]||0:0,yv=+y[i]||0;s+=o.tip?`<g><title>${esc(o.tip(i))}</title>`:"<g>";
   s+=`<circle cx=${x} cy=${cy} r=${r0} fill="var(--line)"/>`;
-  if(yv>0)s+=`<circle cx=${x} cy=${cy} r=${Math.min(4.9,Math.max(rad(yv),tv>0?rad(tv)+1.5:0)).toFixed(2)} fill=none stroke="var(--ink3)" stroke-width=1.3 />`;
+  // Yesterday's ring sits at its true size, over today's peg; inside a bigger peg it is drawn in the panel colour.
   if(tv>0)s+=`<circle cx=${x} cy=${cy} r=${rad(tv).toFixed(2)} style="fill:var(--${color})"${i===o.hi?` stroke="var(--ink)" stroke-width=1.4`:""}/>`;
+  if(yv>0)s+=`<circle cx=${x} cy=${cy} r=${rad(yv).toFixed(2)} fill=none stroke="var(--${tv>0&&rad(yv)<rad(tv)-.6?"panel":"ink3"})" stroke-width=1.2 />`;
   s+="</g>"}
  if(o.now!==false&&h>=0&&h<24)s+=`<rect x=${h*10+1.5} y=${H-1.8} width=7 height=1.8 rx=.9 fill="var(--acc)"/>`;
  return s+"</svg>"}
@@ -732,8 +735,8 @@ function renderInsights(){const m=Object.values(C.models||{}),has=m.filter(r=>r.
  const prn=D.prn.slice(0,8).map(r=>R(L(r.id,r.n)+`<td>${fmt(r.life.d)}</td><td${D.lowP(r)?" class=down":""}>${pc(r.ppd,0)}</td><td${D.lowR(r)?" class=down":""}>${r.rt?nf(r.ra,1):"<span class=mut>–</span>"}</td>`));
  const la=(C.acct||{}).launch;let lc="<p class=mut>Shows once a model has launch data.</p>";
  if(la){const mx=Math.max(1,...la.cur,...la.med);const nd=la.cur[la.day-1]||0;lc=`<p class=ink2 style="margin-top:0">${mwLink(la.id,la.n)}: day ${la.day} of 7, ${fmt(nd)} download${nd==1?"":"s"} so far`+
-  (la.pct!=null&&(nd>0||la.day>1)?`, ahead of ${la.pct}% of ${la.past} earlier launches`:la.past?`. The median of ${la.past} earlier launches is shown in grey.`:"")+`</p><div class=lc>${[0,1,2,3,4,5,6].map(i=>`<div title="day ${i+1}"><i style="background:var(--acc);height:${la.cur[i]!=null?Math.max(3,la.cur[i]/mx*100):0}%"></i><i style="background:var(--line);height:${la.med.length?Math.max(3,la.med[i]/mx*100):0}%"></i></div>`).join("")}</div>
-  <div class=axis><span>day 1</span><span>day 7</span></div><div class=legend style="margin-top:10px"><span><i style="background:var(--acc)"></i>this launch</span><span><i style="background:var(--line)"></i>median launch</span></div>`}
+  (la.pct!=null&&(nd>0||la.day>1)?`, ahead of ${la.pct}% of ${la.past} earlier launches`:la.past?`. The median of ${la.past} earlier launches is shown in grey.`:"")+`</p><div class=lc>${[0,1,2,3,4,5,6].map(i=>`<div title="day ${i+1}"><i style="background:var(--d);height:${la.cur[i]!=null?Math.max(3,la.cur[i]/mx*100):0}%"></i><i style="background:var(--line);height:${la.med.length?Math.max(3,la.med[i]/mx*100):0}%"></i></div>`).join("")}</div>
+  <div class=axis><span>day 1</span><span>day 7</span></div><div class=legend style="margin-top:10px"><span><i style="background:var(--d)"></i>this launch</span><span><i style="background:var(--line)"></i>median launch</span></div>`}
  const pt=(C.acct||{}).pubt,ins=((S&&S.insights)||{}).downloads;let pub="<p class=mut>Shows once models have finished their first week.</p>";
  if(pt&&pt.n){const cell=(g,i,lab,tip)=>`<div class="${i==g.best?"hi":""}" title="${tip}: ${g.v[i].n} launch${g.v[i].n==1?"":"es"}${g.v[i].n?", median "+nf(g.v[i].med,1)+", best "+g.v[i].max:""}">${lab}<b>${g.v[i].n?nf(g.v[i].med,g.v[i].med%1?1:0):"–"}</b></div>`;
   const W={v:pt.wd,best:pt.bestWd},P={v:pt.part,best:pt.bestPart};
