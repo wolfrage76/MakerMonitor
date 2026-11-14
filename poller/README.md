@@ -144,6 +144,10 @@ curl -H "X-Api-Token: <api_token>" -OJ "http://<poller-host>:8787/api/export.csv
 
 `dataset` is `account`, `models`, `hourly` or `lifetime`; `range` is `today`, `7d`, `30d`, `90d`, `this_month`, `last_month`, `all` or `custom` (with `start` / `end` as `YYYY-MM-DD`); `granularity` is `daily` or `total`; `metrics` and `models` are comma-separated and optional (all when left out). `GET /api/export/meta` lists the datasets, the dates each one holds and the models.
 
+### Kiosk
+
+`http://<poller-host>:8787/kiosk` is a full-screen view for a wall screen or TV, opened with the same token or cookie as the dashboard. It shows what needs attention (unanswered comments, cookie or polling problems, offline panels), the next round-number milestones with an ETA from the recent daily pace, milestones crossed this week, and the headline totals with 7-day bars. It refreshes every 60 s, drifts a few pixels every few minutes against burn-in, and toggles full screen with the button or the F key.
+
 ## Notifications (optional)
 
 The poller can send activity and health alerts to Discord, Pushbullet, Pushover, ntfy, Telegram, Home Assistant, Apprise (Slack, Matrix, Gotify and 100+ more) or any JSON webhook, with or without a panel. Add channels under `notifications:` in `config.yaml` and check them with:

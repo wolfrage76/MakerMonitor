@@ -26,6 +26,7 @@ from .panel import PanelClient, PanelGroup, build_events
 from .panels import PanelDirectory
 from .ratelimit import LIMITER
 from . import export, settings_api
+from . import kiosk
 from .state import Snapshot, Store
 
 log = logging.getLogger(__name__)
@@ -911,6 +912,7 @@ def create_app(settings: Settings, cfg_path=None) -> FastAPI:
 
     settings_api.register(app, ctx, config_path(cfg_path), _dash_ok, _paste_cookie)
     export.register(app, ctx, _dash_ok)
+    kiosk.register(app, settings, _dash_ok)
 
     @app.get("/api/dashboard")
     async def dashboard_data(token: str | None = None, mm_token: str | None = Cookie(default=None)) -> JSONResponse:
