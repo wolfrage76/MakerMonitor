@@ -928,6 +928,11 @@ def create_app(settings: Settings, cfg_path=None) -> FastAPI:
         # Live, not from the last push: a stopped poll loop must show here.
         st["health"] = ctx.health_view()
         st["dash"] = ctx.day.dashboard_extra()
+        # Dashboard-only links: comment and model ids so comments open on MakerWorld.
+        snap = ctx.store.status.last_snapshot
+        if snap:
+            st["dash"]["comments"] = (snap.extras.get("comments") or [])[:8]
+            st["dash"]["unans"] = ctx.creator.unanswered({mid: m.name for mid, m in snap.models.items()})
         return JSONResponse(st)
 
     return app

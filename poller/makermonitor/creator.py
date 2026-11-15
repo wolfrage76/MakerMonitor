@@ -43,6 +43,7 @@ REFRESH_AFTER = 3600      # don't refetch a model sooner than this
 COMMENT_SCANS_PER_RUN = 2
 COMMENT_PAGE = 20
 COMMENT_MAX_PAGES = 5
+UNANS_RESCAN_SEC = 3 * 3600
 KEEP_DAYS = 35
 STOP_AFTER_FAILS = 3      # pause backfill / launch / comment scans for an hour
 OLD_DAYS = 30             # long-tail: models older than this
@@ -183,7 +184,11 @@ class CreatorStats:
                 if (pub and "launch" not in cache[m] and (today - pub).days > OLD_DAYS - 2):
                     jobs.append(("launch", m))
                     break
-            scans = [m for m in mids if cache[m].get("cm", {}).get("count") != snap.models[m].comments]
+            # Rescan when the comment count changes, and every few hours for models with unanswered
+            # comments (a reply doesn't change the count) or no stored list of them yet.
+            scans = [m for m in mids if cache[m].get("cm", {}).get("count") != snap.models[m].comments
+                     or (cache[m].get("cm", {}).get("unans") and ("ul" not in cache[m]["cm"]
+                                                                   or now - cache[m]["cm"].get("t", 0) > UNANS_RESCAN_SEC))]
             for m in scans:
                 if snap.models[m].comments == 0:
                     cache[m]["cm"] = {"count": 0, "unans": 0, "times": [], "t": now}
@@ -271,7 +276,7 @@ class CreatorStats:
             self.d["models"].setdefault(mid, {})["launch"] = cum
 
     async def _scan_comments(self, client: mw.MakerWorldClient, mid: str, count: int) -> None:
-        unans, times = 0, []
+        unans, times, ul = 0, [], []
         async with mw._session(30.0) as s:
             for page in range(COMMENT_MAX_PAGES):
                 url = (f"{mw.BASE}/api/v1/comment-service/comment?designId={mid}"
@@ -287,12 +292,16 @@ class CreatorStats:
                     times.append(str(c.get("createTime") or ""))
                     if not c.get("replyByDesignUser"):
                         unans += 1
+                        if len(ul) < 10:
+                            u = c.get("user") or {}
+                            ul.append({"id": c.get("id"), "u": u.get("name") or u.get("handle") or "",
+                                       "x": str(c.get("content") or "")[:280], "t": str(c.get("createTime") or "")})
                 if len(rows) < COMMENT_PAGE:
                     break
                 await asyncio.sleep(random.uniform(2, 5))
         with self._lock:
             self.d["models"].setdefault(mid, {})["cm"] = {"count": count, "unans": unans,
-                                                          "times": times[:200], "t": time.time()}
+                                                          "times": times[:200], "ul": ul, "t": time.time()}
 
     # ---- stats ---------------------------------------------------------------
 
@@ -480,6 +489,14 @@ class CreatorStats:
             out["launch"] = {"n": la["n"][:60], "id": la["id"], "day": la["day"], "cur": la["cur"],
                              "med": [round(x, 1) for x in la["med"]], "pct": la["pct"], "past": la["past"]}
         return out
+
+    def unanswered(self, names: dict[str, str], limit: int = 40) -> list[dict[str, Any]]:
+        """Unanswered comments from the last scans, newest first, for the dashboard."""
+        with self._lock:
+            rows = [{**c, "mid": mid, "m": names.get(mid, "")} for mid, v in self.d["models"].items()
+                    for c in (v.get("cm") or {}).get("ul") or [] if mid in names]
+        rows.sort(key=lambda c: c.get("t") or "", reverse=True)
+        return rows[:limit]
 
     def model_stats(self, full: dict[str, Any], mid: str) -> dict[str, Any] | None:
         r = full["models"].get(mid)
