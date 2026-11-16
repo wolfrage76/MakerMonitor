@@ -2277,6 +2277,11 @@ static void refreshTrend() {
 // ---- 5. Points --------------------------------------------------------------
 static lv_obj_t *ptBalance, *ptToday, *ptFollow, *ptRange, *ptMonth, *ptSplitA, *ptSplitB, *ptLegA, *ptLegB;
 static lv_obj_t *ptAvg, *ptBoosts, *ptPrints, *ptMonthCard, *ptNoData, *ptHint;
+static lv_obj_t *ptEarnRule, *ptEarnCap, *ptEarn, *ptEarnRange;  // 800x480: lifetime estimate under the tiles
+static lv_obj_t* ptEarnVal;  // 3.5": lifetime estimate as a 4th balance row
+// Small boards with no room under the tiles show the estimate as a 4th
+// balance row instead (the 3.16" would squeeze its rows too much).
+#define EARN_ROW (ROOMY)
 static lv_obj_t *ptYday, *pt7d, *ptModels;  // balance card rows (3.16", 3.5", 7")
 static int PT_SPLIT_W;
 
@@ -2345,27 +2350,27 @@ static void buildPoints() {
     lv_label_set_long_mode(ptBalance, LV_LABEL_LONG_DOT);
     lv_obj_set_width(ptBalance, w1 - 2 * mx);
   }
-  if (TALL && !SEVEN) {
-    // Fill the tall card: followers and model count under the balance.
-    ptFollow = label(c1, F32, C_TXT, mx, TH / 2 + 22, "-");
-    label(c1, F12, C_MUTED, mx, TH / 2 + 22 + lineH(F32) + 2, "followers  /  models");
-  }
   const lv_font_t* todayF = TALL || STRIP || ROOMY ? F20 : F16;
   ptToday = label(c1, todayF, C_OK, mx, TH - lineH(todayF) - (TALL ? 28 : 22), "");
   lv_label_set_long_mode(ptToday, LV_LABEL_LONG_DOT);
   lv_obj_set_width(ptToday, w1 - 2 * mx);
-  if (STRIP || ROOMY || SEVEN) {
-    // 3.16", 3.5" and 7": balance at the top, then today / yesterday / 7 days
-    // as rows, captions left and figures right-aligned. The 7" adds
-    // followers and models as two more rows and sets the figures in 26 px.
-    const int balY = SEVEN ? 24 + lineH(F16) + 8 : 18 + lineH(F16) + 6;
+  if (STRIP || ROOMY || TALL) {
+    // 3.16", 3.5" and the 800x480 panels (4.3", 5", 7"): balance at the top,
+    // then today / yesterday / 7 days as rows, captions left and figures
+    // right-aligned. The 800x480 panels add followers and models as two more
+    // rows and set the figures in 26 px.
+    const int balY = TALL ? 24 + lineH(F16) + 8 : 18 + lineH(F16) + 6;
     lv_obj_set_y(ptBalance, balY);
-    const int nrows = SEVEN ? 5 : 3;
-    const lv_font_t* valF = SEVEN ? F26 : F20;
+    const int nrows = TALL ? 5 : EARN_ROW ? 4 : 3;
+    const lv_font_t* valF = TALL ? F26 : F20;
     const int y0 = balY + lineH(balF) + 10, rowStep = (TH - 14 - y0 - 10) / nrows;
     box(c1, mx, y0, w1 - 2 * mx, 1, C_EDGE);
     const char* caps[5] = {"today", "yesterday", "last 7 days", "followers", "models"};
     lv_obj_t** vals[5] = {&ptToday, &ptYday, &pt7d, &ptFollow, &ptModels};
+    if (!TALL) {
+      caps[3] = "est. value";
+      vals[3] = &ptEarnVal;
+    }
     for (int r = 0; r < nrows; r++) {
       const int y = y0 + 10 + r * rowStep + (rowStep - lineH(valF)) / 2;
       label(c1, F16, C_MUTED, mx, y + (lineH(valF) - lineH(F16)) / 2, caps[r]);
@@ -2420,6 +2425,16 @@ static void buildPoints() {
     // colour (points amber, boosts, prints).
     const int figTop = legY + lineH(legF) + (STRIP || ROOMY ? 16 : 26);
     const int figH = min(TH - figTop - (ROOMY ? 12 : 16), 168);
+    if (TALL) {
+      // 800x480: the lifetime earnings estimate on one line in the space under
+      // the tiles, below a rule so it doesn't read as part of the 30 days.
+      const int ry = figTop + figH + 12, cy = ry + (TH - ry) / 2;
+      ptEarnRule = box(m, mx, ry, PT_SPLIT_W, 1, C_EDGE);
+      ptEarnCap = label(m, F16, C_MUTED, mx, cy - lineH(F16) / 2, "Lifetime estimate");
+      ptEarn = label(m, F26, C_TXT, 0, 0, "");
+      lv_obj_align(ptEarn, LV_ALIGN_TOP_RIGHT, -mx, cy - lineH(F26) / 2);
+      ptEarnRange = label(m, F16, C_MUTED, 0, 0, "");
+    }
     const int figW = (PT_SPLIT_W - 16) / 3;
     const char* caps[3] = {"avg / day", "boosts", "prints"};
     const uint32_t figCol[3] = {C_WARN, COL[S_BOOSTS], COL[S_PRINTS]};
@@ -2492,10 +2507,10 @@ static void refreshPoints() {
       f = &lv_font_montserrat_32;
     lv_obj_set_style_text_font(ptBalance, f, 0);
   }
-  snprintf(a, sizeof(a), STRIP || ROOMY || SEVEN ? "%+.1f" : "%+.1f today", payloadLagDays() ? 0.0f : st.todayPoints);
+  snprintf(a, sizeof(a), STRIP || ROOMY || TALL ? "%+.1f" : "%+.1f today", payloadLagDays() ? 0.0f : st.todayPoints);
   lv_label_set_text(ptToday, a);
   lv_obj_set_style_text_color(ptToday, C(ptTint(payloadLagDays() ? 0.0f : st.todayPoints)), 0);
-  if (STRIP || ROOMY || SEVEN) {
+  if (STRIP || ROOMY || TALL) {
     if (st.hasYday) lv_label_set_text_fmt(ptYday, "%+.1f", st.ydayPoints);
     else lv_label_set_text(ptYday, "-");
     float w = 0;
@@ -2506,7 +2521,7 @@ static void refreshPoints() {
     lv_obj_set_style_text_color(ptYday, C(st.hasYday ? ptTint(st.ydayPoints) : C_MUTED), 0);
     lv_obj_set_style_text_color(pt7d, C(st.ndays ? ptTint(w) : C_MUTED), 0);
   }
-  if (SEVEN) {
+  if (TALL) {
     lv_label_set_text_fmt(ptFollow, "%d", st.followers);
     lv_label_set_text_fmt(ptModels, "%d", st.models);
   } else if (ptFollow) {
@@ -2525,6 +2540,21 @@ static void refreshPoints() {
                                    : (COMPACT ? "needs cookie" : "30-day stats need a MakerWorld cookie"));
   show(ptNoData, !m.has);
   show(ptHint, !m.has);
+  if (ptEarnVal) {
+    if (st.earn.has) lv_label_set_text_fmt(ptEarnVal, "$%d", (int)lroundf(st.earn.usd));
+    else lv_label_set_text(ptEarnVal, "-");
+  }
+  if (ptEarn) {
+    // Needs a poller that sends "earn"; hidden otherwise.
+    const bool e = m.has && st.earn.has;
+    for (lv_obj_t* o : {ptEarnRule, ptEarnCap, ptEarn, ptEarnRange}) show(o, e);
+    if (e) {
+      lv_label_set_text_fmt(ptEarn, "$%d", (int)lroundf(st.earn.usd));
+      lv_label_set_text_fmt(ptEarnRange, "$%d - %d", (int)lroundf(st.earn.lo), (int)lroundf(st.earn.hi));
+      lv_obj_update_layout(ptEarn);
+      lv_obj_align_to(ptEarnRange, ptEarn, LV_ALIGN_OUT_LEFT_MID, -14, 1);
+    }
+  }
   if (!m.has) return;
   fmtIsoDate(b, sizeof(b), m.start);
   fmtIsoDate(c, sizeof(c), m.end);

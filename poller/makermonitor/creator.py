@@ -28,7 +28,7 @@ import threading
 import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 from . import makerworld as mw
 from .pages import ascii_text
@@ -43,6 +43,7 @@ REFRESH_AFTER = 3600      # don't refetch a model sooner than this
 COMMENT_SCANS_PER_RUN = 2
 COMMENT_PAGE = 20
 COMMENT_MAX_PAGES = 5
+UNANS_RESCAN_SEC = 3 * 3600
 KEEP_DAYS = 35
 STOP_AFTER_FAILS = 3      # pause backfill / launch / comment scans for an hour
 OLD_DAYS = 30             # long-tail: models older than this
@@ -183,7 +184,11 @@ class CreatorStats:
                 if (pub and "launch" not in cache[m] and (today - pub).days > OLD_DAYS - 2):
                     jobs.append(("launch", m))
                     break
-            scans = [m for m in mids if cache[m].get("cm", {}).get("count") != snap.models[m].comments]
+            # Rescan when the comment count changes, and every few hours for models with unanswered
+            # comments (a reply doesn't change the count) or no stored list of them yet.
+            scans = [m for m in mids if cache[m].get("cm", {}).get("count") != snap.models[m].comments
+                     or (cache[m].get("cm", {}).get("unans") and ("ul" not in cache[m]["cm"]
+                                                                   or now - cache[m]["cm"].get("t", 0) > UNANS_RESCAN_SEC))]
             for m in scans:
                 if snap.models[m].comments == 0:
                     cache[m]["cm"] = {"count": 0, "unans": 0, "times": [], "t": now}
@@ -271,7 +276,7 @@ class CreatorStats:
             self.d["models"].setdefault(mid, {})["launch"] = cum
 
     async def _scan_comments(self, client: mw.MakerWorldClient, mid: str, count: int) -> None:
-        unans, times = 0, []
+        unans, times, ul = 0, [], []
         async with mw._session(30.0) as s:
             for page in range(COMMENT_MAX_PAGES):
                 url = (f"{mw.BASE}/api/v1/comment-service/comment?designId={mid}"
@@ -287,12 +292,16 @@ class CreatorStats:
                     times.append(str(c.get("createTime") or ""))
                     if not c.get("replyByDesignUser"):
                         unans += 1
+                        if len(ul) < 10:
+                            u = c.get("user") or {}
+                            ul.append({"id": c.get("id"), "u": u.get("name") or u.get("handle") or "",
+                                       "x": str(c.get("content") or "")[:280], "t": str(c.get("createTime") or "")})
                 if len(rows) < COMMENT_PAGE:
                     break
                 await asyncio.sleep(random.uniform(2, 5))
         with self._lock:
             self.d["models"].setdefault(mid, {})["cm"] = {"count": count, "unans": unans,
-                                                          "times": times[:200], "t": time.time()}
+                                                          "times": times[:200], "ul": ul, "t": time.time()}
 
     # ---- stats ---------------------------------------------------------------
 
@@ -335,8 +344,13 @@ class CreatorStats:
                                  "pubWd": pdt.weekday() if pdt else None,
                                  "pubPart": (0 if pdt.hour < 6 else 1 if pdt.hour < 12 else 2 if pdt.hour < 17 else 3) if pdt else None,
                                  "rt": m.ratings, "ra": round(m.rating_sum / m.ratings, 2) if m.ratings else None}
+            r["coverage"] = {}
             for tag, keys in (("w", last7), ("m", last30)):
                 r[tag] = {f: round(tsum(days, keys, f), 2) for _, f in _DAY_KEYS}
+                expected = {day for day in keys if not pub or day >= pub.isoformat()}
+                seen = expected.intersection(days)
+                r["coverage"][tag] = {"days": len(seen), "of": len(expected),
+                                      "through": max(seen, default=None)}
             cm = c.get("cm") or {}
             ctimes = [_iso_ts(t) for t in cm.get("times", [])]
             r["w"]["m"] = sum(1 for t in ctimes if t >= cutoff7)
@@ -480,6 +494,23 @@ class CreatorStats:
             out["launch"] = {"n": la["n"][:60], "id": la["id"], "day": la["day"], "cur": la["cur"],
                              "med": [round(x, 1) for x in la["med"]], "pct": la["pct"], "past": la["past"]}
         return out
+
+    def comment_scan_status(self, model_ids: Iterable[str]) -> dict[str, int]:
+        """Coverage and latest update for the dashboard's cached reply counts."""
+        ids = list(model_ids)
+        with self._lock:
+            scans = [(self.d["models"].get(mid, {}).get("cm") or {}).get("t", 0)
+                     for mid in ids]
+        return {"checked": sum(bool(t) for t in scans), "total": len(ids),
+                "latest": int(max(scans, default=0))}
+
+    def unanswered(self, names: dict[str, str], limit: int = 40) -> list[dict[str, Any]]:
+        """Unanswered comments from the last scans, newest first, for the dashboard."""
+        with self._lock:
+            rows = [{**c, "mid": mid, "m": names.get(mid, "")} for mid, v in self.d["models"].items()
+                    for c in (v.get("cm") or {}).get("ul") or [] if mid in names]
+        rows.sort(key=lambda c: c.get("t") or "", reverse=True)
+        return rows[:limit]
 
     def model_stats(self, full: dict[str, Any], mid: str) -> dict[str, Any] | None:
         r = full["models"].get(mid)

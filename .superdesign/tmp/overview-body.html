@@ -1,0 +1,1685 @@
+</style>
+</head>
+<body data-view="overview">
+<a class="skip" href="#main">Skip to content</a>
+<header class="top">
+ <div class="bar">
+<div class="brand">
+<svg class="mark" width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
+<rect width="24" height="24" rx="6" fill="var(--hb2)">
+</rect>
+<circle cx="7" cy="7" r="2.6" fill="var(--d)">
+</circle>
+<circle cx="17" cy="7" r="2.6" fill="var(--p)">
+</circle>
+<circle cx="7" cy="17" r="2.6" fill="var(--l)">
+</circle>
+<circle cx="17" cy="17" r="1.5" fill="none" stroke="var(--hb-ink2)" stroke-width="1.2/">
+</circle>
+</svg>MakerMonitor</div>
+<span class="acct" id="acct">@Wofl</span>
+  <span class="pill ok" id="pill" role="status">
+<span class="dot">
+</span>
+<span id="pilltx">Updated 9 min ago</span>
+</span>
+  <a class="kio" href="/kiosk" title="Full-screen view for a wall screen or TV">
+<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+<rect x="1.5" y="2.5" width="13" height="8.5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5">
+</rect>
+<path d="M5.5 14h5M8 11v3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+</path>
+</svg>
+<span>Kiosk</span>
+</a>
+</div>
+ <nav class="tabs" id="tabs" aria-label="Dashboard">
+  <a href="#overview" data-v="overview" class="on" aria-current="page">
+<svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+<g fill="none" stroke="currentColor" stroke-width="1.6">
+<rect x="2" y="2" width="6" height="7" rx="1.5">
+</rect>
+<rect x="10" y="2" width="6" height="4" rx="1.5">
+</rect>
+<rect x="2" y="11" width="6" height="5" rx="1.5">
+</rect>
+<rect x="10" y="8" width="6" height="8" rx="1.5">
+</rect>
+</g>
+</svg>Overview</a>
+  <a href="#models" data-v="models">
+<svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+<g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round">
+<path d="M9 1.8l6.2 3.5v7.4L9 16.2 2.8 12.7V5.3z">
+</path>
+<path d="M2.8 5.3L9 8.8l6.2-3.5M9 8.8v7.4">
+</path>
+</g>
+</svg>Models</a>
+  <a href="#activity" data-v="activity">
+<svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+<path d="M1.5 9.5h3.2l2-5.5 3.6 10 2-4.5h4.2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+</path>
+</svg>Activity<span class="ct" id="ctact">29</span>
+</a>
+  <a href="#export" data-v="export">
+<svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+<g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+<path d="M9 2.5v8.5M5.5 7.5L9 11l3.5-3.5">
+</path>
+<path d="M2.5 11.5v2.5a1.5 1.5 0 0 0 1.5 1.5h10a1.5 1.5 0 0 0 1.5-1.5v-2.5">
+</path>
+</g>
+</svg>Export</a>
+  <a href="#health" data-v="health">
+<svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+<g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+<path d="M9 15.5S2 11.3 2 6.4A3.6 3.6 0 0 1 9 5a3.6 3.6 0 0 1 7 1.4c0 4.9-7 9.1-7 9.1z">
+</path>
+<path d="M5 8.8h2l1-1.8 1.6 3.4 1-1.6H13">
+</path>
+</g>
+</svg>Health<span class="ct" id="cthl" hidden="">0</span>
+</a>
+  <a href="#settings" data-v="settings" id="tab-settings">
+<svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+<g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+<path d="M2.5 5h7M13.5 5h2M2.5 13h2M8.5 13h7">
+</path>
+<circle cx="11.5" cy="5" r="2">
+</circle>
+<circle cx="6.5" cy="13" r="2">
+</circle>
+</g>
+</svg>Settings<span class="ct" id="ctset" hidden="" title="Unsaved changes">Unsaved</span>
+</a>
+</nav>
+</header>
+<main id="main" tabindex="-1">
+<div class="banner" id="banner" role="status">
+</div>
+
+<section class="view on" id="v-overview" aria-label="Overview">
+<div class="grid">
+ <div class="card s7 todayc">
+<h2>Today<small id="since">since midnight</small>
+<span class="sp">
+</span>
+<small id="ydaynote">
+<span class="blegend" aria-hidden="true">
+<span>
+<svg width="10" height="10">
+<circle cx="5" cy="5" r="4" fill="var(--ink2)">
+</circle>
+</svg>today</span>
+<span>
+<svg width="10" height="10">
+<circle cx="5" cy="5" r="4" fill="none" stroke="var(--ink3)" stroke-dasharray="1.6 1.2">
+</circle>
+</svg>yesterday</span>
+<span>
+<svg width="10" height="4">
+<rect width="10" height="3" rx="1.5" fill="var(--acc)">
+</rect>
+</svg>now</span>
+</span>
+</small>
+</h2>
+  <div class="board" id="hero">
+<div class="brow" style="--k:var(--d)">
+<div class="lab">
+<span>
+<span class="kdot">
+</span>Downloads</span>
+<div class="val">+12</div>
+</div>
+<svg class="pegs" viewBox="0 0 240 20" aria-hidden="true">
+<g>
+<circle cx="5" cy="9" r="1.4" fill="var(--line)">
+</circle>
+<circle cx="5" cy="9" r="2.79" fill="none" stroke="var(--ink3)" stroke-width=".9" stroke-dasharray="1.5 1.1">
+</circle>
+<circle cx="5" cy="9" r="2.79" style="fill:var(--d)">
+</circle>
+</g>
+<g>
+<circle cx="15" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="25" cy="9" r="1.4" fill="var(--line)">
+</circle>
+<circle cx="25" cy="9" r="2.79" style="fill:var(--d)">
+</circle>
+</g>
+<g>
+<circle cx="35" cy="9" r="1.4" fill="var(--line)">
+</circle>
+<circle cx="35" cy="9" r="2.79" style="fill:var(--d)">
+</circle>
+</g>
+<g>
+<circle cx="45" cy="9" r="1.4" fill="var(--line)">
+</circle>
+<circle cx="45" cy="9" r="2.79" style="fill:var(--d)">
+</circle>
+</g>
+<g>
+<circle cx="55" cy="9" r="1.4" fill="var(--line)">
+</circle>
+<circle cx="55" cy="9" r="3.36" fill="none" stroke="var(--ink3)" stroke-width=".9" stroke-dasharray="1.5 1.1">
+</circle>
+<circle cx="55" cy="9" r="2.79" style="fill:var(--d)">
+</circle>
+</g>
+<g>
+<circle cx="65" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="75" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="85" cy="9" r="1.4" fill="var(--line)">
+</circle>
+<circle cx="85" cy="9" r="2.79" fill="none" stroke="var(--ink3)" stroke-width=".9" stroke-dasharray="1.5 1.1">
+</circle>
+</g>
+<g>
+<circle cx="95" cy="9" r="1.4" fill="var(--line)">
+</circle>
+<circle cx="95" cy="9" r="3.36" style="fill:var(--d)">
+</circle>
+</g>
+<g>
+<circle cx="105" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="115" cy="9" r="1.4" fill="var(--line)">
+</circle>
+<circle cx="115" cy="9" r="2.79" fill="none" stroke="var(--ink3)" stroke-width=".9" stroke-dasharray="1.5 1.1">
+</circle>
+<circle cx="115" cy="9" r="4.50" style="fill:var(--d)">
+</circle>
+</g>
+<g>
+<circle cx="125" cy="9" r="1.4" fill="var(--line)">
+</circle>
+<circle cx="125" cy="9" r="2.79" fill="none" stroke="var(--ink3)" stroke-width=".9" stroke-dasharray="1.5 1.1">
+</circle>
+</g>
+<g>
+<circle cx="135" cy="9" r="1.4" fill="var(--line)">
+</circle>
+<circle cx="135" cy="9" r="2.79" fill="none" stroke="var(--ink3)" stroke-width=".9" stroke-dasharray="1.5 1.1">
+</circle>
+</g>
+<g>
+<circle cx="145" cy="9" r="1.4" fill="var(--line)">
+</circle>
+<circle cx="145" cy="9" r="2.79" fill="none" stroke="var(--ink3)" stroke-width=".9" stroke-dasharray="1.5 1.1">
+</circle>
+</g>
+<g>
+<circle cx="155" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="165" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="175" cy="9" r="1.4" fill="var(--line)">
+</circle>
+<circle cx="175" cy="9" r="4.17" fill="none" stroke="var(--ink3)" stroke-width=".9" stroke-dasharray="1.5 1.1">
+</circle>
+</g>
+<g>
+<circle cx="185" cy="9" r="1.4" fill="var(--line)">
+</circle>
+<circle cx="185" cy="9" r="3.36" fill="none" stroke="var(--ink3)" stroke-width=".9" stroke-dasharray="1.5 1.1">
+</circle>
+</g>
+<g>
+<circle cx="195" cy="9" r="1.4" fill="var(--line)">
+</circle>
+<circle cx="195" cy="9" r="2.79" fill="none" stroke="var(--ink3)" stroke-width=".9" stroke-dasharray="1.5 1.1">
+</circle>
+</g>
+<g>
+<circle cx="205" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="215" cy="9" r="1.4" fill="var(--line)">
+</circle>
+<circle cx="215" cy="9" r="2.79" fill="none" stroke="var(--ink3)" stroke-width=".9" stroke-dasharray="1.5 1.1">
+</circle>
+</g>
+<g>
+<circle cx="225" cy="9" r="1.4" fill="var(--line)">
+</circle>
+<circle cx="225" cy="9" r="2.79" fill="none" stroke="var(--ink3)" stroke-width=".9" stroke-dasharray="1.5 1.1">
+</circle>
+</g>
+<g>
+<circle cx="235" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<rect x="111.5" y="18.2" width="7" height="1.8" rx=".9" fill="var(--acc)">
+</rect>
+</svg>
+<div class="cmp">
+<b class="up">
+<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+<path d="M5 1.2L9.2 7.6H.8z" fill="currentColor">
+</path>
+</svg>+7</b>
+<br>vs 5 by now yesterday</div>
+</div>
+<div class="brow" style="--k:var(--p)">
+<div class="lab">
+<span>
+<span class="kdot">
+</span>Prints</span>
+<div class="val">+3</div>
+</div>
+<svg class="pegs" viewBox="0 0 240 20" aria-hidden="true">
+<g>
+<circle cx="5" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="15" cy="9" r="1.4" fill="var(--line)">
+</circle>
+<circle cx="15" cy="9" r="4.50" style="fill:var(--p)">
+</circle>
+</g>
+<g>
+<circle cx="25" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="35" cy="9" r="1.4" fill="var(--line)">
+</circle>
+<circle cx="35" cy="9" r="4.50" fill="none" stroke="var(--ink3)" stroke-width=".9" stroke-dasharray="1.5 1.1">
+</circle>
+<circle cx="35" cy="9" r="4.50" style="fill:var(--p)">
+</circle>
+</g>
+<g>
+<circle cx="45" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="55" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="65" cy="9" r="1.4" fill="var(--line)">
+</circle>
+<circle cx="65" cy="9" r="4.50" style="fill:var(--p)">
+</circle>
+</g>
+<g>
+<circle cx="75" cy="9" r="1.4" fill="var(--line)">
+</circle>
+<circle cx="75" cy="9" r="4.50" fill="none" stroke="var(--ink3)" stroke-width=".9" stroke-dasharray="1.5 1.1">
+</circle>
+</g>
+<g>
+<circle cx="85" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="95" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="105" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="115" cy="9" r="1.4" fill="var(--line)">
+</circle>
+<circle cx="115" cy="9" r="4.50" fill="none" stroke="var(--ink3)" stroke-width=".9" stroke-dasharray="1.5 1.1">
+</circle>
+</g>
+<g>
+<circle cx="125" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="135" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="145" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="155" cy="9" r="1.4" fill="var(--line)">
+</circle>
+<circle cx="155" cy="9" r="4.50" fill="none" stroke="var(--ink3)" stroke-width=".9" stroke-dasharray="1.5 1.1">
+</circle>
+</g>
+<g>
+<circle cx="165" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="175" cy="9" r="1.4" fill="var(--line)">
+</circle>
+<circle cx="175" cy="9" r="4.50" fill="none" stroke="var(--ink3)" stroke-width=".9" stroke-dasharray="1.5 1.1">
+</circle>
+</g>
+<g>
+<circle cx="185" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="195" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="205" cy="9" r="1.4" fill="var(--line)">
+</circle>
+<circle cx="205" cy="9" r="4.50" fill="none" stroke="var(--ink3)" stroke-width=".9" stroke-dasharray="1.5 1.1">
+</circle>
+</g>
+<g>
+<circle cx="215" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="225" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="235" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<rect x="111.5" y="18.2" width="7" height="1.8" rx=".9" fill="var(--acc)">
+</rect>
+</svg>
+<div class="cmp">
+<b>even</b>
+<br>with 3 by now yesterday</div>
+</div>
+<div class="brow zero" style="--k:var(--b)">
+<div class="lab">
+<span>
+<span class="kdot">
+</span>Boosts</span>
+<div class="val zero">0</div>
+</div>
+<svg class="pegs" viewBox="0 0 240 20" aria-hidden="true">
+<g>
+<circle cx="5" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="15" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="25" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="35" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="45" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="55" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="65" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="75" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="85" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="95" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="105" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="115" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="125" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="135" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="145" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="155" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="165" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="175" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="185" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="195" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="205" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="215" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="225" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="235" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<rect x="111.5" y="18.2" width="7" height="1.8" rx=".9" fill="var(--acc)">
+</rect>
+</svg>
+<div class="cmp">
+<b>0</b>
+<br>all day yesterday</div>
+</div>
+<div class="brow" style="--k:var(--l)">
+<div class="lab">
+<span>
+<span class="kdot">
+</span>Likes</span>
+<div class="val">+2</div>
+</div>
+<svg class="pegs" viewBox="0 0 240 20" aria-hidden="true">
+<g>
+<circle cx="5" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="15" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="25" cy="9" r="1.4" fill="var(--line)">
+</circle>
+<circle cx="25" cy="9" r="3.59" fill="none" stroke="var(--ink3)" stroke-width=".9" stroke-dasharray="1.5 1.1">
+</circle>
+<circle cx="25" cy="9" r="4.50" style="fill:var(--l)">
+</circle>
+</g>
+<g>
+<circle cx="35" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="45" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="55" cy="9" r="1.4" fill="var(--line)">
+</circle>
+<circle cx="55" cy="9" r="3.59" fill="none" stroke="var(--ink3)" stroke-width=".9" stroke-dasharray="1.5 1.1">
+</circle>
+</g>
+<g>
+<circle cx="65" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="75" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="85" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="95" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="105" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="115" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="125" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="135" cy="9" r="1.4" fill="var(--line)">
+</circle>
+<circle cx="135" cy="9" r="3.59" fill="none" stroke="var(--ink3)" stroke-width=".9" stroke-dasharray="1.5 1.1">
+</circle>
+</g>
+<g>
+<circle cx="145" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="155" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="165" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="175" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="185" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="195" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="205" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="215" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="225" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="235" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<rect x="111.5" y="18.2" width="7" height="1.8" rx=".9" fill="var(--acc)">
+</rect>
+</svg>
+<div class="cmp">
+<b>even</b>
+<br>with 2 by now yesterday</div>
+</div>
+<div class="brow" style="--k:var(--c)">
+<div class="lab">
+<span>
+<span class="kdot">
+</span>Collects</span>
+<div class="val">+12</div>
+</div>
+<svg class="pegs" viewBox="0 0 240 20" aria-hidden="true">
+<g>
+<circle cx="5" cy="9" r="1.4" fill="var(--line)">
+</circle>
+<circle cx="5" cy="9" r="2.67" fill="none" stroke="var(--ink3)" stroke-width=".9" stroke-dasharray="1.5 1.1">
+</circle>
+</g>
+<g>
+<circle cx="15" cy="9" r="1.4" fill="var(--line)">
+</circle>
+<circle cx="15" cy="9" r="3.19" fill="none" stroke="var(--ink3)" stroke-width=".9" stroke-dasharray="1.5 1.1">
+</circle>
+</g>
+<g>
+<circle cx="25" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="35" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="45" cy="9" r="1.4" fill="var(--line)">
+</circle>
+<circle cx="45" cy="9" r="2.67" fill="none" stroke="var(--ink3)" stroke-width=".9" stroke-dasharray="1.5 1.1">
+</circle>
+<circle cx="45" cy="9" r="3.59" style="fill:var(--c)">
+</circle>
+</g>
+<g>
+<circle cx="55" cy="9" r="1.4" fill="var(--line)">
+</circle>
+<circle cx="55" cy="9" r="3.19" fill="none" stroke="var(--ink3)" stroke-width=".9" stroke-dasharray="1.5 1.1">
+</circle>
+<circle cx="55" cy="9" r="2.67" style="fill:var(--c)">
+</circle>
+</g>
+<g>
+<circle cx="65" cy="9" r="1.4" fill="var(--line)">
+</circle>
+<circle cx="65" cy="9" r="2.67" fill="none" stroke="var(--ink3)" stroke-width=".9" stroke-dasharray="1.5 1.1">
+</circle>
+</g>
+<g>
+<circle cx="75" cy="9" r="1.4" fill="var(--line)">
+</circle>
+<circle cx="75" cy="9" r="2.67" fill="none" stroke="var(--ink3)" stroke-width=".9" stroke-dasharray="1.5 1.1">
+</circle>
+</g>
+<g>
+<circle cx="85" cy="9" r="1.4" fill="var(--line)">
+</circle>
+<circle cx="85" cy="9" r="3.19" fill="none" stroke="var(--ink3)" stroke-width=".9" stroke-dasharray="1.5 1.1">
+</circle>
+<circle cx="85" cy="9" r="2.67" style="fill:var(--c)">
+</circle>
+</g>
+<g>
+<circle cx="95" cy="9" r="1.4" fill="var(--line)">
+</circle>
+<circle cx="95" cy="9" r="2.67" style="fill:var(--c)">
+</circle>
+</g>
+<g>
+<circle cx="105" cy="9" r="1.4" fill="var(--line)">
+</circle>
+<circle cx="105" cy="9" r="3.19" fill="none" stroke="var(--ink3)" stroke-width=".9" stroke-dasharray="1.5 1.1">
+</circle>
+</g>
+<g>
+<circle cx="115" cy="9" r="1.4" fill="var(--line)">
+</circle>
+<circle cx="115" cy="9" r="3.59" fill="none" stroke="var(--ink3)" stroke-width=".9" stroke-dasharray="1.5 1.1">
+</circle>
+<circle cx="115" cy="9" r="4.50" style="fill:var(--c)">
+</circle>
+</g>
+<g>
+<circle cx="125" cy="9" r="1.4" fill="var(--line)">
+</circle>
+<circle cx="125" cy="9" r="2.67" fill="none" stroke="var(--ink3)" stroke-width=".9" stroke-dasharray="1.5 1.1">
+</circle>
+</g>
+<g>
+<circle cx="135" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="145" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="155" cy="9" r="1.4" fill="var(--line)">
+</circle>
+<circle cx="155" cy="9" r="2.67" fill="none" stroke="var(--ink3)" stroke-width=".9" stroke-dasharray="1.5 1.1">
+</circle>
+</g>
+<g>
+<circle cx="165" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="175" cy="9" r="1.4" fill="var(--line)">
+</circle>
+<circle cx="175" cy="9" r="2.67" fill="none" stroke="var(--ink3)" stroke-width=".9" stroke-dasharray="1.5 1.1">
+</circle>
+</g>
+<g>
+<circle cx="185" cy="9" r="1.4" fill="var(--line)">
+</circle>
+<circle cx="185" cy="9" r="3.19" fill="none" stroke="var(--ink3)" stroke-width=".9" stroke-dasharray="1.5 1.1">
+</circle>
+</g>
+<g>
+<circle cx="195" cy="9" r="1.4" fill="var(--line)">
+</circle>
+<circle cx="195" cy="9" r="3.19" fill="none" stroke="var(--ink3)" stroke-width=".9" stroke-dasharray="1.5 1.1">
+</circle>
+</g>
+<g>
+<circle cx="205" cy="9" r="1.4" fill="var(--line)">
+</circle>
+<circle cx="205" cy="9" r="2.67" fill="none" stroke="var(--ink3)" stroke-width=".9" stroke-dasharray="1.5 1.1">
+</circle>
+</g>
+<g>
+<circle cx="215" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="225" cy="9" r="1.4" fill="var(--line)">
+</circle>
+</g>
+<g>
+<circle cx="235" cy="9" r="1.4" fill="var(--line)">
+</circle>
+<circle cx="235" cy="9" r="3.19" fill="none" stroke="var(--ink3)" stroke-width=".9" stroke-dasharray="1.5 1.1">
+</circle>
+</g>
+<rect x="111.5" y="18.2" width="7" height="1.8" rx=".9" fill="var(--acc)">
+</rect>
+</svg>
+<div class="cmp">
+<b class="down">
+<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+<path d="M5 8.8L.8 2.4h8.4z" fill="currentColor">
+</path>
+</svg>-2</b>
+<br>vs 14 by now yesterday</div>
+</div>
+<div class="brow zero" style="--k:var(--r)">
+<div class="lab">
+<span>
+<span class="kdot">
+</span>Ratings</span>
+<div class="val zero">0</div>
+</div>
+<div class="note">4.95 average from 112 ratings</div>
+<div class="cmp">
+<b>2</b>
+<br>all day yesterday</div>
+</div>
+<div class="baxis">
+<span>
+</span>
+<div class="hax">
+<span style="left:2.08%">12 AM</span>
+<span style="left:27.08%">6 AM</span>
+<span style="left:52.08%">12 PM</span>
+<span style="left:77.08%">6 PM</span>
+<span style="left:97.92%">11 PM</span>
+</div>
+<span>
+</span>
+</div>
+</div>
+<div class="herofoot" id="herofoot">
+<span>Points today<b>0<small>yesterday 11.8</small>
+</b>
+</span>
+<span>Views yesterday<b>622</b>
+</span>
+<span>Impressions yesterday<b>11,975</b>
+</span>
+<span>Followers<b>61</b>
+</span>
+<span>Models<b>39</b>
+</span>
+</div>
+</div>
+ <div class="card s5">
+<h2>Needs you<span class="sp">
+</span>
+<small id="actn">top 6 of 8</small>
+</h2>
+<ul class="acts" id="acts">
+<li class="now">
+<i aria-hidden="true">
+</i>
+<div>
+<b>
+<a href="#activity">Reply to 56 comments</a>
+</b>
+<span>Comments on your models with no answer from you yet.</span>
+</div>
+</li>
+<li class="now">
+<i aria-hidden="true">
+</i>
+<div>
+<b>
+<a href="https://makerworld.com/en/models/2565089" target="_blank" rel="noopener" title="Sterilite 19QT/54QT Filament Drybox + Hygrometer">Sterilite 19QT/54QT Filament Drybox + Hygrometer</a> is spiking today</b>
+<span>4 downloads so far, against about 1.0 by this time on a normal day. It may have been featured or linked somewhere, so answer its comments while people are looking.</span>
+</div>
+</li>
+<li class="now">
+<i aria-hidden="true">
+</i>
+<div>
+<b>
+<a href="https://makerworld.com/en/models/3429397" target="_blank" rel="noopener" title="7&quot; Spoolman T-Scale (Waveshare ESP32-S3-Touch-7)">7" Spoolman T-Scale (Waveshare ESP32-S3-Touch-7)</a> is taking off</b>
+<span>4 downloads yesterday against 0.7 a day before. A good moment to answer its comments and share it.</span>
+</div>
+</li>
+<li class="fix">
+<i aria-hidden="true">
+</i>
+<div>
+<b>Improve the page for <a href="https://makerworld.com/en/models/3464116" target="_blank" rel="noopener" title="Modular NFC Hand Scanner Spoolman/Filaman/Bambuddy">Modular NFC Hand Scanner Spoolman/Filaman/Bambuddy</a>
+</b>
+<span>962 views in 30 days but 0.6% downloaded, against 1.7% for your typical model. That's about 10 downloads missed. Try a new cover photo or a clearer description.</span>
+</div>
+</li>
+<li class="fix">
+<i aria-hidden="true">
+</i>
+<div>
+<b>Improve the page for <a href="https://makerworld.com/en/models/3477708" target="_blank" rel="noopener" title="AMS 2 Pro 2&quot;-7&quot; Display | Digital Swatch Dashboard">AMS 2 Pro 2"-7" Display | Digital Swatch Dashboard</a>
+</b>
+<span>409 views in 30 days but 0.2% downloaded, against 1.7% for your typical model. That's about 6 downloads missed. Try a new cover photo or a clearer description.</span>
+</div>
+</li>
+<li class="fix">
+<i aria-hidden="true">
+</i>
+<div>
+<b>Check the print profile for <a href="https://makerworld.com/en/models/2853416" target="_blank" rel="noopener" title="19QT &amp; 54QT Sterilite Filament Roller Drybox">19QT &amp; 54QT Sterilite Filament Roller Drybox</a>
+</b>
+<span>33 downloads, 27% printed, against 56% for your typical model. If it's meant to be printed as is, check its profile and plates.</span>
+</div>
+</li>
+</ul>
+</div>
+ <div class="card s7">
+<h2>Top models<span class="sp">
+</span>
+<span class="seg" id="topseg" role="group" aria-label="Top models period">
+<button type="button" class="on" aria-pressed="true" data-k="today">Today</button>
+<button type="button" class="" aria-pressed="false" data-k="week">7 days</button>
+<button type="button" class="" aria-pressed="false" data-k="life">Lifetime</button>
+</span>
+</h2>
+<div class="tw fit" id="top">
+<table>
+<thead>
+<tr>
+<th>Model</th>
+<th>
+<span class="nophone">30 days</span>
+</th>
+<th>
+<span title="Downloads">
+<span class="kdot" style="--k:var(--d)">
+</span>Downloads</span>
+</th>
+<th>
+<span title="Prints">
+<span class="kdot" style="--k:var(--p)">
+</span>Prints</span>
+</th>
+<th>
+<span title="Boosts">
+<span class="kdot" style="--k:var(--b)">
+</span>Boosts</span>
+</th>
+<th>
+<span title="Likes">
+<span class="kdot" style="--k:var(--l)">
+</span>Likes</span>
+</th>
+<th>
+<span title="Collects">
+<span class="kdot" style="--k:var(--c)">
+</span>Collects</span>
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="nm">
+<a href="https://makerworld.com/en/models/2565089" target="_blank" rel="noopener" title="Sterilite 19QT/54QT Filament Drybox + Hygrometer">Sterilite 19QT/54QT Filament Drybox + Hygrometer</a>
+</td>
+<td class="nophone">
+<svg class="spark" viewBox="0 0 90 22" preserveAspectRatio="none" aria-hidden="true">
+<polygon points="0,22 0.0,14.9 3.1,14.9 6.2,12.3 9.3,14.9 12.4,17.4 15.5,17.4 18.6,17.4 21.7,17.4 24.8,20.0 27.9,14.9 31.0,12.3 34.1,14.9 37.2,17.4 40.3,17.4 43.4,7.1 46.6,17.4 49.7,20.0 52.8,9.7 55.9,20.0 59.0,9.7 62.1,14.9 65.2,17.4 68.3,12.3 71.4,2.0 74.5,9.7 77.6,7.1 80.7,2.0 83.8,7.1 86.9,4.6 90.0,20.0 90,22" fill="var(--d)" opacity=".14">
+</polygon>
+<polyline points="0.0,14.9 3.1,14.9 6.2,12.3 9.3,14.9 12.4,17.4 15.5,17.4 18.6,17.4 21.7,17.4 24.8,20.0 27.9,14.9 31.0,12.3 34.1,14.9 37.2,17.4 40.3,17.4 43.4,7.1 46.6,17.4 49.7,20.0 52.8,9.7 55.9,20.0 59.0,9.7 62.1,14.9 65.2,17.4 68.3,12.3 71.4,2.0 74.5,9.7 77.6,7.1 80.7,2.0 83.8,7.1 86.9,4.6 90.0,20.0" fill="none" stroke="var(--d)" stroke-width="1.6" stroke-linejoin="round" vector-effect="non-scaling-stroke">
+</polyline>
+</svg>
+</td>
+<td>4</td>
+<td>1</td>
+<td>0</td>
+<td>0</td>
+<td>1</td>
+</tr>
+<tr>
+<td class="nm">
+<a href="https://makerworld.com/en/models/3429397" target="_blank" rel="noopener" title="7&quot; Spoolman T-Scale (Waveshare ESP32-S3-Touch-7)">7" Spoolman T-Scale (Waveshare ESP32-S3-Touch-7)</a>
+</td>
+<td class="nophone">
+<svg class="spark" viewBox="0 0 90 22" preserveAspectRatio="none" aria-hidden="true">
+<polygon points="0,22 0.0,20.0 3.1,6.5 6.2,15.5 9.3,11.0 12.4,15.5 15.5,20.0 18.6,15.5 21.7,20.0 24.8,11.0 27.9,20.0 31.0,20.0 34.1,15.5 37.2,15.5 40.3,15.5 43.4,15.5 46.6,20.0 49.7,20.0 52.8,20.0 55.9,20.0 59.0,15.5 62.1,20.0 65.2,20.0 68.3,15.5 71.4,11.0 74.5,15.5 77.6,20.0 80.7,15.5 83.8,20.0 86.9,20.0 90.0,2.0 90,22" fill="var(--d)" opacity=".14">
+</polygon>
+<polyline points="0.0,20.0 3.1,6.5 6.2,15.5 9.3,11.0 12.4,15.5 15.5,20.0 18.6,15.5 21.7,20.0 24.8,11.0 27.9,20.0 31.0,20.0 34.1,15.5 37.2,15.5 40.3,15.5 43.4,15.5 46.6,20.0 49.7,20.0 52.8,20.0 55.9,20.0 59.0,15.5 62.1,20.0 65.2,20.0 68.3,15.5 71.4,11.0 74.5,15.5 77.6,20.0 80.7,15.5 83.8,20.0 86.9,20.0 90.0,2.0" fill="none" stroke="var(--d)" stroke-width="1.6" stroke-linejoin="round" vector-effect="non-scaling-stroke">
+</polyline>
+</svg>
+</td>
+<td>2</td>
+<td>0</td>
+<td>0</td>
+<td>1</td>
+<td>3</td>
+</tr>
+<tr>
+<td class="nm">
+<a href="https://makerworld.com/en/models/3202151" target="_blank" rel="noopener" title="Craft Fair Vendor Display: Square Reader Stand">Craft Fair Vendor Display: Square Reader Stand</a>
+</td>
+<td class="nophone">
+<svg class="spark" viewBox="0 0 90 22" preserveAspectRatio="none" aria-hidden="true">
+<polygon points="0,22 0.0,20.0 3.1,2.0 6.2,20.0 9.3,20.0 12.4,20.0 15.5,20.0 18.6,20.0 21.7,2.0 24.8,20.0 27.9,20.0 31.0,20.0 34.1,2.0 37.2,2.0 40.3,20.0 43.4,2.0 46.6,20.0 49.7,20.0 52.8,20.0 55.9,20.0 59.0,20.0 62.1,2.0 65.2,2.0 68.3,2.0 71.4,2.0 74.5,2.0 77.6,20.0 80.7,20.0 83.8,20.0 86.9,20.0 90.0,2.0 90,22" fill="var(--d)" opacity=".14">
+</polygon>
+<polyline points="0.0,20.0 3.1,2.0 6.2,20.0 9.3,20.0 12.4,20.0 15.5,20.0 18.6,20.0 21.7,2.0 24.8,20.0 27.9,20.0 31.0,20.0 34.1,2.0 37.2,2.0 40.3,20.0 43.4,2.0 46.6,20.0 49.7,20.0 52.8,20.0 55.9,20.0 59.0,20.0 62.1,2.0 65.2,2.0 68.3,2.0 71.4,2.0 74.5,2.0 77.6,20.0 80.7,20.0 83.8,20.0 86.9,20.0 90.0,2.0" fill="none" stroke="var(--d)" stroke-width="1.6" stroke-linejoin="round" vector-effect="non-scaling-stroke">
+</polyline>
+</svg>
+</td>
+<td>1</td>
+<td>1</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+</tr>
+<tr>
+<td class="nm">
+<a href="https://makerworld.com/en/models/3124349" target="_blank" rel="noopener" title="Desiccant Boxes for Sterilite 19QT/54QT Bins - V2">Desiccant Boxes for Sterilite 19QT/54QT Bins - V2</a>
+</td>
+<td class="nophone">
+<svg class="spark" viewBox="0 0 90 22" preserveAspectRatio="none" aria-hidden="true">
+<polygon points="0,22 0.0,20.0 3.1,17.0 6.2,5.0 9.3,17.0 12.4,14.0 15.5,20.0 18.6,20.0 21.7,20.0 24.8,20.0 27.9,17.0 31.0,11.0 34.1,17.0 37.2,14.0 40.3,20.0 43.4,14.0 46.6,20.0 49.7,14.0 52.8,11.0 55.9,17.0 59.0,14.0 62.1,11.0 65.2,14.0 68.3,8.0 71.4,11.0 74.5,5.0 77.6,8.0 80.7,14.0 83.8,2.0 86.9,8.0 90.0,11.0 90,22" fill="var(--d)" opacity=".14">
+</polygon>
+<polyline points="0.0,20.0 3.1,17.0 6.2,5.0 9.3,17.0 12.4,14.0 15.5,20.0 18.6,20.0 21.7,20.0 24.8,20.0 27.9,17.0 31.0,11.0 34.1,17.0 37.2,14.0 40.3,20.0 43.4,14.0 46.6,20.0 49.7,14.0 52.8,11.0 55.9,17.0 59.0,14.0 62.1,11.0 65.2,14.0 68.3,8.0 71.4,11.0 74.5,5.0 77.6,8.0 80.7,14.0 83.8,2.0 86.9,8.0 90.0,11.0" fill="none" stroke="var(--d)" stroke-width="1.6" stroke-linejoin="round" vector-effect="non-scaling-stroke">
+</polyline>
+</svg>
+</td>
+<td>2</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>1</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+ <div class="card s5">
+<h2>Funnel<span class="sp">
+</span>
+<small>30 days, and yesterday</small>
+</h2>
+<div class="fn" id="fun">
+<div class="fs">
+<span>Impressions<small>shown in feeds and search</small>
+</span>
+<b>180,030</b>
+<small>yesterday 11,975</small>
+</div>
+<div class="fc">
+<span class="ar" aria-hidden="true">
+<svg width="10" height="12" viewBox="0 0 10 12">
+<path d="M5 1v9M1.8 7L5 10.2 8.2 7" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+</path>
+</svg>
+</span>
+<span class="rt">8.5%</span>clicked through<span class="y down">
+<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+<path d="M5 8.8L.8 2.4h8.4z" fill="currentColor">
+</path>
+</svg>yesterday 5.2%</span>
+</div>
+<div class="fs">
+<span>Views<small>opened the model page</small>
+</span>
+<b>15,261</b>
+<small>yesterday 622</small>
+</div>
+<div class="fc">
+<span class="ar" aria-hidden="true">
+<svg width="10" height="12" viewBox="0 0 10 12">
+<path d="M5 1v9M1.8 7L5 10.2 8.2 7" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+</path>
+</svg>
+</span>
+<span class="rt">2.5%</span>downloaded<span class="y mut">yesterday 2.7%</span>
+</div>
+<div class="fs">
+<span>Downloads</span>
+<b>377</b>
+<small>yesterday 17</small>
+</div>
+<div class="fc">
+<span class="ar" aria-hidden="true">
+<svg width="10" height="12" viewBox="0 0 10 12">
+<path d="M5 1v9M1.8 7L5 10.2 8.2 7" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+</path>
+</svg>
+</span>
+<span class="rt">54%</span>printed<span class="y down">
+<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+<path d="M5 8.8L.8 2.4h8.4z" fill="currentColor">
+</path>
+</svg>yesterday 35%</span>
+</div>
+<div class="fs">
+<span>Prints</span>
+<b>202</b>
+<small>yesterday 6</small>
+</div>
+<p class="take">Weakest step yesterday: <b>clicked through</b>, 5.2% against 8.5% usually. That step depends on the cover image and title.</p>
+</div>
+</div>
+ <div class="card s7">
+<h2>Best times<span class="sp">
+</span>
+<span class="seg" id="bestseg" role="group" aria-label="Best times metric">
+<button type="button" class="on" aria-pressed="true" data-k="downloads">Downloads</button>
+<button type="button" class="" aria-pressed="false" data-k="prints">Prints</button>
+<button type="button" class="" aria-pressed="false" data-k="boosts">Boosts</button>
+</span>
+</h2>
+<div id="best">
+<p class="mut" style="margin:0 0 6px;font-size:12.5px">Downloads by hour of the day, all 22 days added up. The busiest hour is in orange.</p>
+  <svg class="pegs" viewBox="0 0 240 24" aria-hidden="true">
+<g>
+<title>12:00 AM: 7 over 22 days</title>
+<circle cx="5" cy="12" r="0.9" fill="var(--line)">
+</circle>
+<circle cx="5" cy="12" r="2.09" style="fill:var(--d)">
+</circle>
+</g>
+<g>
+<title>1:00 AM: 11 over 22 days</title>
+<circle cx="15" cy="12" r="0.9" fill="var(--line)">
+</circle>
+<circle cx="15" cy="12" r="2.77" style="fill:var(--d)">
+</circle>
+</g>
+<g>
+<title>2:00 AM: 8 over 22 days</title>
+<circle cx="25" cy="12" r="0.9" fill="var(--line)">
+</circle>
+<circle cx="25" cy="12" r="2.26" style="fill:var(--d)">
+</circle>
+</g>
+<g>
+<title>3:00 AM: 6 over 22 days</title>
+<circle cx="35" cy="12" r="0.9" fill="var(--line)">
+</circle>
+<circle cx="35" cy="12" r="1.92" style="fill:var(--d)">
+</circle>
+</g>
+<g>
+<title>4:00 AM: 6 over 22 days</title>
+<circle cx="45" cy="12" r="0.9" fill="var(--line)">
+</circle>
+<circle cx="45" cy="12" r="1.92" style="fill:var(--d)">
+</circle>
+</g>
+<g>
+<title>5:00 AM: 9 over 22 days</title>
+<circle cx="55" cy="12" r="0.9" fill="var(--line)">
+</circle>
+<circle cx="55" cy="12" r="2.43" style="fill:var(--d)">
+</circle>
+</g>
+<g>
+<title>6:00 AM: 7 over 22 days</title>
+<circle cx="65" cy="12" r="0.9" fill="var(--line)">
+</circle>
+<circle cx="65" cy="12" r="2.09" style="fill:var(--d)">
+</circle>
+</g>
+<g>
+<title>7:00 AM: 11 over 22 days</title>
+<circle cx="75" cy="12" r="0.9" fill="var(--line)">
+</circle>
+<circle cx="75" cy="12" r="2.77" style="fill:var(--d)">
+</circle>
+</g>
+<g>
+<title>8:00 AM: 8 over 22 days</title>
+<circle cx="85" cy="12" r="0.9" fill="var(--line)">
+</circle>
+<circle cx="85" cy="12" r="2.26" style="fill:var(--d)">
+</circle>
+</g>
+<g>
+<title>9:00 AM: 23 over 22 days</title>
+<circle cx="95" cy="12" r="0.9" fill="var(--line)">
+</circle>
+<circle cx="95" cy="12" r="4.80" style="fill:var(--acc)">
+</circle>
+</g>
+<g>
+<title>10:00 AM: 6 over 22 days</title>
+<circle cx="105" cy="12" r="0.9" fill="var(--line)">
+</circle>
+<circle cx="105" cy="12" r="1.92" style="fill:var(--d)">
+</circle>
+</g>
+<g>
+<title>11:00 AM: 23 over 22 days</title>
+<circle cx="115" cy="12" r="0.9" fill="var(--line)">
+</circle>
+<circle cx="115" cy="12" r="4.80" style="fill:var(--d)">
+</circle>
+</g>
+<g>
+<title>12:00 PM: 17 over 22 days</title>
+<circle cx="125" cy="12" r="0.9" fill="var(--line)">
+</circle>
+<circle cx="125" cy="12" r="3.78" style="fill:var(--d)">
+</circle>
+</g>
+<g>
+<title>1:00 PM: 13 over 22 days</title>
+<circle cx="135" cy="12" r="0.9" fill="var(--line)">
+</circle>
+<circle cx="135" cy="12" r="3.10" style="fill:var(--d)">
+</circle>
+</g>
+<g>
+<title>2:00 PM: 17 over 22 days</title>
+<circle cx="145" cy="12" r="0.9" fill="var(--line)">
+</circle>
+<circle cx="145" cy="12" r="3.78" style="fill:var(--d)">
+</circle>
+</g>
+<g>
+<title>3:00 PM: 16 over 22 days</title>
+<circle cx="155" cy="12" r="0.9" fill="var(--line)">
+</circle>
+<circle cx="155" cy="12" r="3.61" style="fill:var(--d)">
+</circle>
+</g>
+<g>
+<title>4:00 PM: 10 over 22 days</title>
+<circle cx="165" cy="12" r="0.9" fill="var(--line)">
+</circle>
+<circle cx="165" cy="12" r="2.60" style="fill:var(--d)">
+</circle>
+</g>
+<g>
+<title>5:00 PM: 17 over 22 days</title>
+<circle cx="175" cy="12" r="0.9" fill="var(--line)">
+</circle>
+<circle cx="175" cy="12" r="3.78" style="fill:var(--d)">
+</circle>
+</g>
+<g>
+<title>6:00 PM: 11 over 22 days</title>
+<circle cx="185" cy="12" r="0.9" fill="var(--line)">
+</circle>
+<circle cx="185" cy="12" r="2.77" style="fill:var(--d)">
+</circle>
+</g>
+<g>
+<title>7:00 PM: 19 over 22 days</title>
+<circle cx="195" cy="12" r="0.9" fill="var(--line)">
+</circle>
+<circle cx="195" cy="12" r="4.12" style="fill:var(--d)">
+</circle>
+</g>
+<g>
+<title>8:00 PM: 13 over 22 days</title>
+<circle cx="205" cy="12" r="0.9" fill="var(--line)">
+</circle>
+<circle cx="205" cy="12" r="3.10" style="fill:var(--d)">
+</circle>
+</g>
+<g>
+<title>9:00 PM: 14 over 22 days</title>
+<circle cx="215" cy="12" r="0.9" fill="var(--line)">
+</circle>
+<circle cx="215" cy="12" r="3.27" style="fill:var(--d)">
+</circle>
+</g>
+<g>
+<title>10:00 PM: 15 over 22 days</title>
+<circle cx="225" cy="12" r="0.9" fill="var(--line)">
+</circle>
+<circle cx="225" cy="12" r="3.44" style="fill:var(--d)">
+</circle>
+</g>
+<g>
+<title>11:00 PM: 20 over 22 days</title>
+<circle cx="235" cy="12" r="0.9" fill="var(--line)">
+</circle>
+<circle cx="235" cy="12" r="4.29" style="fill:var(--d)">
+</circle>
+</g>
+</svg>
+<div class="hax">
+<span style="left:2.08%">12 AM</span>
+<span style="left:27.08%">6 AM</span>
+<span style="left:52.08%">12 PM</span>
+<span style="left:77.08%">6 PM</span>
+<span style="left:97.92%">11 PM</span>
+</div>
+  <div class="wk">
+<div class="hi" title="15.7 a day over 3 full Mons">Mon<b>15.7</b>
+</div>
+<div class="" title="14.0 a day over 3 full Tues">Tue<b>14.0</b>
+</div>
+<div class="" title="12.7 a day over 3 full Weds">Wed<b>12.7</b>
+</div>
+<div class="" title="13.0 a day over 3 full Thus">Thu<b>13.0</b>
+</div>
+<div class="" title="15.0 a day over 3 full Fris">Fri<b>15.0</b>
+</div>
+<div class="" title="14.0 a day over 3 full Sats">Sat<b>14.0</b>
+</div>
+<div class="" title="14.0 a day over 3 full Suns">Sun<b>14.0</b>
+</div>
+</div>
+  <p class="mut" style="margin:12px 0 0">Busiest hour 9:00 AM, busiest day Monday. Day cells show the average a day, over the last 22 days.</p>
+</div>
+</div>
+ <div class="card s5">
+<h2>7 and 30 days<span class="sp">
+</span>
+<small>bars: last 7 days</small>
+</h2>
+<div class="tw fit" id="periods">
+<table>
+<thead>
+<tr>
+<th>
+</th>
+<th>
+<span class="nophone">Daily</span>
+</th>
+<th>7 days</th>
+<th>30 days</th>
+<th>Lifetime</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="nm">
+<span class="kdot" style="--k:var(--d)">
+</span>Downloads</td>
+<td class="nophone">
+<svg class="wk7" viewBox="0 0 64 20" aria-hidden="true">
+<rect x="1.0" y="5.8" width="7.1" height="14.3" rx="1.5" style="fill:var(--d)" opacity="0.55">
+</rect>
+<rect x="10.1" y="9.7" width="7.1" height="10.3" rx="1.5" style="fill:var(--d)" opacity="0.55">
+</rect>
+<rect x="19.3" y="1.0" width="7.1" height="19.0" rx="1.5" style="fill:var(--d)" opacity="0.55">
+</rect>
+<rect x="28.4" y="5.8" width="7.1" height="14.3" rx="1.5" style="fill:var(--d)" opacity="0.55">
+</rect>
+<rect x="37.6" y="5.0" width="7.1" height="15.0" rx="1.5" style="fill:var(--d)" opacity="0.55">
+</rect>
+<rect x="46.7" y="6.5" width="7.1" height="13.5" rx="1.5" style="fill:var(--d)" opacity="0.55">
+</rect>
+<rect x="55.9" y="10.5" width="7.1" height="9.5" rx="1.5" style="fill:var(--d)" opacity="1">
+</rect>
+</svg>
+</td>
+<td>+121</td>
+<td>+377</td>
+<td>1,062</td>
+</tr>
+<tr>
+<td class="nm">
+<span class="kdot" style="--k:var(--p)">
+</span>Prints</td>
+<td class="nophone">
+<svg class="wk7" viewBox="0 0 64 20" aria-hidden="true">
+<rect x="1.0" y="1.0" width="7.1" height="19.0" rx="1.5" style="fill:var(--p)" opacity="0.55">
+</rect>
+<rect x="10.1" y="5.8" width="7.1" height="14.3" rx="1.5" style="fill:var(--p)" opacity="0.55">
+</rect>
+<rect x="19.3" y="5.8" width="7.1" height="14.3" rx="1.5" style="fill:var(--p)" opacity="0.55">
+</rect>
+<rect x="28.4" y="5.8" width="7.1" height="14.3" rx="1.5" style="fill:var(--p)" opacity="0.55">
+</rect>
+<rect x="37.6" y="2.6" width="7.1" height="17.4" rx="1.5" style="fill:var(--p)" opacity="0.55">
+</rect>
+<rect x="46.7" y="10.5" width="7.1" height="9.5" rx="1.5" style="fill:var(--p)" opacity="0.55">
+</rect>
+<rect x="55.9" y="15.3" width="7.1" height="4.8" rx="1.5" style="fill:var(--p)" opacity="1">
+</rect>
+</svg>
+</td>
+<td>+59</td>
+<td>+202</td>
+<td>843</td>
+</tr>
+<tr>
+<td class="nm">
+<span class="kdot" style="--k:var(--b)">
+</span>Boosts</td>
+<td class="nophone">
+<svg class="wk7" viewBox="0 0 64 20" aria-hidden="true">
+<rect x="1.0" y="1.0" width="7.1" height="19.0" rx="1.5" style="fill:var(--b)" opacity="0.55">
+</rect>
+<rect x="10.1" y="18.5" width="7.1" height="1.5" rx="1.5" style="fill:var(--b)" opacity="0.55">
+</rect>
+<rect x="19.3" y="18.5" width="7.1" height="1.5" rx="1.5" style="fill:var(--b)" opacity="0.55">
+</rect>
+<rect x="28.4" y="18.5" width="7.1" height="1.5" rx="1.5" style="fill:var(--b)" opacity="0.55">
+</rect>
+<rect x="37.6" y="10.5" width="7.1" height="9.5" rx="1.5" style="fill:var(--b)" opacity="0.55">
+</rect>
+<rect x="46.7" y="18.5" width="7.1" height="1.5" rx="1.5" style="fill:var(--b)" opacity="0.55">
+</rect>
+<rect x="55.9" y="18.5" width="7.1" height="1.5" rx="1.5" style="fill:var(--b)" opacity="1">
+</rect>
+</svg>
+</td>
+<td>+3</td>
+<td>+16</td>
+<td>78</td>
+</tr>
+<tr>
+<td class="nm">
+<span class="kdot" style="--k:var(--l)">
+</span>Likes</td>
+<td class="nophone">
+<svg class="wk7" viewBox="0 0 64 20" aria-hidden="true">
+<rect x="1.0" y="17.9" width="7.1" height="2.1" rx="1.5" style="fill:var(--l)" opacity="0.55">
+</rect>
+<rect x="10.1" y="1.0" width="7.1" height="19.0" rx="1.5" style="fill:var(--l)" opacity="0.55">
+</rect>
+<rect x="19.3" y="17.9" width="7.1" height="2.1" rx="1.5" style="fill:var(--l)" opacity="0.55">
+</rect>
+<rect x="28.4" y="13.8" width="7.1" height="6.2" rx="1.5" style="fill:var(--l)" opacity="0.55">
+</rect>
+<rect x="37.6" y="16.4" width="7.1" height="3.6" rx="1.5" style="fill:var(--l)" opacity="0.55">
+</rect>
+<rect x="46.7" y="18.5" width="7.1" height="1.5" rx="1.5" style="fill:var(--l)" opacity="0.55">
+</rect>
+<rect x="55.9" y="18.5" width="7.1" height="1.5" rx="1.5" style="fill:var(--l)" opacity="1">
+</rect>
+</svg>
+</td>
+<td>+69</td>
+<td>+130</td>
+<td>442</td>
+</tr>
+<tr>
+<td class="nm">
+<span class="kdot" style="--k:var(--c)">
+</span>Collects</td>
+<td class="nophone">
+<svg class="wk7" viewBox="0 0 64 20" aria-hidden="true">
+<rect x="1.0" y="1.0" width="7.1" height="19.0" rx="1.5" style="fill:var(--c)" opacity="0.55">
+</rect>
+<rect x="10.1" y="4.5" width="7.1" height="15.5" rx="1.5" style="fill:var(--c)" opacity="0.55">
+</rect>
+<rect x="19.3" y="8.0" width="7.1" height="12.0" rx="1.5" style="fill:var(--c)" opacity="0.55">
+</rect>
+<rect x="28.4" y="1.7" width="7.1" height="18.3" rx="1.5" style="fill:var(--c)" opacity="0.55">
+</rect>
+<rect x="37.6" y="2.4" width="7.1" height="17.6" rx="1.5" style="fill:var(--c)" opacity="0.55">
+</rect>
+<rect x="46.7" y="3.1" width="7.1" height="16.9" rx="1.5" style="fill:var(--c)" opacity="0.55">
+</rect>
+<rect x="55.9" y="11.6" width="7.1" height="8.4" rx="1.5" style="fill:var(--c)" opacity="1">
+</rect>
+</svg>
+</td>
+<td>+153</td>
+<td>+442</td>
+<td>1,641</td>
+</tr>
+<tr>
+<td class="nm">
+<span class="kdot" style="--k:var(--ink2)">
+</span>Views</td>
+<td class="nophone">
+</td>
+<td>5,732</td>
+<td>15,257</td>
+<td>
+<span class="mut">–</span>
+</td>
+</tr>
+<tr>
+<td class="nm">
+<span class="kdot" style="--k:var(--ink3)">
+</span>Impressions</td>
+<td class="nophone">
+</td>
+<td>
+<span class="mut">–</span>
+</td>
+<td>180,030</td>
+<td>
+<span class="mut">–</span>
+</td>
+</tr>
+<tr>
+<td class="nm">
+<span class="kdot" style="--k:var(--r)">
+</span>Points</td>
+<td class="nophone">
+<svg class="wk7" viewBox="0 0 64 20" aria-hidden="true">
+<rect x="1.0" y="11.7" width="7.1" height="8.3" rx="1.5" style="fill:var(--r)" opacity="0.55">
+</rect>
+<rect x="10.1" y="5.2" width="7.1" height="14.8" rx="1.5" style="fill:var(--r)" opacity="0.55">
+</rect>
+<rect x="19.3" y="16.4" width="7.1" height="3.6" rx="1.5" style="fill:var(--r)" opacity="0.55">
+</rect>
+<rect x="28.4" y="15.8" width="7.1" height="4.2" rx="1.5" style="fill:var(--r)" opacity="0.55">
+</rect>
+<rect x="37.6" y="1.0" width="7.1" height="19.0" rx="1.5" style="fill:var(--r)" opacity="0.55">
+</rect>
+<rect x="46.7" y="16.8" width="7.1" height="3.2" rx="1.5" style="fill:var(--r)" opacity="0.55">
+</rect>
+<rect x="55.9" y="18.5" width="7.1" height="1.5" rx="1.5" style="fill:var(--r)" opacity="1">
+</rect>
+</svg>
+</td>
+<td>+193</td>
+<td>+516</td>
+<td>1,184</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+ <div class="card s4">
+<h2>Followers<span class="sp">
+</span>
+<small>last 30 days</small>
+</h2>
+<div class="minis" id="fol">
+<div class="mini">
+<b class="">61</b>
+<span>total</span>
+</div>
+<div class="mini">
+<b class="">0</b>
+<span>today</span>
+</div>
+<div class="mini">
+<b class="up">+6</b>
+<span>7 days</span>
+</div>
+<div class="mini">
+<b class="up">+17</b>
+<span>30 days</span>
+</div>
+</div>
+  <div class="bars" id="folbars" style="height:70px">
+<i class="hi" style="height:25%" title="29 days ago: +1">
+</i>
+<i class="" style="height:3%" title="28 days ago: 0">
+</i>
+<i class="hi" style="height:25%" title="27 days ago: +1">
+</i>
+<i class="" style="height:3%" title="26 days ago: 0">
+</i>
+<i class="" style="height:3%" title="25 days ago: 0">
+</i>
+<i class="" style="height:3%" title="24 days ago: 0">
+</i>
+<i class="" style="height:3%" title="23 days ago: 0">
+</i>
+<i class="hi" style="height:50%" title="22 days ago: +2">
+</i>
+<i class="" style="height:3%" title="21 days ago: 0">
+</i>
+<i class="" style="height:3%" title="20 days ago: 0">
+</i>
+<i class="" style="height:3%" title="19 days ago: 0">
+</i>
+<i class="" style="height:3%" title="18 days ago: 0">
+</i>
+<i class="" style="height:3%" title="17 days ago: 0">
+</i>
+<i class="hi" style="height:25%" title="16 days ago: +1">
+</i>
+<i class="hi" style="height:50%" title="15 days ago: +2">
+</i>
+<i class="" style="height:3%" title="14 days ago: 0">
+</i>
+<i class="" style="height:3%" title="13 days ago: 0">
+</i>
+<i class="" style="height:3%" title="12 days ago: 0">
+</i>
+<i class="" style="height:3%" title="11 days ago: 0">
+</i>
+<i class="" style="height:3%" title="10 days ago: 0">
+</i>
+<i class="hi" style="height:50%" title="9 days ago: +2">
+</i>
+<i class="hi" style="height:25%" title="8 days ago: +1">
+</i>
+<i class="hi" style="height:25%" title="7 days ago: +1">
+</i>
+<i class="hi" style="height:25%" title="6 days ago: +1">
+</i>
+<i class="hi" style="height:25%" title="5 days ago: +1">
+</i>
+<i class="" style="height:3%" title="4 days ago: 0">
+</i>
+<i class="" style="height:3%" title="3 days ago: 0">
+</i>
+<i class="" style="height:3%" title="2 days ago: 0">
+</i>
+<i class="hi" style="height:100%" title="1 days ago: +4">
+</i>
+<i class="" style="height:3%" title="today: 0">
+</i>
+</div>
+<div class="axis">
+<span>30 days ago</span>
+<span>today</span>
+</div>
+</div>
+ <div class="card s8">
+<h2>Creator at a glance<span class="sp">
+</span>
+<small id="cprog">analytics for all 39 models</small>
+</h2>
+<div class="facts" id="ckp">
+<div>
+<h3>Conversion</h3>
+<div class="fr">
+<span>Downloads per view<small>7 days</small>
+</span>
+<b>
+<span class="down">2.4%</span>
+<small>30d 2.5%</small>
+</b>
+</div>
+<div class="fr">
+<span>Prints per download<small>lifetime</small>
+</span>
+<b>79%<small>30d 54%</small>
+</b>
+</div>
+<div class="fr">
+<span>Likes, collects, comments<small>per 100 downloads, 30 days</small>
+</span>
+<b>152.3</b>
+</div>
+</div>
+<div>
+<h3>Points</h3>
+<div class="fr">
+<span>Points a day<small>7-day average</small>
+</span>
+<b>
+<span class="up">31.9</span>
+<small>was 14.5</small>
+</b>
+</div>
+<div class="fr">
+<span>Model points<small>7 / 30 days</small>
+</span>
+<b>149 / 429</b>
+</div>
+<div class="fr">
+<span>Points, all sources<small>30 days</small>
+</span>
+<b>516</b>
+</div>
+</div>
+<div>
+<h3>Audience</h3>
+<div class="fr">
+<span>New followers<small>7 / 30 days</small>
+</span>
+<b>+6 / +17</b>
+</div>
+<div class="fr">
+<span>Average rating<small>112 ratings</small>
+</span>
+<b>4.95</b>
+</div>
+<div class="fr">
+<span>Unanswered comments</span>
+<b>
+<a href="#activity" style="color:var(--warn);text-decoration:none">56</a>
+</b>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+
+
+
+
+
+
+
+
+
+
+</main>
+<footer class="foot">
+<span>MakerMonitor by @Wofl</span>
+<a href="https://github.com/wolfrage76/MakerMonitor" target="_blank" rel="noopener">GitHub</a>
+<a href="https://makerworld.com/en/@Wofl" target="_blank" rel="noopener">MakerWorld</a>
+</footer>
+
+
+
+
+
+</body>
+</html>

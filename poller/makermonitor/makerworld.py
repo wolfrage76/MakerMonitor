@@ -158,6 +158,7 @@ class MakerWorldClient:
                 log.warning("Profile page unavailable (%s); using cached uid %s", exc, uid)
 
             models: dict[str, ModelStats] = {}
+            earn: dict[str, dict[str, Any]] = {}  # per-profile uses and exclusive flag (earnings estimate)
             offset, limit = 0, 50
             while True:
                 r = await LIMITER.get(client, endpoint="models", core=True, url=
@@ -186,6 +187,7 @@ class MakerWorldClient:
                         ratings=sum(int(_num(i.get("ratingCount"))) for i in h.get("instances") or []),
                         rating_sum=sum(int(_num(i.get("ratingScoreTotal"))) for i in h.get("instances") or []),
                     )
+                    earn[mid] = _earn_info(h)
                 offset += len(hits)
                 if not hits or offset >= int(_num(data.get("total"))):
                     break
@@ -199,6 +201,7 @@ class MakerWorldClient:
             models=models,
             source="design_api",
         )
+        snap.extras["earn"] = earn
         snap.extras["account"] = {
             "uid": uid,
             "followers": int(_num(user.get("fanCount"))),
@@ -677,3 +680,45 @@ def _walk_extract(node: Any, snap: Snapshot, depth: int = 0) -> None:
     elif isinstance(node, list):
         for item in node[:200]:
             _walk_extract(item, snap, depth + 1)
+
+
+_EARN_KEYS_LOGGED = False
+_EXCL_KEYS = ("isExclusive",)
+
+
+def _uid(v: Any) -> Any:
+    return v.get("uid") if isinstance(v, dict) else v
+
+
+def _earn_info(h: dict[str, Any]) -> dict[str, Any]:
+    """The creator's own print profiles' weighted uses (downloads + 2 x
+    prints) and the isExclusive flag, from a design list hit. The keys are
+    logged once so a MakerWorld API change shows up in the log."""
+    global _EARN_KEYS_LOGGED
+    insts = [i for i in h.get("instances") or [] if isinstance(i, dict)]
+    if not _EARN_KEYS_LOGGED:
+        _EARN_KEYS_LOGGED = True
+        log.info("design list keys: %s", ",".join(sorted(h.keys())))
+        if insts:
+            log.info("design instance keys: %s", ",".join(sorted(insts[0].keys())))
+    out: dict[str, Any] = {}
+    profs = []
+    owner = str(_uid(h.get("designCreator")) or "")
+    for i in insts:
+        # Profile points go to the profile's author: skip other people's profiles.
+        by = str(_uid(i.get("instanceCreator")) or i.get("designCreatorUid") or "")
+        if owner and by and by != owner:
+            continue
+        dl = i.get("downloadCount", i.get("download"))
+        pr = i.get("printCount", i.get("print"))
+        if dl is None and pr is None:
+            profs = []
+            break
+        profs.append(int(_num(dl)) + 2 * int(_num(pr)))
+    if profs:
+        out["profiles"] = profs
+    for k in _EXCL_KEYS:
+        if k in h:
+            out["exclusive"] = bool(h.get(k))
+            break
+    return out

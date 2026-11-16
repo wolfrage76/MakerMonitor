@@ -134,9 +134,11 @@ class DayTracker:
         # Keep the closed day's hourly buckets for best-time insights.
         if d.get("day") and d.get("hours"):
             hd = [x for x in d.get("hour_days", []) if x.get("date") != d["day"]]
-            hd.append({"date": d["day"], "hours": d["hours"]})
+            hd.append({"date": d["day"], "hours": d["hours"],
+                       "from": d.get("hour_start"), "to": d.get("last_t")})
             d["hour_days"] = hd[-KEEP_HOUR_DAYS:]
         d["day"] = today
+        d["hour_start"] = now
         d["hours"] = {k: [0] * 24 for k in STATS}
 
     def add_events(self, events: list[dict[str, Any]], now: float | None = None) -> None:
@@ -231,14 +233,19 @@ class DayTracker:
             yd = None
             if d.get("day"):
                 want = date.fromordinal(date.fromisoformat(d["day"]).toordinal() - 1).isoformat()
-                yd = next((x.get("hours") for x in reversed(hd) if x.get("date") == want), None)
+                yd = next((x for x in reversed(hd) if x.get("date") == want), None)
             feed = [e for e in d.get("feed", []) if e.get("t", 0) >= d.get("base_t", 0)][::-1]
+            hour_span = {"date": d.get("day"), "from": d.get("hour_start"), "to": d.get("last_t")}
+            if not hour_span["from"] and not d.get("midnight"):
+                hour_span["from"] = d.get("base_t")
         # Closed days only; today is partial, so the page takes its hours out of the totals.
         wdn = [0] * 7
         for x in days[:-1] if d.get("day") else days:
             wdn[date.fromisoformat(x["date"]).weekday()] += 1
         tw = date.fromisoformat(d["day"]).weekday() if d.get("day") else None
-        return {"yhours": yd, "wdayN": wdn, "todayWd": tw, "feedAll": feed}
+        return {"yhours": yd.get("hours") if yd else None, "hourSpan": hour_span,
+                "yhourSpan": {k: yd.get(k) for k in ("date", "from", "to")} if yd else None,
+                "calendarDay": date.today().isoformat(), "wdayN": wdn, "todayWd": tw, "feedAll": feed}
 
     def model_history(self, mid: str) -> list[dict[str, Any]]:
         """Daily activity of one model, oldest first, from the per-day model

@@ -25,7 +25,9 @@ from .notify import summary as notify_summary
 from .panel import PanelClient, PanelGroup, build_events
 from .panels import PanelDirectory
 from .ratelimit import LIMITER
-from . import settings_api
+from . import export, settings_api
+from .earnings import EarningsSettings, estimate as earnings_estimate
+from . import kiosk
 from .state import Snapshot, Store
 
 log = logging.getLogger(__name__)
@@ -131,6 +133,7 @@ class AppContext:
         # Creator stats (background, low priority); its health is its own source.
         LIMITER.load(settings.data_path)
         self.creator = CreatorStats(settings.data_path)
+        self.earnings = EarningsSettings(settings.data_path)
         self.health["model-stats"] = self.creator.health
         self.auth_state = "none"
         self._auth_fails = 0  # polls refused in a row (401/403)
@@ -146,12 +149,22 @@ class AppContext:
                 st["health"] = self.health_view()
                 st["insights"] = self.day.insights()
                 st["poller"] = self.self_url()
+                st["earn"] = self.earn_panel(snap)
                 full = self.creator_full()
                 if full:
                     st["creator"] = self.creator.compact(full)
                 self.last_state = st
             except Exception:  # noqa: BLE001
                 pass
+
+    def earn_panel(self, snap: Snapshot) -> dict[str, float] | None:
+        """The panels' compact earnings estimate: likely $ and the low / high range."""
+        try:
+            e = earnings_estimate(snap, self.earnings.values)
+        except Exception as exc:  # noqa: BLE001 - never break a push
+            log.warning("earnings estimate failed: %s", exc)
+            return None
+        return {"usd": e["usd"], "lo": e["low"]["usd"], "hi": e["high"]["usd"]}
 
     def update_health(self, client: MakerWorldClient, cookie: bool) -> None:
         """Fold one poll's per-source results in (once per poll)."""
@@ -519,6 +532,7 @@ class AppContext:
             state["health"] = self.health_view()
             state["insights"] = self.day.insights()
             state["poller"] = self.self_url()
+            state["earn"] = self.earn_panel(snap)
             full = self.creator_full()
             if full:
                 state["creator"] = self.creator.compact(full)
@@ -540,7 +554,7 @@ class AppContext:
                 self._panel_answer(base, ok)
                 failed = 0
                 for ev in events:
-                    if not await panel.event(ev):
+                    if not await panel.event({k: v for k, v in ev.items() if k != "mid"}):
                         failed += 1
                     await asyncio.sleep(0.2)
                 if events and failed:
@@ -910,6 +924,19 @@ def create_app(settings: Settings, cfg_path=None) -> FastAPI:
         return changed
 
     settings_api.register(app, ctx, config_path(cfg_path), _dash_ok, _paste_cookie)
+    export.register(app, ctx, _dash_ok)
+    kiosk.register(app, settings, _dash_ok)
+
+    @app.get("/api/dashboard/replies")
+    async def dashboard_replies(model: str, mm_token: str | None = Cookie(default=None)) -> JSONResponse:
+        if not _dash_ok(None, mm_token):
+            raise HTTPException(401, "Unauthorized")
+        snap = ctx.store.status.last_snapshot
+        if not snap or model not in snap.models:
+            raise HTTPException(404, "Unknown model")
+        names = {model: snap.models[model].name}
+        return JSONResponse({"comments": ctx.creator.unanswered(names),
+                             "scan": ctx.creator.comment_scan_status(names)})
 
     @app.get("/api/dashboard")
     async def dashboard_data(token: str | None = None, mm_token: str | None = Cookie(default=None)) -> JSONResponse:
@@ -924,7 +951,42 @@ def create_app(settings: Settings, cfg_path=None) -> FastAPI:
             st = dict(st)
         # Live, not from the last push: a stopped poll loop must show here.
         st["health"] = ctx.health_view()
+        live = ctx.store.status
+        st["status"] = {**(st.get("status") or {}),
+                        **ctx._color_status(ctx.auth_state, live.last_error or "")}
         st["dash"] = ctx.day.dashboard_extra()
+        # Dashboard-only links: comment and model ids so comments open on MakerWorld.
+        snap = ctx.store.status.last_snapshot
+        if snap:
+            st["dash"]["comments"] = (snap.extras.get("comments") or [])[:8]
+            st["dash"]["unans"] = ctx.creator.unanswered({mid: m.name for mid, m in snap.models.items()})
+            st["dash"]["commentScans"] = ctx.creator.comment_scan_status(snap.models)
+            st["dash"]["modelNames"] = {mid: m.name for mid, m in snap.models.items()}
+            try:
+                st["dash"]["earnings"] = earnings_estimate(snap, ctx.earnings.values)
+            except Exception as exc:  # noqa: BLE001 - never break the dashboard
+                log.warning("earnings estimate failed: %s", exc)
         return JSONResponse(st)
+
+    # Earnings estimate settings: reward adjustment, $ per point, exclusive models.
+    @app.get("/api/earnings")
+    async def earnings_get(mm_token: str | None = Cookie(default=None)) -> JSONResponse:
+        if not _dash_ok(None, mm_token):
+            raise HTTPException(401, "Unauthorized")
+        return JSONResponse(ctx.earnings.values)
+
+    @app.post("/api/earnings")
+    async def earnings_post(body: dict[str, Any], mm_token: str | None = Cookie(default=None),
+                            x_mm: str | None = Header(default=None, alias="X-MM")) -> JSONResponse:
+        if not _dash_ok(None, mm_token):
+            raise HTTPException(401, "Unauthorized")
+        if not x_mm:  # every POST from the page sends X-MM; forms on other sites can't
+            raise HTTPException(400, "missing X-MM header")
+        try:
+            vals = ctx.earnings.update(body)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(400, str(exc)) from exc
+        snap = ctx.store.status.last_snapshot
+        return JSONResponse({"settings": vals, "earnings": earnings_estimate(snap, vals) if snap else None})
 
     return app
