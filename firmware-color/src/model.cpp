@@ -123,6 +123,12 @@ bool parse_state(const char* json, size_t len, State& s) {
       if (s.fol.n < 30) s.fol.series[s.fol.n++] = v | 0;
   }
 
+  JsonObjectConst ea = doc["earn"].as<JsonObjectConst>();
+  s.earn.has = !ea.isNull() && ea["usd"].is<float>();
+  s.earn.usd = ea["usd"] | 0.0f;
+  s.earn.lo = ea["lo"] | 0.0f;
+  s.earn.hi = ea["hi"] | 0.0f;
+
   JsonObjectConst m = doc["month"].as<JsonObjectConst>();
   s.month.has = !m.isNull() && m["impressions"].is<long>();
   if (s.month.has) {

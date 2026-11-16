@@ -58,6 +58,13 @@ struct Month {
   char start[12], end[12];
 };
 
+// Lifetime earnings estimate in dollars from the poller: likely value and its
+// low / high range (the dashboard's Earnings estimate).
+struct Earn {
+  bool has;
+  float usd, lo, hi;
+};
+
 // Poller health: last good fetch per source and the cookie state.
 enum HealthSrc { H_MODELS, H_REACH, H_POINTS, NHSRC };
 struct Health {
@@ -133,6 +140,7 @@ struct State {
   int nfeed;
   FeedRow feed[8];
   Month month;
+  Earn earn;
   Followers fol;
   int ncomments;
   CommentRow comments[9];
