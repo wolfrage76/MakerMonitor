@@ -28,7 +28,7 @@ import threading
 import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 from . import makerworld as mw
 from .pages import ascii_text
@@ -344,8 +344,13 @@ class CreatorStats:
                                  "pubWd": pdt.weekday() if pdt else None,
                                  "pubPart": (0 if pdt.hour < 6 else 1 if pdt.hour < 12 else 2 if pdt.hour < 17 else 3) if pdt else None,
                                  "rt": m.ratings, "ra": round(m.rating_sum / m.ratings, 2) if m.ratings else None}
+            r["coverage"] = {}
             for tag, keys in (("w", last7), ("m", last30)):
                 r[tag] = {f: round(tsum(days, keys, f), 2) for _, f in _DAY_KEYS}
+                expected = {day for day in keys if not pub or day >= pub.isoformat()}
+                seen = expected.intersection(days)
+                r["coverage"][tag] = {"days": len(seen), "of": len(expected),
+                                      "through": max(seen, default=None)}
             cm = c.get("cm") or {}
             ctimes = [_iso_ts(t) for t in cm.get("times", [])]
             r["w"]["m"] = sum(1 for t in ctimes if t >= cutoff7)
@@ -489,6 +494,15 @@ class CreatorStats:
             out["launch"] = {"n": la["n"][:60], "id": la["id"], "day": la["day"], "cur": la["cur"],
                              "med": [round(x, 1) for x in la["med"]], "pct": la["pct"], "past": la["past"]}
         return out
+
+    def comment_scan_status(self, model_ids: Iterable[str]) -> dict[str, int]:
+        """Coverage and latest update for the dashboard's cached reply counts."""
+        ids = list(model_ids)
+        with self._lock:
+            scans = [(self.d["models"].get(mid, {}).get("cm") or {}).get("t", 0)
+                     for mid in ids]
+        return {"checked": sum(bool(t) for t in scans), "total": len(ids),
+                "latest": int(max(scans, default=0))}
 
     def unanswered(self, names: dict[str, str], limit: int = 40) -> list[dict[str, Any]]:
         """Unanswered comments from the last scans, newest first, for the dashboard."""

@@ -29,11 +29,13 @@ _KIND = {"boost": "boosts", "like": "likes", "download": "downloads", "print": "
 def color_events(prev: Snapshot, cur: Snapshot) -> list[dict[str, Any]]:
     """Per-model events for the five stats, ratings and comments."""
     out: list[dict[str, Any]] = []
-    for e in build_events(prev, cur):
+    for e in build_events(prev, cur, include_model_id=True):
         kind = _KIND.get(e.get("type", ""))
         if not kind:
             continue
         ev = {"k": kind, "n": int(e.get("value", 1)), "m": ascii_text(e.get("modelName", ""))[:60]}
+        if e.get("modelId"):
+            ev["mid"] = e["modelId"]
         if kind == "comment":
             ev["u"] = ascii_text(e.get("user", ""))[:32]
             ev["x"] = ascii_text(e.get("text", ""))[:120]
@@ -44,11 +46,11 @@ def color_events(prev: Snapshot, cur: Snapshot) -> list[dict[str, Any]]:
             old = prev.models.get(mid)
             if old and m.collects > old.collects:
                 out.append({"k": "collects", "n": m.collects - old.collects,
-                            "m": ascii_text(m.name or mid)[:60]})
+                            "mid": mid, "m": ascii_text(m.name or mid)[:60]})
             if old and m.ratings > old.ratings:
                 n = m.ratings - old.ratings
                 # s: average stars of the new ratings (exact when n == 1)
-                out.append({"k": "ratings", "n": n, "m": ascii_text(m.name or mid)[:60],
+                out.append({"k": "ratings", "n": n, "mid": mid, "m": ascii_text(m.name or mid)[:60],
                             "s": round(max(0, m.rating_sum - old.rating_sum) / n, 1)})
     return out
 

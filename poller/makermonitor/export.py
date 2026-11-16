@@ -176,18 +176,21 @@ class Exporter:
 
         return {
             "today": date.today().isoformat(),
+            "partialDay": dly["day"],
             "ranges": list(RANGES),
             "datasets": {
-                "account": {"span": span(acct_dates), "metrics": list(DATASET_METRICS["account"]),
+                "account": {"span": span(acct_dates), "dates": sorted(set(acct_dates)), "metrics": list(DATASET_METRICS["account"]),
                             "granularity": list(GRANULARITY["account"])},
-                "hourly": {"span": span(hour_dates), "metrics": list(DATASET_METRICS["hourly"]),
+                "hourly": {"span": span(hour_dates), "dates": sorted(set(hour_dates)), "metrics": list(DATASET_METRICS["hourly"]),
                            "granularity": list(GRANULARITY["hourly"])},
-                "models": {"span": span(mdates), "metrics": list(DATASET_METRICS["models"]),
+                "models": {"span": span(mdates), "dates": sorted(mdates), "metrics": list(DATASET_METRICS["models"]),
                            "granularity": list(GRANULARITY["models"])},
                 "lifetime": {"span": None, "metrics": list(DATASET_METRICS["lifetime"]),
                              "granularity": list(GRANULARITY["lifetime"])},
             },
-            "models": [{"id": i, "name": names[i].name if i in names else ""} for i in ids],
+            "models": [{"id": i, "name": names[i].name if i in names else "",
+                        "lifetime": i in names,
+                        "dates": sorted(set(cdays.get(i, {})) | set(pdays.get(i, {})))} for i in ids],
         }
 
     # ---- rows ----------------------------------------------------------------
@@ -379,8 +382,8 @@ def register(app: FastAPI, ctx: Any, dash_ok: Callable[[str | None, str | None],
             else:  # total rows carry their own start / end columns
                 i = 2 if dataset == "models" else 0
                 dates = sorted({x for r in rows for x in r[i:i + 2] if x})
-            lo = a.isoformat() if a else (dates[0] if dates else "start")
-            hi = b.isoformat() if b else (dates[-1] if dates else "end")
+            lo = dates[0] if dates else (a.isoformat() if a else "start")
+            hi = dates[-1] if dates else (b.isoformat() if b else "end")
             span = lo if lo == hi else f"{lo}_to_{hi}"
         suffix = "-total" if gran == "total" and dataset != "lifetime" else ""
         fname = f"makermonitor-{dataset}{suffix}-{span}.csv"

@@ -87,7 +87,7 @@ class PanelClient:
             return False
 
 
-def build_events(prev: Snapshot, cur: Snapshot) -> list[dict[str, Any]]:
+def build_events(prev: Snapshot, cur: Snapshot, *, include_model_id: bool = False) -> list[dict[str, Any]]:
     """Turn a snapshot diff into notify payloads (compatible with original monitor)."""
     events: list[dict[str, Any]] = []
     totals = {
@@ -108,6 +108,7 @@ def build_events(prev: Snapshot, cur: Snapshot) -> list[dict[str, Any]]:
                     {
                         "type": "download",
                         "modelName": m.name or mid,
+                        **({"modelId": mid} if include_model_id else {}),
                         "value": m.downloads - old.downloads,
                         "total": m.downloads,
                         "points": float(m.downloads - old.downloads),
@@ -119,6 +120,7 @@ def build_events(prev: Snapshot, cur: Snapshot) -> list[dict[str, Any]]:
                     {
                         "type": "print",
                         "modelName": m.name or mid,
+                        **({"modelId": mid} if include_model_id else {}),
                         "value": m.prints - old.prints,
                         "total": m.prints,
                         "points": float((m.prints - old.prints) * 2),
@@ -130,6 +132,7 @@ def build_events(prev: Snapshot, cur: Snapshot) -> list[dict[str, Any]]:
                     {
                         "type": "boost",
                         "modelName": m.name or mid,
+                        **({"modelId": mid} if include_model_id else {}),
                         "value": m.boosts - old.boosts,
                         "total": m.boosts,
                         "points": 0,
@@ -141,6 +144,7 @@ def build_events(prev: Snapshot, cur: Snapshot) -> list[dict[str, Any]]:
                     {
                         "type": "like",
                         "modelName": m.name or mid,
+                        **({"modelId": mid} if include_model_id else {}),
                         "value": m.likes - old.likes,
                         "total": m.likes,
                         "points": 0,
@@ -161,6 +165,7 @@ def build_events(prev: Snapshot, cur: Snapshot) -> list[dict[str, Any]]:
                 {
                     "type": "comment",
                     "modelName": c.get("model") or str(c.get("designId")),
+                    **({"modelId": str(c["designId"])} if include_model_id and c.get("designId") else {}),
                     "value": 1,
                     "total": model.comments if model else 0,
                     "points": 0,
