@@ -98,13 +98,19 @@ section.view{display:none}section.view.on{display:block;animation:in .16s cubic-
 .banner.err{display:block;color:var(--err);border-color:color-mix(in srgb,var(--err) 40%,transparent);background:color-mix(in srgb,var(--err) 8%,var(--panel))}
 .banner.warn{display:block;color:var(--warn);border-color:color-mix(in srgb,var(--warn) 40%,transparent);background:color-mix(in srgb,var(--warn) 8%,var(--panel))}
 .banner a{font-weight:700}
-.seg{display:inline-flex;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:2px}
+.seg{display:inline-flex;flex-wrap:wrap;min-width:0;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:2px}
 .seg button{border:0;background:none;min-height:36px;padding:4px 11px;border-radius:6px;color:var(--ink2);cursor:pointer;font-size:15px;font-weight:600}
 .seg button:hover{color:var(--ink)}
 .seg button.on{background:var(--panel);color:var(--ink);box-shadow:var(--shadow),inset 0 0 0 1px var(--line)}
 /* ---- today board: one fixed slot per metric, a peg per hour ---- */
 .board{display:flex;flex-direction:column}
 .brow{display:grid;grid-template-columns:200px minmax(0,1fr);grid-template-areas:"lab pegs" "cmp pegs";gap:2px 20px;align-items:center;padding:13px 0;border-top:1px solid var(--line2)}
+.hour-details{margin-top:12px;border-top:1px solid var(--line2);padding-top:4px}
+.hour-details summary{cursor:pointer;width:fit-content;padding:10px 0;font-weight:650}
+.hour-details p{margin:4px 0 12px}
+.hour-details .tw{max-height:420px;margin-top:10px;overflow:auto}
+.card>h2{flex-wrap:wrap}
+.freshness{margin:0 0 12px;color:var(--ink2)}
 .brow:first-child{border-top:0;padding-top:2px}
 .brow .lab{display:flex;flex-direction:column;gap:1px;min-width:0}
 .brow .lab span{font-size:15px;font-weight:600;color:var(--ink2)}
@@ -126,7 +132,7 @@ section.view{display:none}section.view.on{display:block;animation:in .16s cubic-
  #top th:nth-child(n+5),#top td:nth-child(n+5){display:none}#top th:nth-child(2),#periods th:nth-child(2){display:none}.brow .val{font-size:26px}
  .baxis{grid-template-columns:minmax(0,1fr)}.baxis>span{display:none}}
 .ov{display:grid;grid-template-columns:minmax(0,7fr) minmax(0,5fr);gap:20px;align-items:start}.ovl,.ovr{display:flex;flex-direction:column;gap:20px;min-width:0}.ovw{grid-column:1/-1}
-@media (max-width:1000px){.ov{display:flex;flex-direction:column;align-items:stretch}.ovl,.ovr{display:contents}.o1{order:1}.o2{order:2}.o3{order:3}.o4{order:4}.o5{order:5}.o6{order:6}.o7{order:7}.o8{order:8}}
+@media (max-width:1000px){.ov{display:flex;flex-direction:column;align-items:stretch}.ovl,.ovr{display:contents}.o1{order:1}.o2{order:2}.o3{order:3}.o4{order:4}.o5{order:5}.o6{order:6}.o7{order:7}.o8{order:8}.o9{order:9}}
 .herofoot{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:12px 20px;margin:14px -20px 0;padding:14px 20px 0;border-top:1px solid var(--line2)}
 .herofoot span{display:flex;flex-direction:column;font-size:14.5px;color:var(--ink2)}
 .herofoot b{font:650 18px var(--sans);color:var(--ink)}
@@ -194,11 +200,23 @@ a.rowlink{color:inherit;text-decoration:none}a.rowlink:hover{color:var(--acc);te
 .fsum>button{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;min-height:38px;border-radius:999px;background:var(--panel2);border:1px solid var(--line2);font-size:15px;color:var(--ink2);cursor:pointer}
 .fsum>button:hover{border-color:var(--ink3);color:var(--ink)}.fsum>button[aria-pressed=true]{background:var(--panel);border-color:var(--ink2);color:var(--ink)}
 .fsum>button b{font:700 15px var(--sans);color:var(--ink)}
-.afilter{display:flex;align-items:center;gap:8px;margin:-2px 0 10px;font-size:15px;color:var(--ink2)}.afilter[hidden]{display:none}
+.afilter{overflow-wrap:anywhere;gap:8px;margin:-2px 0 10px;font-size:15px;color:var(--ink2)}.afilter[hidden]{display:none}
 .ucm{padding:11px 0;border-bottom:1px solid var(--line2)}.ucm:last-child{border:0}
 .ucm .who{font-weight:650}.ucm .on{color:var(--ink3);font-size:14px}.ucm p{margin:4px 0 0;color:var(--ink2);overflow-wrap:anywhere}
 .ucm .do{margin-top:4px}
 /* needs you: the shadow-paint list */
+.next-action{display:none}
+#needs-reply,#model-focus-title,#needs-you{scroll-margin-top:120px}
+.model-focus{margin:0 0 16px;padding:12px 0;border-bottom:1px solid var(--line2);overflow-wrap:anywhere}
+.model-focus h3{margin:0 0 6px;font-size:18px}
+.model-focus p{margin:0;color:var(--ink2)}
+.more-actions{margin-top:8px}
+.more-actions summary{cursor:pointer;width:fit-content;padding:10px 0;font-weight:650}
+.more-actions .acts{margin-top:4px}
+@media(max-width:760px){
+ .next-action:not([hidden]){display:block;margin-bottom:16px;padding:12px 16px;border:1px solid var(--line);border-radius:var(--rad);background:var(--panel)}
+ .next-action a{display:inline-flex;align-items:center;min-height:44px;font-weight:650;color:var(--acc)}
+}
 .acts{list-style:none;margin:0;padding:0}
 .acts li{display:flex;gap:12px;padding:14px 0;border-top:1px solid var(--line2)}.acts li:first-child{border-top:0;padding-top:2px}
 .acts li>i{flex:none;width:10px;height:10px;border-radius:50%;margin-top:5px;box-shadow:inset 0 0 0 2px var(--ink3)}
@@ -405,7 +423,7 @@ dialog.dlg .row{justify-content:flex-end}
  input[type=checkbox]{width:22px;height:22px}#mtable th,#mtable td{padding:10px 6px;font-size:15px}#mtable td.nm{min-width:110px;max-width:170px}#mtable td:nth-child(11){white-space:normal;min-width:64px}#mcount{display:block}.setnav a{min-height:40px;display:inline-flex;align-items:center}}
 @media (max-width:760px){.setnav{margin:-8px -12px 0!important;padding:10px 12px!important}}
 @media (max-width:760px){main{padding:14px 12px}.bar{padding:10px 14px}.card{padding:0 14px 14px}.card>h2,.h2{margin:0 -14px 12px;padding:10px 14px}
- .herofoot{margin:12px -14px 0;padding:12px 14px 0}.acct{display:none}.kio span{display:none}#since{display:none}.kio{padding:5px 9px}
+ .herofoot{margin:12px -14px 0;padding:12px 14px 0}.acct{display:none}.kio span{display:none}#since:not(.show-date){display:none}.kio{padding:5px 9px}
  body{padding-bottom:calc(64px + env(safe-area-inset-bottom))}
  nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:25;max-width:none;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:0;padding:0 2px env(safe-area-inset-bottom);
   background:var(--hb);border-top:1px solid color-mix(in srgb,var(--hb-ink) 14%,transparent)}
@@ -417,10 +435,18 @@ dialog.dlg .row{justify-content:flex-end}
  nav.tabs a #ctset{font-size:0;width:10px;height:10px;padding:0;top:9px;background:var(--warn);box-shadow:0 0 0 2px var(--hb)}
  .savebar{bottom:calc(76px + env(safe-area-inset-bottom))!important}.toast{bottom:calc(76px + env(safe-area-inset-bottom))!important}
  body[data-view=settings].dirty .toast{bottom:calc(140px + env(safe-area-inset-bottom))!important}}
+@media (max-width:360px){
+ nav.tabs{grid-template-columns:repeat(3,minmax(0,1fr))}
+ nav.tabs a{min-height:49px;padding:5px 0;gap:2px}
+ body{padding-bottom:calc(104px + env(safe-area-inset-bottom))}
+ .savebar,.toast{bottom:calc(112px + env(safe-area-inset-bottom))!important}
+ body[data-view=settings].dirty .toast{bottom:calc(176px + env(safe-area-inset-bottom))!important}
+ .wk{grid-template-columns:repeat(4,minmax(0,1fr))}
+}
 /* ---- export ---- */
 .xp{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px;align-items:start}
 @media (max-width:900px){.xp{grid-template-columns:1fr}}
-.xp .fields{grid-template-columns:repeat(auto-fill,minmax(200px,1fr))}
+.xp .fields{grid-template-columns:repeat(auto-fill,minmax(min(200px,100%),1fr))}
 .xp input[type=date]{width:100%;min-height:40px;padding:8px 11px;border-radius:9px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);outline:none;font:inherit}
 .xp input[type=date]:focus{border-color:var(--acc);box-shadow:0 0 0 3px color-mix(in srgb,var(--acc) 24%,transparent)}
 .xp .hint{font-size:14px;color:var(--ink3);margin:0;max-width:75ch}
@@ -435,6 +461,31 @@ dialog.dlg .row{justify-content:flex-end}
 .xsum .btn{width:100%}.xsum .btn.dis{opacity:.55;pointer-events:none}
 .xp [hidden]{display:none!important}
 .xprev td,.xprev th{white-space:nowrap;padding:6px 8px;text-align:left}
+/* ---- earnings estimate ---- */
+.earn{display:grid;grid-template-columns:minmax(0,4fr) minmax(0,4fr) minmax(0,5fr);gap:12px 28px;align-items:start}
+.earn h3{margin:0 0 2px;font:600 14px var(--sans);color:var(--ink3);letter-spacing:.02em}
+.earn .tot{font:700 40px/1.1 var(--sans);letter-spacing:-.01em;margin:6px 0 4px}
+.earn .tot small{font:500 16px var(--sans);color:var(--ink3);margin-left:8px;letter-spacing:0}
+.earn .rng{color:var(--ink2);margin:0}.earn .rng b{color:var(--ink);font-weight:650}
+.earn .meter{position:relative;height:6px;border-radius:3px;background:var(--panel2);box-shadow:inset 0 0 0 1px var(--line);margin:12px 0 4px}
+.earn .meter i{position:absolute;top:-4px;width:3px;height:14px;border-radius:2px;background:var(--acc)}
+.earn .meter span{position:absolute;inset:0;border-radius:3px;background:color-mix(in srgb,var(--acc) 22%,transparent)}
+.earn .ax{display:flex;justify-content:space-between;font-size:13px;color:var(--ink3)}
+.earn .fr{display:flex;justify-content:space-between;align-items:baseline;gap:16px;padding:10px 0;border-bottom:1px solid var(--line2)}
+.earn .fr:last-child{border-bottom:0}.earn .fr>span{color:var(--ink2);min-width:0}.earn .fr>span small{display:block;color:var(--ink3);font-size:14px}
+.earn .fr>b{text-align:right;font:650 17px var(--sans);white-space:nowrap}
+.earn .fr>span a{text-decoration:none}.earn .fr>span a:hover{text-decoration:underline;color:var(--acc)}
+.earn .fr .nm{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:550;color:var(--ink)}
+.earnfoot{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;margin:14px -20px 0;padding:12px 20px 0;border-top:1px solid var(--line2);font-size:14px;color:var(--ink3)}
+.earnfoot p{margin:0;flex:1 1 320px;max-width:80ch}
+.earnset{flex:1 1 100%}.earnset summary{cursor:pointer;color:var(--ink2);font-weight:600;width:max-content}
+.earnset .row{display:flex;flex-wrap:wrap;gap:12px 16px;align-items:end;margin-top:10px}
+.earnset label{display:flex;flex-direction:column;gap:4px;color:var(--ink2);font-size:14px}
+.earnset input[type=number]{width:130px}
+#etable td.nm{max-width:360px}#etable td .x{font-size:12px;font-weight:600;color:var(--ink3);margin-left:6px}
+#etable input[type=checkbox]{width:18px;height:18px;accent-color:var(--acc);cursor:pointer}
+@media (max-width:1000px){.earn{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.earn>div:last-child{grid-column:1/-1}}
+@media (max-width:640px){.earn{grid-template-columns:minmax(0,1fr)}.earn .tot{font-size:34px}}
 </style></head><body>
 <a class=skip href="#main">Skip to content</a>
 <header class=top>
@@ -451,26 +502,42 @@ dialog.dlg .row{justify-content:flex-end}
 </header>
 <main id=main tabindex=-1>
 <div class=banner id=banner role=status></div>
+<div class=banner id=dashboard-error hidden><span role=status id=dashboard-error-text></span> <button type=button class="btn sm" id=retry-dashboard>Retry</button></div>
 
-<section class=view id=v-overview aria-label=Overview><div class=ov><div class=ovl>
- <div class="card todayc o1"><h2>Today<small id=since></small><span class=sp></span><small id=ydaynote></small></h2>
-  <div class=board id=hero></div><div class=herofoot id=herofoot></div></div>
+<section class=view id=v-overview aria-label=Overview><div class=next-action id=next-action hidden></div><div class=ov><div class=ovl>
+ <div class="card todayc o1"><h2><span id=today-title>Today</span><small id=since></small><span class=sp></span><small id=ydaynote></small></h2>
+  <div class=board id=hero></div>
+  <details class=hour-details id=hour-details><summary>View hourly counts</summary>
+   <p class=mut><span id=hour-zone>Hours use the poller’s time zone.</span> Counts are recorded increases and can differ from daily net totals.</p>
+   <label for=hour-metric>Metric</label> <select id=hour-metric></select>
+   <div class=tw id=hour-table></div>
+  </details><div class=herofoot id=herofoot></div></div>
  <div class="card o3"><h2>Top models<span class=sp></span><span class=seg id=topseg role=group aria-label="Top models period"></span></h2><div class="tw fit" id=top></div></div>
- <div class="card o5"><h2>Best times<span class=sp></span><span class=seg id=bestseg role=group aria-label="Best times metric"></span></h2><div id=best></div></div>
+ <div class="card o5"><h2>Best times<span class=sp></span><span class=seg id=bestseg role=group aria-label="Best times metric"></span></h2><div id=best></div><details class=hour-details id=best-hours hidden><summary>View hourly totals</summary>
+ <div class=tw id=best-hour-table></div></details></div>
  <div class="card o7"><h2>Followers<span class=sp></span><small>last 30 days</small></h2><div class=minis id=fol></div>
   <div class=bars id=folbars style="height:70px"></div><div class=axis><span>30 days ago</span><span>today</span></div></div>
  </div><div class=ovr>
- <div class="card o2"><h2>Needs you<span class=sp></span><small id=actn></small></h2><ul class=acts id=acts></ul></div>
+ <div class="card o2"><h2 id=needs-you tabindex=-1>Needs you<span class=sp></span><small id=actn></small></h2><p class=freshness id=action-freshness hidden></p><ul class=acts id=acts></ul></div>
  <div class="card o4"><h2>Funnel<span class=sp></span><small>30 days, and yesterday</small></h2><div class=fn id=fun></div></div>
  <div class="card o6"><h2>7 and 30 days<span class=sp></span><small>bars: last 7 days</small></h2><div class="tw fit" id=periods></div></div>
  </div>
  <div class="card ovw o8"><h2>Creator at a glance<span class=sp></span><small id=cprog></small></h2><div class=facts id=ckp></div></div>
+ <div class="card ovw o9" id=earncard><h2><span class=tip tabindex=0 data-tip="What your models' lifetime downloads, prints and boosts are worth under MakerWorld's reward rules, using the PrintNexus earnings calculator's formula.">Earnings estimate</span><span class=sp></span><small>lifetime, all models</small></h2><div class=earn id=earn><p class=mut>Waiting for the first poll</p></div>
+  <div class=earnfoot><p>An estimate, not a statement. MakerWorld can delay or reject rewards, and likes and comments earn nothing. Uses are downloads plus 2 per print.</p>
+   <details class=earnset id=earnset><summary>Assumptions</summary><form class=row id=earnform>
+    <label>Model reward adjustment<input type=number id=eadj min=0 max=3 step=0.01 inputmode=decimal></label>
+    <label>Value per point, $<input type=number id=eusd min=0 max=10 step=0.0001 inputmode=decimal></label>
+    <button class="btn sm pri" type=submit>Save</button><button class="btn sm ghost" type=button id=edef>Use defaults</button>
+    <span class=hint>Adjustment seen from 1.0× to 1.5× (default 1.37×); it scales model milestone points only. $0.0816 is a $40 gift card for 490 points. Mark exclusive models under <a href="#models/earnings">Models</a>.</span></form></details></div></div>
 </div></section>
 
 <section class=view id=v-models aria-label=Models><div class=grid>
  <div class="card s12"><h2>All models<small id=mcount></small><span class=sp></span><a class=mut id=mclear href="#models" hidden style="font-size:13px">Show all models</a><span class=seg id=mseg role=group aria-label="Models period"></span></h2>
-  <div class=mtools><label class=sr for=mq>Filter models</label><input type=search id=mq placeholder="Filter by name" autocomplete=off><label class=chk><input type=checkbox id=mact> Hide models with no downloads</label></div>
-  <div class=tw id=mtable></div></div>
+  <p class=freshness id=model-freshness></p><div class=mtools><label class=sr for=mq>Filter models</label><input type=search id=mq placeholder="Filter by name" autocomplete=off><label class=chk><input type=checkbox id=mact> Hide models with no downloads</label></div>
+  <div class=model-focus id=model-focus hidden></div><div class=tw id=mtable></div></div>
+ <div class="card s12" id=earnmodels><h2 id=earnings-title tabindex=-1>Earnings by model<small id=ecount></small><span class=sp></span><small>estimate, lifetime</small></h2>
+  <p class=freshness id=enote></p><div class=tw id=etable></div></div>
  <div class="s12 ihead"><h2>Insights</h2><span class=seg id=iseg role=group aria-label="Insight group"></span><p id=inote></p></div>
  <div class="s12 lists" id=cgrid></div>
 </div></section>
@@ -478,7 +545,7 @@ dialog.dlg .row{justify-content:flex-end}
 <section class=view id=v-activity aria-label=Activity><div class=grid>
  <div class="card s7"><h2>Today's activity<span class=sp></span><small id=feednote>newest first</small></h2><div class=afilter id=afilter hidden></div><div class=fsum id=fsum role=group aria-label="Filter by kind"></div><div class=feed id=feed></div></div>
  <div class="s5" style="display:flex;flex-direction:column;gap:16px;min-width:0">
-  <div class=card><h2>Needs a reply<span class=sp></span><small id=unans></small></h2><p class=mut style="margin:-4px 0 8px;font-size:14px">MakerWorld has no link to a single comment, so each link opens the model page. Its comments are under Reviews &amp; Ratings.</p><div class=reply id=reply></div></div>
+  <div class=card><h2 id=needs-reply tabindex=-1>Needs a reply<span class=sp></span><small id=unans></small></h2><p class=freshness id=comment-freshness></p><p class=mut style="margin:-4px 0 8px;font-size:14px">Reply under Reviews &amp; Ratings on the model page. MakerWorld opens in a new tab.</p><div class=reply id=reply></div></div>
   <div class=card><h2>Recent comments</h2><div id=comments></div></div></div>
 </div></section>
 
@@ -500,11 +567,11 @@ dialog.dlg .row{justify-content:flex-end}
     <div class=mtools style="margin:0"><label class=sr for=xq>Filter models</label><input type=search id=xq placeholder="Filter by name" autocomplete=off>
      <button class="btn sm ghost" type=button id=xall>Select shown</button><button class="btn sm ghost" type=button id=xnone>Clear</button></div>
     <div class=xmods id=xmods role=group aria-labelledby=xmdl></div><p class=hint>With none ticked, every model is exported.</p></div>
-   <p class="hint fld wide" id=xnote aria-live=polite></p>
+   <p class="hint fld wide" id=xnote aria-live=polite></p><button class="btn sm" type=button id=xretry hidden>Retry loading export options</button>
   </div></div>
  <div class=xsum><div class=card><h2>Your file</h2><dl id=xinfo></dl></div>
-  <a class="btn pri" id=xgo href="#export" download>Download CSV</a>
-  <button class=btn type=button id=xpv>Preview</button></div>
+  <a class="btn pri dis" id=xgo href="#export" aria-disabled=true download>Download CSV</a>
+  <button class=btn type=button id=xpv disabled>Preview</button></div>
  <div class=card id=xpcard hidden style="grid-column:1/-1"><h2>Preview<span class=sp></span><small id=xpn></small></h2><div class="tw xprev" id=xptab></div></div>
 </div></section>
 
@@ -535,6 +602,7 @@ const KC={boosts:"b",likes:"l",collects:"c",downloads:"d",prints:"p",comment:"f"
 const WD=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],WDL=["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
 const EV={health:"Health alerts",comment:"Comments",follower:"Followers",download:"Downloads",print:"Prints",boost:"Boosts",like:"Likes",collect:"Collects",rating:"Ratings",points:"Points",summary:"Daily summary"};
 let aMod=null,aKind=null,mFocus=null,iView="fix",S=null,C=null,topMode="today",bestM="downloads",mSort="d30",mDir=-1,mView="30",mQ="",mAct=false;
+let creatorRequestFailed=false, dashboardLoading=false, replyDetail=null, replyRequest=0;
 const SP={};  // model id -> [daily downloads] for sparklines
 const $=id=>document.getElementById(id),fmt=n=>(+n||0).toLocaleString(),sg=n=>(n>0?"+":"")+fmt(n);
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -546,14 +614,19 @@ const pc=(v,d=1)=>v==null?"–":(100*v).toFixed(d)+"%",nf=(v,d=1)=>v==null?"–"
 const EXT=`<svg class=exi width=10 height=10 viewBox="0 0 10 10" aria-hidden=true><path d="M4 1.5H1.5v7h7V6M6 1.5h2.5V4M8.5 1.5L4.5 5.5" fill=none stroke=currentColor stroke-width=1.3 stroke-linecap=round stroke-linejoin=round /></svg>`;
 const mwUrl=id=>`https://makerworld.com/en/models/${encodeURIComponent(id)}`;
 // Model id by name, for events and comments that only carry the model's name.
+const modelName=(id,fallback)=>S?.dash?.modelNames?.[id]||fallback;
 const idOf=n=>{if(!C||!n)return null;for(const r of Object.values(C.models||{}))if(r.n==n)return r.id;return null};
 // A row of small actions under an item: [label, href, tip, external?]
 const DO=list=>`<span class=do>${list.filter(Boolean).map(([l,h,t,x])=>`<a href="${h}"${x?" target=_blank rel=noopener":""}${t?` data-tip="${esc(t)}"`:""}>${l}${x?EXT:""}</a>`).join("")}</span>`;
 const OPEN=(id,l="Open on MakerWorld")=>id?[l,mwUrl(id),"Opens the model page in a new tab.",1]:null;
 const TIP=(txt,t)=>`<span class=tip tabindex=0 data-tip="${esc(t)}">${txt}</span>`;
 const mwLink=(id,n)=>id?`<a href="https://makerworld.com/en/models/${encodeURIComponent(id)}" target=_blank rel=noopener title="${esc(n)}">${esc(n)}</a>`:`<span title="${esc(n)}">${esc(n)}</span>`;
-function seg(el,items,cur,set){el.innerHTML=items.map(([k,l])=>`<button type=button class="${k==cur?"on":""}" aria-pressed="${k==cur}" data-k="${k}">${l}</button>`).join("");
- el.querySelectorAll("button").forEach(b=>b.onclick=()=>{set(b.dataset.k);renderAll()})}
+function seg(el,items,cur,set){
+ const active=el.contains(document.activeElement)?document.activeElement.dataset.k:null;
+ el.innerHTML=items.map(([k,l])=>`<button type=button class="${k==cur?"on":""}" aria-pressed="${k==cur}" data-k="${k}">${l}</button>`).join("");
+ el.querySelectorAll("button").forEach(b=>b.onclick=()=>{set(b.dataset.k);renderAll()});
+ if(active)el.querySelector(`button[data-k="${active}"]`)?.focus({preventScroll:true});
+}
 function spark(vals,color,w=90,h=22,fill=true){if(!vals||!vals.length)return"";const mx=Math.max(1,...vals),n=vals.length,st=n>1?w/(n-1):0;
  const pts=vals.map((v,i)=>`${(i*st).toFixed(1)},${(h-2-(v/mx)*(h-4)).toFixed(1)}`).join(" ");
  return `<svg class=spark viewBox="0 0 ${w} ${h}" preserveAspectRatio=none aria-hidden=true>${fill?`<polygon points="0,${h} ${pts} ${w},${h}" fill="var(--${color})" opacity=.14 />`:""}<polyline points="${pts}" fill=none stroke="var(--${color})" stroke-width=1.6 stroke-linejoin=round vector-effect=non-scaling-stroke /></svg>`}
@@ -562,16 +635,26 @@ function table(head,rows,empty="Nothing yet"){return `<table><thead><tr>${head.m
 
 /* ---------- routing ---------- */
 function tabScroll(){const tb=$("tabs"),ta=tb.querySelector(".on");if(ta&&tb.scrollWidth>tb.clientWidth)tb.scrollLeft=ta.offsetLeft-tb.clientWidth+ta.offsetWidth+24}
+function focusDestination(id){
+ const target=$(id);
+ if(target){target.focus({preventScroll:true});target.scrollIntoView({block:"start"})}
+}
 function route(){const h=(location.hash||"#overview").slice(1),[v,sub]=h.split("/");const view=$("v-"+v)?v:"overview";document.body.dataset.view=view;
  document.querySelectorAll("section.view").forEach(s=>s.classList.toggle("on",s.id=="v-"+view));
  document.querySelectorAll("#tabs a").forEach(a=>{const on=a.dataset.v==view;a.classList.toggle("on",on);on?a.setAttribute("aria-current","page"):a.removeAttribute("aria-current")});
  tabScroll();
+ if(view==="overview"&&sub==="actions")requestAnimationFrame(()=>focusDestination("needs-you"));
  if(view=="settings"){setTop();if(!F)loadSettings().then(()=>sub&&goSec(sub));else if(sub)setTimeout(()=>goSec(sub),30);spy()}
- if(view=="activity"){aMod=sub&&!sub.startsWith("k:")?sub:null;aKind=sub&&sub.startsWith("k:")?sub.slice(2):null;if(S)renderActivity()}
- if(view=="models"){mFocus=null;
-  if(sub&&["fix","grow","aud"].includes(sub)){iView=sub;if(C)renderModels();setTimeout(()=>$("iseg").scrollIntoView({behavior:SMOOTH,block:"start"}),60)}
+ if(view=="activity"){aMod=sub&&sub!="replies"&&!sub.startsWith("k:")?sub:null;
+  aKind=sub&&sub.startsWith("k:")?sub.slice(2):null;
+  if(S){renderActivity();if(aMod)loadModelReplies();if(aMod||sub=="replies")requestAnimationFrame(()=>focusDestination("needs-reply"))}}
+ if(view=="models"){if(mFocus&&!sub){mQ="";$("mq").value="";}mFocus=null;
+  if(!sub&&C)renderModels();
+  if(sub=="earnings"){if(C)renderModels();requestAnimationFrame(()=>focusDestination("earnings-title"))}
+  else if(sub&&["fix","grow","aud"].includes(sub)){iView=sub;if(C)renderModels();setTimeout(()=>$("iseg").scrollIntoView({behavior:SMOOTH,block:"start"}),60)}
   else if(sub&&sub.startsWith("sort:")){mSort=sub.slice(5);mDir=-1;mQ="";$("mq").value="";if(C)renderModels()}
-  else if(sub){const r=(C&&C.models||{})[sub];if(r){mFocus=sub;mQ=r.n;$("mq").value=r.n;mAct=false;$("mact").checked=false;renderModels()}}
+  else if(sub){const r=(C&&C.models||{})[sub];if(r){mFocus=sub;mQ=modelName(sub,r.n);$("mq").value=mQ;mAct=false;$("mact").checked=false;renderModels();
+   requestAnimationFrame(()=>focusDestination("model-focus-title"))}}
   loadSparks()}}
 addEventListener("hashchange",route);
 
@@ -588,6 +671,7 @@ function renderHead(){const h=S.health||{},st=S.status||{};
  else if(bad){bn.className="banner err";bn.innerHTML=`MakerWorld rejected the cookie. Open makerworld.com so the extension refreshes it, or <a href="#settings/mw">paste one in Settings</a>.`}
  else if(stale){bn.className="banner warn";bn.textContent=`MakerWorld data hasn't updated since ${hm(h.since)}. Health has the details.`}
  else if(h.auth=="none"){bn.className="banner warn";bn.innerHTML=`No MakerWorld cookie yet, so only public stats show. <a href="#settings/mw">Add one in Settings</a>.`}
+ else if(st.ok===false){bn.className="banner warn";bn.innerHTML=`The latest poll failed. <a href="#health">View poll status</a>.`}
  else bn.className="banner";
  const fails=Object.values(h.src||{}).filter(x=>x.f).length;const ct=$("cthl");ct.hidden=!fails;ct.textContent=fails;
  // The poller keeps the last 40 events, so a full list may be missing earlier ones.
@@ -625,8 +709,45 @@ const PTIP={downloads:"Downloads of your models' files.",prints:"Prints started 
 const PERIOD_ROWS=[...K,["views","Views","ink2"],["impressions","Impressions","ink3"],["points","Points","r"]];
 function wk7(vals,color){const mx=Math.max(1,...vals),n=vals.length,bw=64/7;
  return `<svg class=wk7 viewBox="0 0 64 20" aria-hidden=true>${vals.map((v,i)=>`<rect x="${(i*bw+1).toFixed(1)}" y="${(20-Math.max(1.5,v/mx*19)).toFixed(1)}" width="${(bw-2).toFixed(1)}" height="${Math.max(1.5,v/mx*19).toFixed(1)}" rx=1.5 style="fill:var(--${color})" opacity="${i==n-1?1:.55}"/>`).join("")}</svg>`}
+$("hour-metric").innerHTML=K.map(([key,label])=>`<option value="${key}">${label}</option>`).join("");
+function renderHourTable(){
+ if(!S||!$("hour-details").open)return;
+ const key=$("hour-metric").value,label=K.find(([k])=>k===key)[1],current=pHour();
+ const offset=S.tz,minutes=Math.round(Math.abs(offset||0)/60);
+ $("hour-zone").textContent=offset==null?"Hours use the poller’s time zone.":
+  `Hours use the poller’s time zone (UTC${offset<0?"−":"+"}${Math.floor(minutes/60)}:${String(minutes%60).padStart(2,"0")}).`;
+ const X=S.dash||{},span=X.hourSpan,previous=X.yhourSpan;
+ const today=S.hours?.[key],yesterday=X.yhours?.[key];
+ const localHour=t=>t?Math.floor((((t+(offset||0))%86400)+86400)%86400/3600):null;
+ const first=localHour(span?.from??(!S.midnight?S.since:null)),last=localHour(span?.to)??current;
+ const oldFirst=localHour(previous?.from),oldLast=localHour(previous?.to);
+ const isToday=!span?.date||span.date===X.calendarDay;
+ const count=(value,hour,from,to)=>value==null?"Unavailable":
+  ((from!=null&&hour<from)||(to!=null&&hour>to))?"Not tracked":fmt(value);
+ const rows=Array.from({length:24},(_,hour)=>`<tr><th scope=row>${hh(hour)}${hour===last&&isToday?" (partial)":""}</th>
+  <td>${hour>last&&isToday&&hour>current?"Upcoming":count(today?.[hour],hour,first,last)}</td>
+  <td>${count(yesterday?.[hour],hour,oldFirst,oldLast)}</td></tr>`);
+ $("hour-table").innerHTML=`<table><caption>${label} by hour</caption><thead><tr><th scope=col>Hour</th>
+ <th scope=col>${isToday?"Today":esc(span.date)}</th><th scope=col>${!isToday&&previous?.date?esc(previous.date):"Yesterday"}</th>
+ </tr></thead><tbody>${rows.join("")}</tbody></table>`;
+
+}
+$("hour-details").addEventListener("toggle",renderHourTable);
+$("hour-metric").addEventListener("change",renderHourTable);
+function renderBestHourTable(){
+ const best=$("best-hours"),ins=S?.insights,metric=ins?.[bestM];
+ best.hidden=!(ins?.has&&metric?.hour);
+ if(best.hidden||!best.open)return;
+ const rows=metric.hour.map((n,hour)=>`<tr><th scope=row>${hh(hour)}</th><td>${n==null?"Unavailable":fmt(n)}</td></tr>`);
+ $("best-hour-table").innerHTML=`<table><caption>${cap(bestM)} by hour across ${fmt(ins.days)} recorded days</caption>
+  <thead><tr><th scope=col>Hour</th><th scope=col>Total</th></tr></thead><tbody>${rows.join("")}</tbody></table>`;
+}
+$("best-hours").addEventListener("toggle",renderBestHourTable);
 function renderOverview(){const t=S.today||{},y=S.yday||{},hr=S.hours||{},X=S.dash||{},yh=X.yhours,h=pHour();
- $("since").textContent=S.midnight?"since midnight":"since "+hm(S.since||0);
+ const oldDay=X.hourSpan?.date&&X.calendarDay&&X.hourSpan.date!==X.calendarDay;
+ $("today-title").textContent=oldDay?"Last recorded day":"Today";
+ $("since").classList.toggle("show-date",Boolean(oldDay));
+ $("since").textContent=oldDay?X.hourSpan.date:S.midnight?"since midnight":"since "+hm(S.since||0);
  $("ydaynote").innerHTML=`<span class=blegend aria-hidden=true><span><svg width=10 height=10><circle cx=5 cy=5 r=4 fill="var(--ink2)"/></svg>today</span>${yh?`<span><svg width=10 height=10><circle cx=5 cy=5 r=3.8 fill=none stroke="var(--ink3)" stroke-width=1.3 /></svg>yesterday</span>`:""}<span><svg width=10 height=4><rect width=10 height=3 rx=1.5 fill="var(--acc)"/></svg>now</span></span>`;
  const tot=S.total||{},m=S.month||{},ra=+tot.ratingAvg||0,rv=t.ratings||0;
  $("hero").innerHTML=K.map(([k,l,c])=>{const v=t[k]||0,yv=y[k],yk=yh&&yh[k];
@@ -637,6 +758,7 @@ function renderOverview(){const t=S.today||{},y=S.yday||{},hr=S.hours||{},X=S.da
   return brow(l,c,v?sg(v):"0",!v,pegs(hr[k],yk,c,h),cmp,k)}).join("")+
   brow("Ratings","r",rv?sg(rv):"0",!rv,`<div class=note>Ratings aren't counted by the hour, so there is no day strip.</div>`,(y.ratings!=null?`<b>${fmt(y.ratings)}</b> all day yesterday<br>`:"")+(ra?`${ra.toFixed(2)} average from ${fmt(tot.ratings)}`:"no ratings yet"))+
   `<div class=baxis><span></span>${HAX}<span></span></div>`;
+ renderHourTable();
  const acu=S.account?"https://makerworld.com/en/@"+encodeURIComponent(S.account):null;
  $("herofoot").innerHTML=[t.points!=null?`<span>${TIP("Points today","MakerWorld points earned since midnight, from every source.")}<b>${sg(+(+t.points).toFixed(1))}${y.points!=null?`<small>yesterday ${nf(y.points)}</small>`:""}</b></span>`:"",
   m.yday_views!=null?`<span>${TIP("Views yesterday","Times someone opened one of your model pages yesterday. MakerWorld reports this a day late.")}<b>${fmt(m.yday_views)}</b></span>`:"",
@@ -671,7 +793,7 @@ function renderOverview(){const t=S.today||{},y=S.yday||{},hr=S.hours||{},X=S.da
   ${pegs(b.hour,null,KC[bestM],23,{big:true,lin:true,hi:b.bestHour,now:false,tip:i=>`${hh(i)}: ${fmt(b.hour[i])} over ${ins.days} days`})}${HAX}
   <div class=wk>${b.wday.map((v,i)=>`<div class="${i==bd?"hi":""}" title="${av[i]!=null?nf(av[i])+" a day over "+wn[i]+" full "+WD[i]+(wn[i]==1?"":"s"):fmt(v)}">${WD[i]}<b>${av[i]!=null?nf(av[i]):fmt(v)}</b></div>`).join("")}</div>
   <p class=mut style="margin:12px 0 0">Busiest hour ${hh(b.bestHour)}, busiest day ${WDL[bd]||"–"}. Day cells show ${wn.length?"the average a day":"the total"}, over the last ${ins.days} days.</p>`}
- renderActs();renderFunnel();renderKpis()}
+ renderBestHourTable();renderActs();renderFunnel();renderKpis()}
 function renderKpis(){if(!C)return;const a=C.acct||{},p=C.progress||{},fo=S.followers||{};
  $("cprog").textContent=p.of?(p.have<p.of?`analytics for ${p.have} of ${p.of} models so far`:`analytics for all ${p.of} models`):"waiting for the first poll";
  const e=(a.e100||{}).m||{},tr=a.ptsTrend=="up"?"up":a.ptsTrend=="down"?"down":"",dd=a.dpv7!=null&&a.dpv30!=null?(a.dpv7>a.dpv30?"up":a.dpv7<a.dpv30?"down":""):"";
@@ -686,7 +808,53 @@ function renderKpis(){if(!C)return;const a=C.acct||{},p=C.progress||{},fo=S.foll
    row("Points, all sources","30 days",S.month&&S.month.points!=null?nf(S.month.points,0):"–")]),
   grp("Audience",[row("New followers","7 / 30 days",`${sg(fo.d7||0)} / ${sg(fo.d30||0)}`,(a.fol30?`${a.fol30} via models`:""),"Net new followers. \"Via models\" counts the ones MakerWorld says came from a model page.","#models/aud"),
    row("Average rating",`${fmt(a.rt||0)} ratings`,a.rt?nf(a.ra,2):"–","","Average star rating across every rating on your models.","#models/sort:rt"),
-   row("Unanswered comments","",`<a href="#activity" style="color:${a.unans?"var(--acc)":"inherit"}" data-tip="List them, with links to reply">${a.unans??"–"}</a>`,"","Comments with no reply from you yet.")])].join("")}
+   row("Unanswered comments","",`<a href="#activity/replies" style="color:${a.unans?"var(--acc)":"inherit"}" data-tip="List them, with links to reply">${a.unans??"–"}</a>`,"","Comments with no reply from you yet.")])].join("")}
+
+/* ---------- earnings estimate ---------- */
+// Lifetime estimate from the poller (/api/dashboard dash.earnings, replaced after a save).
+const EST=()=>S?.dash?.earnings,
+ usd=(v,d=2)=>"$"+(+v||0).toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d}),
+ pts=v=>Math.round(+v||0).toLocaleString(),xf=v=>(+v).toFixed(2).replace(/0$/,"")+"×";
+function renderEarn(){const e=EST(),box=$("earn");
+ if(!e){box.innerHTML=`<p class=mut>Waiting for the first poll</p>`;return}
+ const M=Object.entries(e.models||{}),lo=e.low,hi=e.high,span=Math.max(1e-9,hi.usd-lo.usd);
+ const at=Math.min(100,Math.max(0,(e.usd-lo.usd)/span*100));
+ const row=(l,sub,v)=>`<div class=fr><span>${l}${sub?`<small>${sub}</small>`:""}</span><b>${v}</b></div>`;
+ const boosts=M.reduce((t,[,m])=>t+(m.nb||0),0);
+ const near=M.filter(([,m])=>m.u>0).sort((a,b)=>a[1].need-b[1].need||b[1].pays-a[1].pays).slice(0,4);
+ box.innerHTML=`<div><h3>Estimated value</h3><div class=tot>${usd(e.usd)}<small>${pts(e.points)} pts</small></div>
+  <p class=rng>Likely <b>${usd(lo.usd,0)}</b> to <b>${usd(hi.usd,0)}</b></p>
+  <div class=meter role=img aria-label="${esc(`At ${xf(e.adjust)}, between ${usd(lo.usd,0)} at 1.0× and ${usd(hi.usd,0)} at 1.5×`)}"><span></span><i style="left:calc(${at}% - 1.5px)"></i></div>
+  <div class=ax><span>1.0×</span><span>${xf(e.adjust)} adjustment</span><span>1.5×</span></div></div>
+ <div><h3>Where the points come from</h3>${row("Model milestones",`${xf(e.adjust)} reward adjustment`,pts(e.parts.model))}
+  ${row("Print profile milestones","",pts(e.parts.profile))}${row("Boosts",`${fmt(boosts)} received`,pts(e.parts.boost))}
+  ${row("Weighted uses","downloads + 2 × prints",fmt(e.uses))}</div>
+ <div><h3>Next milestones</h3>${near.map(([id,m])=>row(`<a class=nm href="#models/${encodeURIComponent(id)}" title="${esc(modelName(id,id))}">${esc(modelName(id,id))}</a>`,`${fmt(m.need)} more use${m.need==1?"":"s"}`,"+"+pts(m.pays)+" pts")).join("")||`<p class=mut>No uses yet</p>`}</div>`;
+ const ia=$("eadj"),iu=$("eusd");
+ if(document.activeElement!==ia)ia.value=e.adjust;if(document.activeElement!==iu)iu.value=e.usdPerPoint}
+function earnLine(id){const m=EST()?.models?.[id];if(!m)return"";
+ return `<p>Earnings estimate: ${pts(m.pts)} points, about ${usd(m.usd)}${m.u?` · next milestone in ${fmt(m.need)} use${m.need==1?"":"s"} (+${pts(m.pays)} pts)`:""}${m.x?" · Exclusive":""}</p>`}
+function renderEarnModels(all,q){const e=EST(),box=$("etable");
+ if(!e){box.innerHTML=`<p class=mut>Waiting for the first poll</p>`;$("ecount").textContent="";$("enote").textContent="";return}
+ $("enote").textContent=`Points from complete milestones (model milestones × ${xf(e.adjust)}), print profile milestones and boosts. Exclusive Models get ×1.25 on milestones and 15 points a boost; MakerWorld's flag is read automatically, and you can tick any it misses.`;
+ const ids=new Set(all.filter(r=>mFocus?r.id===mFocus:!q||String(r.n).toLowerCase().includes(q)).map(r=>r.id));
+ const rows=Object.entries(e.models||{}).filter(([id,m])=>(ids.has(id)||!C)&&(m.u>0||m.boost>0)).sort((a,b)=>b[1].pts-a[1].pts);
+ const idle=Object.values(e.models||{}).filter(m=>!(m.u>0||m.boost>0)).length;
+ $("ecount").textContent=` ${rows.length} earning${idle?`, ${idle} with no uses yet`:""}`;
+ const H=(l,t,c="")=>`<th${c?` class=${c}`:""}>${TIP(l,t)}</th>`;
+ box.innerHTML=`<table><thead><tr>${H("Model","Model name. Opens its stats in MakerMonitor.")}${H("Uses","Downloads plus 2 per print, lifetime.")}${H("Model pts","Complete model milestones, with the reward adjustment.","nophone")}${H("Profile pts","Complete print profile milestones.","nophone")}${H("Boost pts","12 points a boost, 15 on an Exclusive Model.","nophone")}${H("Points","Total estimated points.")}${H("Value","Points × value per point.")}${H("Next milestone","Uses still needed for the next model milestone, and what it pays.","nophone")}${H("Exclusive","Tick if this is a MakerWorld Exclusive Model.")}</tr></thead><tbody>`+
+  (rows.map(([id,m])=>{const n=modelName(id,id);return `<tr><td class=nm><a href="#models/${encodeURIComponent(id)}" title="${esc(n)}">${esc(n)}</a></td><td>${fmt(m.u)}</td><td class=nophone>${pts(m.base*e.adjust)}</td><td class=nophone>${pts(m.prof)}</td><td class=nophone>${pts(m.boost)}</td><td><b>${pts(m.pts)}</b></td><td>${usd(m.usd)}</td>
+   <td class=nophone>${fmt(m.need)} <span class=mut>→ +${pts(m.pays)}</span></td><td>${m.auto?`<span class=tip tabindex=0 data-tip="MakerWorld lists this as an Exclusive Model">Yes</span>`:`<input type=checkbox data-x="${esc(id)}"${m.x?" checked":""} aria-label="${esc(n)} is an Exclusive Model">`}</td></tr>`}).join("")
+  ||`<tr><td colspan=9 class=empty>${ids.size?"No earning models match the filter":"No models yet"}</td></tr>`)+"</tbody></table>";
+ box.querySelectorAll("input[data-x]").forEach(c=>c.onchange=()=>{const cur=new Set(EST().exclusive||[]);c.checked?cur.add(c.dataset.x):cur.delete(c.dataset.x);saveEarn({exclusive:[...cur]},c)})}
+async function saveEarn(body,el){if(el)el.disabled=true;
+ try{const r=await api("/api/earnings",body);const j=await r.json().catch(()=>({}));
+  if(!r.ok)throw new Error(j.detail||"Couldn’t save");
+  if(j.earnings&&S?.dash)S.dash.earnings=j.earnings;
+  toast("Earnings settings saved");renderEarn();if(C)renderModels()}
+ catch(err){toast(err.message,"err");renderEarn();if(C)renderModels()}finally{if(el)el.disabled=false}}
+$("earnform").onsubmit=ev=>{ev.preventDefault();saveEarn({adjust:+$("eadj").value,usd_per_point:+$("eusd").value})};
+$("edef").onclick=()=>saveEarn({adjust:1.37,usd_per_point:0.0816});
 
 /* ---------- to do and funnel ---------- */
 const med=a=>{a=a.filter(v=>v!=null).sort((x,y)=>x-y);const n=a.length,i=n>>1;return n?(n%2?a[i]:(a[i-1]+a[i])/2):null};
@@ -702,12 +870,15 @@ function diag(){const ms=Object.values(C&&C.models||{}),has=ms.filter(r=>r.has);
 // that feeds the daily summary notification).
 const spikes=()=>((C&&C.acct)||{}).spikes||[];
 const PARTS=["Night","Morning","Afternoon","Evening"],PARTH=["midnight to 6 AM","6 AM to noon","noon to 5 PM","5 PM to midnight"];
-function renderActs(){const el=$("acts");if(!C){el.innerHTML=`<li><div><span>Waiting for creator stats</span></div></li>`;$("actn").textContent="";return}
+function renderActs(){const el=$("acts"),fresh=$("action-freshness");
+ fresh.hidden=!creatorRequestFailed;
+ fresh.textContent=creatorRequestFailed?(C?"Showing cached suggestions. Analytics refresh failed.":"Suggestions are unavailable while analytics can’t be loaded."):"";
+ if(!C){el.innerHTML=`<li><div><span>Waiting for creator stats</span></div></li>`;$("actn").textContent="";return}
  const D=diag(),a=C.acct||{},it=[],add=(k,o,t,w,d,tip)=>it.push({k,o,t,w,d,tip});
  const mu=id=>((C.models||{})[id]||{}).unans||0,cmA=id=>mu(id)?[`Its ${mu(id)} unanswered comment${mu(id)==1?"":"s"}`,"#activity/"+id,"Lists them here, each with a link to reply on MakerWorld."]:null;
- const inM=id=>["Show in Models","#models/"+id,"Opens the Models table filtered to this model."];
- if(a.unans)add("now",0,`<a href="#activity">Reply to ${a.unans} comment${a.unans==1?"":"s"}</a>`,"Comments on your models with no answer from you yet.",
-  [["See them","#activity","Lists every unanswered comment, newest first, with a link to each model's page to reply."]],"A comment counts as unanswered until you reply to it on MakerWorld. Rechecked every few hours.");
+ const inM=id=>["View model stats","#models/"+id,"Shows the full name, downloads, views, and unanswered comments."];
+ if(a.unans)add("now",0,`${fmt(a.unans)} comment${a.unans==1?"":"s"} waiting for a reply`,"",
+  [["Review unanswered comments","#activity/replies","See the available comment previews and open their models on MakerWorld."]],"A comment counts as unanswered until you reply to it on MakerWorld. Rechecked every few hours.");
  const sp=spikes(),spk=new Set(sp.map(r=>r.id));
  sp.slice(0,2).forEach(r=>add("now",1,`${mwLink(r.id,r.n)} is spiking today`,`${fmt(r.today)} downloads so far, against about ${nf(r.exp)} by this time on a normal day. It may have been featured or linked somewhere, so answer its comments while people are looking.`,
   [OPEN(r.id),cmA(r.id),inM(r.id)],"Spiking means well ahead of this model's own usual pace for this time of day. The same check feeds the daily summary notification."));
@@ -720,10 +891,10 @@ function renderActs(){const el=$("acts");if(!C){el.innerHTML=`<li><div><span>Wai
  D.under.slice(0,2).forEach(r=>add("fix",3,`Improve the page for ${mwLink(r.id,r.n)}`,
   `${fmt(r.m.v)} views in 30 days but ${pc(r.dpv30)} downloaded, against ${pc(D.md)} for your typical model. That's about ${fmt(D.miss(r))} downloads missed. Try a new cover photo or a clearer description.`,
   [OPEN(r.id,"Open to edit"),inM(r.id)],"People open the page but few download. Listed when a model with 150+ views in 30 days converts at under half your median rate. Missed downloads = views × the gap to your median."));
- D.prn.slice(0,2).forEach(r=>D.lowR(r)?add("fix",4,`${mwLink(r.id,r.n)} is rated ${nf(r.ra,1)} out of 5`,`${fmt(r.rt)} ratings. Read the reviews for print problems.`,
-  [OPEN(r.id,"Read its reviews"),inM(r.id)],"Listed when a model with 3 or more ratings averages under 4.5.")
+ D.prn.slice(0,2).forEach(r=>D.lowR(r)?add("fix",4,`${mwLink(r.id,r.n)} is rated ${nf(r.ra,1)} out of 5`,`${fmt(r.rt)} ratings. Check Reviews &amp; Ratings on the model page for print problems.`,
+  [OPEN(r.id,"Open model on MakerWorld"),inM(r.id)],"Listed when a model with 3 or more ratings averages under 4.5.")
   :add("fix",4,`Check the print profile for ${mwLink(r.id,r.n)}`,`${fmt(r.life.d)} downloads, ${pc(r.ppd,0)} printed, against ${pc(D.mp,0)} for your typical model. If it's meant to be printed as is, check its profile and plates.`,
-  [OPEN(r.id,"Open its print profiles"),inM(r.id)],"Printed = prints ÷ downloads. Listed when it's under half your median for models with 15+ downloads."));
+  [OPEN(r.id,"Open model on MakerWorld"),inM(r.id)],"Printed = prints ÷ downloads. Listed when it's under half your median for models with 15+ downloads."));
  D.has.filter(r=>r.mom&&r.mom.stalled).sort((x,y)=>y.mom.avg-x.mom.avg).slice(0,1).forEach(r=>
   add("",5,`${mwLink(r.id,r.n)} has gone quiet`,`It averaged ${nf(r.mom.avg)} downloads a day and has none since yesterday. Check it's still listed and its files open.`,
   [OPEN(r.id,"Check it on MakerWorld"),inM(r.id)],"Averaged at least 1 download a day over the last week, then none since yesterday."));
@@ -731,10 +902,22 @@ function renderActs(){const el=$("acts");if(!C){el.innerHTML=`<li><div><span>Wai
   [["When to publish","#models/grow","First-week downloads by the weekday and time of day each model was published."]],"Based on the median first-week downloads of your own launches. A small sample, so treat it as a hint.");
  if(a.ptsTrend=="down")add("",6,"Points are down",`${nf(a.pts7avg)} a day over the last week, ${nf(a.ptsPrev7avg)} the week before.`,
   [["Points by model","#models/aud","Which models earned points over the last 7 and 30 days."]],"Points come from MakerWorld for downloads, prints, boosts and other activity on your models.");
- it.sort((x,y)=>x.o-y.o);const n=it.length;it.splice(6);
- $("actn").textContent=n?(n>6?`top 6 of ${n}`:`${n} item${n==1?"":"s"}`):"";
- el.innerHTML=it.length?it.map(x=>`<li class="${x.k}"><i aria-hidden=true></i><div><b>${x.t}</b><span>${x.w}${x.tip?` ${TIP("Why this?",x.tip)}`:""}</span>${x.d?DO(x.d):""}</div></li>`).join("")
-  :`<li><i aria-hidden=true style="background:var(--ok)"></i><div><b>Nothing needs attention</b><span>No unanswered comments, slow launches or pages lagging your usual rates.</span></div></li>`}
+ it.sort((x,y)=>x.o-y.o);
+ const next=$("next-action");
+ next.hidden=!it.length;
+ const shortcut=a.unans?`<a href="#activity/replies">${fmt(a.unans)} comment${a.unans==1?"":"s"} to reply to</a>`:it.length?`<a href="#overview/actions">Review ${fmt(it.length)} priority suggestion${it.length===1?"":"s"}</a>`:"";
+ if(next.innerHTML!==shortcut)next.innerHTML=shortcut;
+ $("actn").textContent=it.length?`${it.length} item${it.length==1?"":"s"}`:"";
+ const row=x=>`<li class="${x.k}"><i aria-hidden=true></i><div><b>${x.t}</b>${x.w?`<span>${x.w}</span>`:""}${x.d?DO(x.d):""}${x.tip?`<span>${TIP("Why this?",x.tip)}</span>`:""}</div></li>`;
+ const more=it.slice(2);
+ const html=it.length?it.slice(0,2).map(row).join("")+(more.length?`<li><details class=more-actions><summary>Show ${more.length} more suggestions</summary><ul class=acts>${more.map(row).join("")}</ul></details></li>`:"")
+  :`<li><div><b>No suggestions right now</b></div></li>`;
+ if(el.dataset.rendered!==html){
+  const expanded=el.querySelector(".more-actions")?.open;
+  el.innerHTML=html;el.dataset.rendered=html;
+  if(expanded&&more.length)el.querySelector(".more-actions").open=true;
+ }
+}
 function renderFunnel(){const m=S.month||{},y=S.yday||{},el=$("fun");
  if(m.impressions==null||m.views==null){el.innerHTML=`<p class=mut>Needs the MakerWorld cookie for impressions and views.</p>`;return}
  const st=[["Impressions","shown in feeds and search",m.impressions,m.yday_impressions],["Views","opened the model page",m.views,m.yday_views],
@@ -752,17 +935,39 @@ function renderFunnel(){const m=S.month||{},y=S.yday||{},el=$("fun");
 
 /* ---------- models ---------- */
 const SORTI=d=>`<svg width=10 height=10 viewBox="0 0 10 10" aria-hidden=true><path d="${d<0?"M2 3.5l3 3 3-3":"M2 6.5l3-3 3 3"}" fill=none stroke=currentColor stroke-width=1.6 stroke-linecap=round stroke-linejoin=round /></svg>`;
-const MTIP={n:"Model name. Opens it on MakerWorld.",d30:"Downloads in the period.",v30:"Times the model page was opened in the period.",dpv:"Downloads ÷ views: how well the page turns visitors into downloads.",
+const MTIP={n:"Model name. Opens its stats in MakerMonitor.",d30:"Downloads in the period.",v30:"Times the model page was opened in the period.",dpv:"Downloads ÷ views: how well the page turns visitors into downloads.",
  p30:"Prints started in the period.",l30:"Likes in the period.",c30:"Times saved to a collection in the period.",pt30:"MakerWorld points credited to this model in the period.",
  rt:"Number of ratings, and the average out of 5.",mom:"Yesterday's downloads against the 7 days before. Spiking means well ahead of its usual pace today.",un:"Comments with no reply from you. Click a number to list them."};
 const MCOLS=[["n","Model"],["sp","30 days"],["d30","Downloads"],["v30","Views"],["dpv","DL / view"],["p30","Prints"],["l30","Likes"],["c30","Collects"],["pt30","Points"],["rt","Ratings"],["mom","Trend"],["un","Unanswered"]];
 function mrows(){return Object.values(C&&C.models||{}).map(r=>{const w=r.has?(mView=="7"?r.w||{}:r.m||{}):{};
- return {id:r.id,n:r.n,has:r.has,d30:w.d,v30:w.v,dpv:mView=="7"?r.dpv7:r.dpv30,p30:w.p,l30:w.l,c30:w.c,pt30:w.pt,
-  rt:r.rt||0,ra:r.ra,mom:r.mom?(r.mom.dir=="up"?1:r.mom.dir=="down"?-1:0)+(r.mom.rising?1:0)-(r.mom.stalled?2:0):null,momr:r.mom,un:r.unans||0}})}
-function renderModels(){if(!C){$("mtable").innerHTML=`<p class=mut>Waiting for creator stats</p>`;return}
+ return {id:r.id,n:modelName(r.id,r.n),has:r.has,fetched:r.fetched,coverage:r.coverage?.[mView==="7"?"w":"m"],d30:w.d,v30:w.v,dpv:mView=="7"?r.dpv7:r.dpv30,p30:w.p,l30:w.l,c30:w.c,pt30:w.pt,
+  rt:r.rt||0,ra:r.ra,mom:r.mom?(r.mom.dir=="up"?1:r.mom.dir=="down"?-1:0)+(r.mom.rising?1:0)-(r.mom.stalled?2:0):null,momr:r.mom,un:r.unans}})}
+function renderModels(){
+ const seen=Object.values(C?.models||{}).map(r=>r.fetched).filter(Boolean);
+ const latest=seen.length?Math.max(...seen):null;
+ $("model-freshness").textContent=(creatorRequestFailed?"Couldn’t refresh analytics. ":"")+
+  (latest?`Latest model update ${ago(latest)}. Models update individually.`:"Waiting for model analytics.");
+ if(!C){$("mtable").innerHTML=`<p class=mut>Waiting for creator stats</p>`;renderEarnModels([],"");return}
  seg($("mseg"),[["7","7 days"],["30","30 days"]],mView,v=>mView=v);
  const all=mrows(),q=mQ.trim().toLowerCase();
- const rows=all.filter(r=>(!q||String(r.n).toLowerCase().includes(q))&&(!mAct||(r.d30||0)>0))
+ const detail=$("model-focus"),selected=mFocus?all.find(r=>r.id===mFocus):null;
+ detail.hidden=!selected;
+ const detailNumber=value=>value==null?"Unavailable":fmt(value);
+ const coverage=selected?.coverage;
+ const through=coverage?.through?new Date(coverage.through+"T12:00:00").toLocaleDateString(undefined,{month:"short",day:"numeric"}):null;
+ const coverageLine=coverage?(coverage.of?
+  `<p>Analytics cover ${coverage.days} of ${coverage.of} eligible days${through?", through "+esc(through):""}.</p>`:
+  "<p>No completed days since publication.</p>"):"";
+ const detailHtml=selected?`<h3 id=model-focus-title tabindex=-1>${esc(selected.n)}</h3><p>Last ${mView} days: ${selected.has?`${detailNumber(selected.d30)} downloads · ${detailNumber(selected.v30)} views ·  ${selected.dpv==null?"Conversion unavailable":pc(selected.dpv)+" downloads per view"}`:"Waiting for MakerWorld analytics"}</p>${coverageLine}${earnLine(selected.id)}
+ <p>Unanswered comments: ${selected.un==null?"Not checked":fmt(selected.un)}${selected.fetched?` · Analytics updated ${ago(selected.fetched)}`:""}</p>
+ ${DO([OPEN(selected.id),selected.un?[`Review ${fmt(selected.un)} unanswered comment${selected.un===1?"":"s"}`,"#activity/"+encodeURIComponent(selected.id)]:null])}`:"";
+ if(detail.dataset.rendered!==detailHtml){
+  const active=detail.contains(document.activeElement)?document.activeElement:null;
+  const href=active?.getAttribute("href");
+  detail.innerHTML=detailHtml;detail.dataset.rendered=detailHtml;
+  if(active)([...detail.querySelectorAll("a")].find(a=>a.getAttribute("href")===href)||$("model-focus-title"))?.focus({preventScroll:true});
+ }
+ const rows=all.filter(r=>(mFocus?r.id===mFocus:!q||String(r.n).toLowerCase().includes(q))&&(!mAct||(r.d30||0)>0))
   .sort((a,b)=>{const x=a[mSort],y=b[mSort];if(mSort=="n")return mDir*String(x).localeCompare(String(y));return mDir*(((x??-1e9))-((y??-1e9)))});
  const nh=all.filter(r=>!r.has).length;$("mclear").hidden=!q;
  $("mcount").textContent=(rows.length<all.length?`${rows.length} of ${all.length}`:all.length)+" models"+(nh?`, ${nh} still waiting for MakerWorld analytics`:"");
@@ -771,11 +976,11 @@ function renderModels(){if(!C){$("mtable").innerHTML=`<p class=mut>Waiting for c
  const spk=new Set(spikes().map(r=>r.id));
  const trend=(m,id)=>spk.has(id)?`<span class=up>${ARR(1)} spiking today</span>`:!m?"<span class=mut>–</span>":m.stalled?`<span class=down>stalled</span>`:m.rising?`<span class=up>${ARR(1)} rising fast</span>`:m.dir=="up"?`<span class=up>${ARR(1)} up</span>`:m.dir=="down"?`<span class=down>${ARR(-1)} down</span>`:"<span class=mut>flat</span>";
  const nv=v=>v==null?"<span class=mut>–</span>":fmt(Math.round(v));
- $("mtable").innerHTML=`<table><thead><tr>${head}</tr></thead><tbody>`+(rows.map(r=>`<tr><td class=nm>${mwLink(r.id,r.n)}</td><td class=nophone>${spark(SP[r.id],"d")}</td>
+ $("mtable").innerHTML=`<table><thead><tr>${head}</tr></thead><tbody>`+(rows.map(r=>`<tr><td class=nm><a href="#models/${encodeURIComponent(r.id)}" title="${esc(r.n)}">${esc(r.n)}</a></td><td class=nophone>${spark(SP[r.id],"d")}</td>
   <td>${nv(r.d30)}</td><td class=nophone>${nv(r.v30)}</td><td class=nophone>${pc(r.dpv)}</td><td class=nophone>${nv(r.p30)}</td><td class=nophone>${nv(r.l30)}</td><td class=nophone>${nv(r.c30)}</td><td class=nophone>${r.pt30==null?"<span class=mut>–</span>":nf(r.pt30)}</td>
-  <td class=nophone>${r.rt?`${fmt(r.rt)} <span class=mut>at ${nf(r.ra,1)}</span>`:"<span class=mut>–</span>"}</td><td>${trend(r.momr,r.id)}</td><td class=nophone>${r.un?`<a href="#activity/${esc(r.id)}" style="color:var(--acc);font-weight:700" data-tip="List the unanswered comments on this model">${r.un}</a>`:"<span class=mut>0</span>"}</td></tr>`).join("")||`<tr><td colspan=12 class=empty>${all.length?"No models match the filter":"No models yet"}</td></tr>`)+"</tbody></table>";
+  <td class=nophone>${r.rt?`${fmt(r.rt)} <span class=mut>at ${nf(r.ra,1)}</span>`:"<span class=mut>–</span>"}</td><td>${trend(r.momr,r.id)}</td><td class=nophone>${r.un?`<a href="#activity/${esc(r.id)}" style="color:var(--acc);font-weight:700" data-tip="List the unanswered comments on this model">${r.un}</a>`:`<span class=mut>${r.un==null?"Not checked":"0"}</span>`}</td></tr>`).join("")||`<tr><td colspan=12 class=empty>${all.length?"No models match the filter":"No models yet"}</td></tr>`)+"</tbody></table>";
  $("mtable").querySelectorAll("th .sb").forEach(b=>b.onclick=()=>{const k=b.dataset.k;if(mSort==k)mDir=-mDir;else{mSort=k;mDir=k=="n"?1:-1}renderModels();const f=$("mtable").querySelector(`.sb[data-k="${k}"]`);f&&f.focus()});
- renderInsights()}
+ renderEarnModels(all,q);renderInsights()}
 function renderInsights(){const m=Object.values(C.models||{}),has=m.filter(r=>r.has),top=(arr,f,n=8)=>arr.sort(f).slice(0,n);
  const L=(id,n)=>`<td class=nm>${mwLink(id,n)}</td>`,R=cells=>`<tr>${cells}</tr>`;
  const conv=top(has.filter(r=>r.dpv30!=null&&r.m.v>=30),(x,y)=>y.dpv30-x.dpv30).map(r=>R(L(r.id,r.n)+`<td>${pc(r.dpv30)}</td><td>${fmt(r.m.v)}</td><td>${fmt(r.m.d)}</td><td>${pc(r.ppd,0)}</td>`));
@@ -836,22 +1041,47 @@ async function loadSparks(){if(!C||!S||Date.now()-sparkAt<6e5)return;sparkAt=Dat
  renderAll()}
 
 /* ---------- activity ---------- */
+async function loadModelReplies(){
+ const model=aMod,request=++replyRequest;
+ try{
+  const response=await fetch("/api/dashboard/replies?"+new URLSearchParams({model}),{credentials:"same-origin"});
+  if(!response.ok)throw new Error("Comment previews unavailable");
+  const data=await response.json();
+  if(model!==aMod||request!==replyRequest)return;
+  replyDetail={model,...data};
+ }catch(e){
+  if(model!==aMod||request!==replyRequest)return;
+  replyDetail={model,error:true};
+ }
+ if(document.body.dataset.view==="activity")renderActivity();
+}
 function renderActivity(){const all=(S.dash||{}).feedAll||S.feed||[],X=S.dash||{};
- const kOf=e=>e.k=="comment"?"comments":e.k,mn=aMod?((C&&C.models||{})[aMod]||{}).n:null;
- const f=all.filter(e=>(!aKind||kOf(e)==aKind)&&(!mn||e.m==mn));
+ const kOf=e=>e.k=="comment"?"comments":e.k,mn=aMod?modelName(aMod,C?.models?.[aMod]?.n):null;
+ const f=all.filter(e=>(!aKind||kOf(e)==aKind)&&(!aMod||(e.mid?e.mid===aMod:e.m===C?.models?.[aMod]?.n)));
  // Totals come from today's counters, not the event list, which is capped at 40.
  const t=S.today||{},by=[...K.map(([k])=>[k,t[k]||0]),["ratings",t.ratings||0],["comments",all.filter(e=>e.k=="comment").length]].filter(x=>x[1]>0);
  $("feednote").textContent=all.length>=40?"latest 40, newest first":"newest first";
  const fl=$("afilter");fl.hidden=!(aKind||mn);fl.innerHTML=aKind||mn?`Showing ${aKind?esc(aKind):"everything"}${mn?" for "+esc(mn):""}. <a href="#activity">Show all</a>`:"";
  $("fsum").innerHTML=by.sort((a,b)=>b[1]-a[1]).map(([k,n])=>`<button type=button data-k="${k}" aria-pressed="${aKind==k}" data-tip="${aKind==k?"Show every kind again":"Show only "+k+" in the list below"}"><span class=kdot style="--k:var(--${KC[k]||KC[k.replace(/s$/,"")]||"f"})"></span><b>${fmt(n)}</b>${esc(n==1?k.replace(/s$/,""):k)}</button>`).join("");
  $("fsum").querySelectorAll("button").forEach(b=>b.onclick=()=>{location.hash=aKind==b.dataset.k?"#activity":"#activity/k:"+b.dataset.k});
- const un=(C&&C.acct||{}).unans,ul=(X.unans||[]).filter(c=>!aMod||c.mid==aMod);
- $("unans").textContent=un!=null?un+" unanswered":"";
+ const detail=aMod&&replyDetail?.model===aMod?replyDetail:null;
+ const un=(C&&C.acct||{}).unans;
+ const ul=detail?.comments||(X.unans||[]).filter(c=>!aMod||c.mid===aMod);
  const um=Object.values(C&&C.models||{}).filter(r=>r.unans>0&&(!aMod||r.id==aMod)).sort((a,b)=>b.unans-a.unans);
- const byModel=um.length?`<div class=reply style="margin-bottom:${ul.length?"12px":"0"}">${um.slice(0,aMod?1:8).map(r=>`<a href="${mwUrl(r.id)}" target=_blank rel=noopener data-tip="Open ${esc(r.n)} on MakerWorld to reply"><span>${esc(r.n)}</span><b>${r.unans}</b></a>`).join("")}</div>`+(!aMod&&um.length>8?`<p class=mut style="margin:0 0 8px">and ${um.length-8} more models</p>`:""):"";
- $("reply").innerHTML=ul.length?byModel+ul.map(c=>`<div class=ucm><span class=who>${esc(c.u)}</span> <span class=on>on <a class=rowlink href="#activity/${esc(c.mid)}">${esc(c.m)}</a>${c.t?" · "+ago(Date.parse(c.t)/1e3):""}</span><p>${esc(c.x)}</p>${DO([["Reply on MakerWorld",mwUrl(c.mid),"Opens the model page in a new tab. Open Reviews & Ratings there to find this comment.",1]])}</div>`).join("")
-  :um.length?byModel:`<p class=empty>${C?"Every comment has a reply.":"Waiting for creator stats"}</p>`;
- $("feed").innerHTML=f.length?f.map(e=>{const c=KC[e.k]||"ink2",id=idOf(e.m);return `<div class=ev style="--k:var(--${c})"><span class=tag>${e.k=="comment"?"new":"+"+e.n}</span>
+ const scans=aMod?detail?.scan:X.commentScans;
+ $("comment-freshness").textContent=scans?.total?
+  `${fmt(scans.checked)} of ${fmt(scans.total)} ${scans.total===1?"model":"models"} checked.${scans.latest?` Latest check ${ago(scans.latest)}.`:""}`:
+  "Counts come from cached comment scans.";
+ const count=aMod?((C&&C.models||{})[aMod]||{}).unans:un;
+ $("unans").textContent=count!=null?count+" unanswered":"";
+ const byModel=um.length?`<div class=reply style="margin-bottom:${ul.length?"12px":"0"}">${um.map(r=>`<a href="${mwUrl(r.id)}" target=_blank rel=noopener data-tip="Open ${esc(r.n)} on MakerWorld to reply"><span>${esc(modelName(r.id,r.n))}</span><b>${r.unans}</b></a>`).join("")}</div>`:"";
+ const previewNote=count>ul.length?`<p class=mut>Showing ${fmt(ul.length)} of ${fmt(count)} comment previews. Open a model to see its full discussion.</p>`:"";
+ const unavailable=detail?.error?`<p class=mut>Couldn’t load model previews. <button class="btn sm" type=button id=retry-replies>Retry</button></p>`:"";
+ const replyHtml=unavailable+(ul.length?previewNote+ul.map(c=>`<div class=ucm><span class=who>${esc(c.u)}</span> <span class=on>on <a class=rowlink href="#activity/${esc(c.mid)}">${esc(c.m)}</a>${c.t?" · "+ago(Date.parse(c.t)/1e3):""}</span><p>${esc(c.x)}</p>${DO([["Reply on MakerWorld",mwUrl(c.mid),"Opens the model page in a new tab. Open Reviews & Ratings there to find this comment.",1]])}</div>`).join("")
+  :um.length?previewNote:`<p class=empty>${count===0?"No unanswered comments found among models checked.":"Waiting for comment scan results."}</p>`)+byModel;
+ if($("reply").dataset.rendered!==replyHtml){$("reply").innerHTML=replyHtml;$("reply").dataset.rendered=replyHtml}
+ if($("retry-replies"))$("retry-replies").onclick=loadModelReplies;
+ $("feed").innerHTML=f.length?f.map(e=>{const c=KC[e.k]||"ink2",id=e.mid||idOf(e.m);return `<div class=ev style="--k:var(--${c})"><span class=tag>${e.k=="comment"?"new":"+"+e.n}</span>
   <span class=m><span class=mut>${esc(e.k=="comment"?"comment":e.k=="ratings"?(e.n==1?"rating":"ratings")+(e.s?" ("+e.s+" stars)":""):e.k)}</span> · ${id?`<a class=rowlink href="${mwUrl(id)}" target=_blank rel=noopener data-tip="Open on MakerWorld">${esc(e.m)}</a>`:esc(e.m)}</span><span class=t>${ago(e.t)}</span></div>`}).join("")
   :`<p class=empty>${aKind||mn?"Nothing matches this filter today. <a href=\"#activity\">Show all</a>":"Nothing yet today. New downloads, prints, boosts, likes, ratings and comments show here as they happen."}</p>`;
  const cm=(X.comments||[]).length?X.comments.map(c=>({u:c.user,x:c.text,m:c.model,t:c.time,mid:c.designId})):(S.comments||[]).map(c=>({...c,mid:idOf(c.m)}));
@@ -861,9 +1091,11 @@ function renderActivity(){const all=(S.dash||{}).feedAll||S.feed||[],X=S.dash||{
 /* ---------- health ---------- */
 function renderHealth(){const h=S.health||{},src=h.src||{},st=S.status||{};
  const NAMES={models:["Models and totals","every poll"],reach:["30-day reach","every poll"],points:["Points","every poll"],"model-stats":["Per-model analytics","background"]};
+ const cookieNeeded=h.auth==="none"||h.auth==="expired";
+ const unchecked=Object.keys(NAMES).some(k=>!src[k]?.t&&!src[k]?.f);
  const sf=Object.keys(NAMES).filter(k=>(src[k]||{}).f).length,pl0=h.panels||[],pu=pl0.filter(p=>p.up).length,lm0=h.limiter||{};
  $("hsum").innerHTML=[
-  `<span class="badge ${sf?"warn":"ok"}"><span class=bd></span>${sf?sf+" of "+Object.keys(NAMES).length+" sources failing":"All MakerWorld sources OK"}</span>`,
+  `<span class="badge ${sf||unchecked||cookieNeeded?"warn":"ok"}"><span class=bd></span>${sf?sf+" of "+Object.keys(NAMES).length+" sources failing":cookieNeeded?"Some sources need a MakerWorld cookie":unchecked?"Waiting for all sources to report":"All MakerWorld sources OK"}</span>`,
   `<span class="badge ${h.auth=="ok"?"ok":h.auth=="expired"?"err":"warn"}"><span class=bd></span>Cookie ${{ok:"accepted",expired:"rejected",none:"not set"}[h.auth]||"unknown"}</span>`,
   pl0.length?`<span class="badge ${pu==pl0.length?"ok":pu?"warn":"err"}"><span class=bd></span>${pu} of ${pl0.length} panels answering</span>`:"",
   `<span class="badge ${lm0.paused?"err":Object.keys(lm0.backoff_until||{}).length?"warn":"mut"}"><span class=bd></span>${fmt(lm0.requests_last_hour||0)} of ${fmt(lm0.budget||0)} requests this hour</span>`].join("");
@@ -877,7 +1109,7 @@ function renderHealth(){const h=S.health||{},src=h.src||{},st=S.status||{};
   <div class=meter><i style="width:${bud?Math.min(100,used/bud*100):0}%"></i></div>
   <div class=mut>${Object.entries(bk).map(([k,v])=>`${esc(k)} ${v}`).join(" · ")||""}</div>
   ${bo.length?`<p style="color:var(--warn)">Backing off: ${bo.map(([k,t])=>esc(k)+" until "+hm(t)).join(", ")}</p>`:`<p class=mut>No backoff in effect.</p>`}`;
- $("pinfo").innerHTML=[["Last poll",st.lastPoll?hm(st.lastPoll)+" ("+ago(st.lastPoll)+")":"never"],["Result",st.ok===false?esc(st.msg||"failed"):"ok"],
+ $("pinfo").innerHTML=[["Last poll",st.lastPoll?hm(st.lastPoll)+" ("+ago(st.lastPoll)+")":"never"],["Result",!st.lastPoll?"Waiting for first poll":st.ok===false?esc(st.msg||"failed"):"ok"],
   ["Poll interval",(st.pollSec||"–")+" s"],["Panel URL",esc(S.poller||"–")],["Data as of",S.t?new Date(S.t*1e3).toLocaleDateString()+" "+hm(S.t):"–"]]
   .map(([k,v])=>`<dt>${k}</dt><dd>${v}</dd>`).join("")
  const pl=[...(h.panels||[])].sort((a,b)=>(b.up===true)-(a.up===true));
@@ -887,12 +1119,40 @@ function renderHealth(){const h=S.health||{},src=h.src||{},st=S.status||{};
   :`<p class=mut>No panels. Add one under <a href="#settings/panels">Settings</a>.</p>`}
 const PTYPE={color:"Color panel",eink:"E-paper panel"};
 
-$("mq").oninput=e=>{mQ=e.target.value;renderModels()};$("mact").onchange=e=>{mAct=e.target.checked;renderModels()};
-function renderAll(){if(!S)return;renderHead();renderOverview();renderActivity();renderHealth();renderModels()}
-async function load(){try{const c=await fetch("/v2/creator");if(c.ok)C=await c.json()}catch(e){}
- try{const r=await fetch("/api/dashboard",{credentials:"same-origin"});if(r.ok){const first=!S;S=await r.json();if(first)route();renderAll();loadSparks()}
-  else{$("pill").className="pill err";$("pilltx").textContent="Unauthorized: reopen with ?token="}}
- catch(e){$("pill").className="pill err";$("pilltx").textContent="Poller unreachable"}}
+$("mq").oninput=e=>{mFocus=null;mQ=e.target.value;renderModels()};$("mact").onchange=e=>{mAct=e.target.checked;renderModels()};
+function renderAll(){
+ if(!S)return;
+ const sortKey=document.activeElement?.closest("#mtable .sb")?.dataset.k;
+ renderHead();renderOverview();renderEarn();renderActivity();renderHealth();renderModels();
+ if(sortKey)$("mtable").querySelector(`.sb[data-k="${sortKey}"]`)?.focus({preventScroll:true});
+}
+function showDashboardError(message){
+ $("dashboard-error-text").textContent=message;
+ $("dashboard-error").hidden=!message;
+ $("dashboard-error").className=message?"banner err":"banner";
+}
+async function load(){
+ if(dashboardLoading)return;
+ dashboardLoading=true;$("retry-dashboard").disabled=true;
+ try{
+  const [creator,dashboard]=await Promise.allSettled([fetch("/v2/creator"),fetch("/api/dashboard",{credentials:"same-origin"})]);
+  try{
+   if(creator.status!=="fulfilled"||!creator.value.ok)throw new Error("Creator data unavailable");
+   C=await creator.value.json();creatorRequestFailed=false;
+  }catch(e){creatorRequestFailed=true}
+  if(dashboard.status!=="fulfilled")throw new Error("Poller unreachable");
+  const response=dashboard.value;
+  if(!response.ok)throw new Error([401,403].includes(response.status)?"Dashboard session expired. Sign in again.":"Dashboard data unavailable");
+  const first=!S;S=await response.json();
+  showDashboardError("");if(first)route();renderAll();loadSparks();
+  if(!first&&aMod&&document.body.dataset.view==="activity")loadModelReplies();
+  dispatchEvent(new Event("dashboard-refreshed"));
+ }catch(e){
+  $("pill").className="pill err";$("pilltx").textContent="Update failed";
+  showDashboardError(e.message+(S?" Showing the last loaded data.":""));
+ }finally{dashboardLoading=false;$("retry-dashboard").disabled=false}
+}
+$("retry-dashboard").onclick=load;
 
 /* ---------- settings ---------- */
 // F is the form (the /api/settings shape), F0 the last loaded copy. HOSTS keeps
@@ -1215,62 +1475,104 @@ setTop();route();load();setInterval(load,60000);
   models:"MakerWorld's own per-model analytics (about 35 days, complete days only), filled in from the poller's tracking for days MakerWorld hasn't finished, including today. The source column says which.",
   hourly:"Activity by hour of the day (about 35 days kept), plus today so far.",
   lifetime:"Every model's all-time totals from the last poll, with comments, ratings and publish date. No date range."};
- let M=null;const pick=new Set(),mets={},x=$;
+ let M=null,loadingMeta=false,previewing=false,metaFailed=false;
+ const picks={models:new Set(),lifetime:new Set()},mets={},x=$;
+ const chosenIds=()=>picks[x("xds").value]||new Set();
+ const eligible=ds=>M.models.filter(model=>ds==="lifetime"?model.lifetime!==false:!model.dates||model.dates.length);
  const dfmt=d=>{if(!d)return"";const[y,m,dd]=d.split("-").map(Number);return new Date(y,m-1,dd).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})};
  const iso=(Y,Mo,Da)=>{const z=new Date(Y,Mo,Da);return z.getFullYear()+"-"+String(z.getMonth()+1).padStart(2,"0")+"-"+String(z.getDate()).padStart(2,"0")};
  function range(){const t=M.today,[y,m,d]=t.split("-").map(Number);
   switch(x("xrg").value){case"today":return[t,t];case"7d":return[iso(y,m-1,d-6),t];case"30d":return[iso(y,m-1,d-29),t];case"90d":return[iso(y,m-1,d-89),t];
    case"this_month":return[iso(y,m-1,1),t];case"last_month":return[iso(y,m-2,1),iso(y,m-1,0)];case"custom":return[x("xa").value||null,x("xb").value||null];default:return[null,null]}}
  const hasMods=ds=>ds=="models"||ds=="lifetime";
- function q(){const ds=x("xds").value,info=M.datasets[ds],p=new URLSearchParams({dataset:ds});
-  if(ds!="lifetime"){p.set("range",x("xrg").value);if(x("xrg").value=="custom"){if(x("xa").value)p.set("start",x("xa").value);if(x("xb").value)p.set("end",x("xb").value)}}
+ function q(){const ds=x("xds").value,info=M.datasets[ds],p=new URLSearchParams({dataset:ds}),pick=chosenIds();
+  if(ds!="lifetime"){
+   const [a,b]=range();
+   p.set("range",a||b?"custom":"all");
+   if(a)p.set("start",a);if(b)p.set("end",b);
+  }
   const on=info.metrics.filter(k=>mets[ds].has(k));if(on.length<info.metrics.length)p.set("metrics",on.join(","));
   if(info.granularity.length>1)p.set("granularity",x("xgr").value);
   if(hasMods(ds)&&pick.size)p.set("models",[...pick].join(","));return p}
- function update(){if(!M)return;const ds=x("xds").value,info=M.datasets[ds],nr=ds=="lifetime",cu=!nr&&x("xrg").value=="custom";
+ function update(){if(!M)return;const ds=x("xds").value,info=M.datasets[ds],nr=ds=="lifetime",cu=!nr&&x("xrg").value=="custom",pick=chosenIds();
   x("xrf").hidden=nr;x("xcf").hidden=x("xcf2").hidden=!cu;x("xgf").hidden=info.granularity.length<2;x("xmf").hidden=!hasMods(ds);
-  const on=info.metrics.filter(k=>mets[ds].has(k)),[a,b]=nr?[null,null]:range(),sp=info.span,lo=a||(sp&&sp.from),hi=b||(sp&&sp.to);
-  let warn="";if(sp&&a&&a<sp.from)warn=`Stored data starts ${dfmt(sp.from)}, so earlier days are not in the file.`;
-  if(!on.length)warn="Pick at least one metric.";
+  const on=info.metrics.filter(k=>mets[ds].has(k)),[a,b]=nr?[null,null]:range(),sp=info.span;
+  const invalid=Boolean(a&&b&&a>b);
+  const available=eligible(ds),chosen=available.filter(model=>!pick.size||pick.has(model.id));
+  const selectedDates=ds==="models"&&pick.size&&Array.isArray(info.dates)
+   ?[...new Set(chosen.flatMap(model=>model.dates||[]))].sort():info.dates;
+  const dates=selectedDates?.filter(date=>(!a||date>=a)&&(!b||date<=b));
+  const lo=dates?dates[0]:sp&&(a&&a>sp.from?a:sp.from);
+  const hi=dates?dates.at(-1):sp&&(b&&b<sp.to?b:sp.to);
+  const hasDates=nr?Boolean(chosen.length):Boolean(lo&&hi&&lo<=hi);
+  const included=nr?chosen.length:chosen.filter(model=>!model.dates||
+    model.dates.some(date=>(!a||date>=a)&&(!b||date<=b))).length;
+  const partial=M.partialDay&&(dates?dates.includes(M.partialDay):lo<=M.partialDay&&M.partialDay<=hi);
+  let warn="";
+  if(metaFailed)warn="Couldn’t refresh the available dates. Try again.";
+  else if(!on.length)warn="Pick at least one metric.";
+  else if(invalid)warn="Choose an end date on or after the start date.";
+  else if(!hasDates)warn="No stored data in this range. Choose another range or model.";
+  else if(!nr&&((a&&lo>a)||(b&&hi<b)))warn="Only the stored dates within your selection are included.";
   x("xnote").textContent=XN[ds]+(warn?" "+warn:"");
   const rows=ds=="models"?XGM[x("xgr").value]:ds=="lifetime"?"Per model":XG[x("xgr").value];
   x("xinfo").innerHTML=`<dt>Data</dt><dd>${esc(x("xds").selectedOptions[0].text)}</dd>`+
-   (nr?"":`<dt>Dates</dt><dd>${lo?esc(dfmt(lo))+(hi&&hi!=lo?" – "+esc(dfmt(hi)):""):"All stored"}</dd>`)+
+   (nr?"":`<dt>Stored dates</dt><dd>${!invalid&&hasDates?esc(dfmt(lo))+(hi!==lo?" – "+esc(dfmt(hi)):"")+(dates?` (${dates.length} day${dates.length===1?"":"s"})`:""):"None in selection"}${!invalid&&hasDates&&partial?" · includes partial day":""}</dd>`)+
    `<dt>Rows</dt><dd>${esc(rows)}</dd><dt>Columns</dt><dd>${on.length?esc(on.map(k=>XM[k]).join(", ")):"None"}</dd>`+
-   (hasMods(ds)?`<dt>Models</dt><dd>${pick.size?pick.size+" of "+M.models.length:"All "+M.models.length}</dd>`:"");
+   (hasMods(ds)?`<dt>Models</dt><dd>${`${included} with data${pick.size?` of ${pick.size} selected`:""}`}</dd>`:"");
   x("xmn").textContent=pick.size?`(${pick.size} selected)`:"(all)";
-  const ok=on.length>0;x("xgo").href=ok?"/api/export.csv?"+q():"#export";x("xgo").classList.toggle("dis",!ok);
-  ok?x("xgo").removeAttribute("aria-disabled"):x("xgo").setAttribute("aria-disabled","true");x("xpv").disabled=!ok}
- function renderDs(){const ds=x("xds").value,info=M.datasets[ds],G=ds=="models"?XGM:XG;
+  const ok=on.length>0&&!invalid&&hasDates&&!metaFailed;x("xgo").href=ok?"/api/export.csv?"+q():"#export";x("xgo").classList.toggle("dis",!ok);
+  ok?x("xgo").removeAttribute("aria-disabled"):x("xgo").setAttribute("aria-disabled","true");x("xpv").disabled=!ok||previewing}
+ function renderDs(){if(!M)return;const ds=x("xds").value,info=M.datasets[ds],G=ds=="models"?XGM:XG;
   x("xgr").innerHTML=info.granularity.map(g=>`<option value=${g}>${G[g]}</option>`).join("");
   x("xmets").innerHTML=info.metrics.map(k=>`<label class=chk><input type=checkbox value=${k} ${mets[ds].has(k)?"checked":""}> ${XM[k]}</label>`).join("");
   x("xmets").querySelectorAll("input").forEach(i=>i.onchange=()=>{i.checked?mets[ds].add(i.value):mets[ds].delete(i.value);x("xpcard").hidden=true;update()});
   x("xpcard").hidden=true;update()}
- const shown=()=>{const f=x("xq").value.trim().toLowerCase();return M.models.filter(m=>!f||(m.name||m.id).toLowerCase().includes(f))};
- function renderMods(){const ms=shown();
+ const shown=()=>{const f=x("xq").value.trim().toLowerCase();return eligible(x("xds").value).filter(m=>!f||(m.name||m.id).toLowerCase().includes(f))};
+ function renderMods(){if(!M)return;const ms=shown(),pick=chosenIds();
   x("xmods").innerHTML=ms.map(m=>`<label><input type=checkbox value="${esc(m.id)}" ${pick.has(m.id)?"checked":""}><span title="${esc(m.name)}">${esc(m.name||"Model "+m.id)}</span></label>`).join("")||`<p class=hint>No models match.</p>`;
   x("xmods").querySelectorAll("input").forEach(i=>i.onchange=()=>{i.checked?pick.add(i.value):pick.delete(i.value);x("xpcard").hidden=true;update()})}
  function parse(t){const rows=[];let r=[],c="",qt=false;for(let i=0;i<t.length;i++){const ch=t[i];
   if(qt){if(ch=='"'){if(t[i+1]=='"'){c+='"';i++}else qt=false}else c+=ch}
   else if(ch=='"')qt=true;else if(ch==","){r.push(c);c=""}else if(ch=="\n"){r.push(c.replace(/\r$/,""));rows.push(r);r=[];c=""}else c+=ch}
   if(c||r.length){r.push(c);rows.push(r)}return rows}
- async function preview(){const b=x("xpv");b.disabled=true;b.textContent="Loading…";
-  try{const r=await fetch("/api/export.csv?"+q(),{credentials:"same-origin"}),t=(await r.text()).replace(/^\uFEFF/,"");
+ async function preview(){const b=x("xpv"),query=String(q());previewing=true;b.disabled=true;b.textContent="Loading…";
+  try{const r=await fetch("/api/export.csv?"+query,{credentials:"same-origin"}),t=(await r.text()).replace(/^\uFEFF/,"");
    if(!r.ok){let m=t;try{m=JSON.parse(t).detail}catch(e){}throw new Error(m)}
+   if(String(q())!==query)return;
    const rows=parse(t),head=rows.shift()||[],n=rows.length;
    x("xpn").textContent=n?`first ${Math.min(n,10)} of ${fmt(n)} rows`:"no rows";
    x("xptab").innerHTML=table(head.map(esc),rows.slice(0,10).map(r=>"<tr>"+r.map(v=>`<td>${esc(v)}</td>`).join("")+"</tr>"),"No data in this range");
    x("xpcard").hidden=false}
   catch(e){toast("Preview failed: "+e.message,"err")}
-  finally{b.disabled=false;b.textContent="Preview"}}
- async function load(){if(M)return;try{const r=await fetch("/api/export/meta",{credentials:"same-origin"});if(!r.ok)throw new Error("HTTP "+r.status);M=await r.json()}
-  catch(e){x("xnote").textContent="Couldn't load export options ("+e.message+"). Reload the page to try again.";return}
-  for(const k in M.datasets)mets[k]=new Set(M.datasets[k].metrics);
-  x("xb").value=M.today;x("xa").max=x("xb").max=M.today;renderMods();renderDs()}
+  finally{previewing=false;b.textContent="Preview";update()}}
+ async function load(){
+  if(loadingMeta)return;
+  const initial=!M;
+  loadingMeta=true;x("xretry").hidden=true;
+  if(initial)x("xnote").textContent="Loading export options…";
+  try{
+   const r=await fetch("/api/export/meta",{credentials:"same-origin"});
+   if(!r.ok)throw new Error("Export options unavailable");
+   const previous=M,updated=await r.json();
+   M=updated;metaFailed=false;
+   if(previous?.today!==M.today)x("xpcard").hidden=true;
+  }catch(e){
+   metaFailed=true;
+   if(M)update();else x("xnote").textContent="Couldn’t load export options. Try again.";
+   x("xretry").hidden=false;return;
+  }finally{loadingMeta=false}
+  x("xa").max=x("xb").max=M.today;
+  if(initial){
+   for(const k in M.datasets)mets[k]=new Set(M.datasets[k].metrics);
+   x("xb").value=M.today;renderMods();renderDs();
+  }else update();
+ }
+ x("xretry").onclick=load;
  ["xrg","xa","xb","xgr"].forEach(i=>x(i).addEventListener("change",()=>{x("xpcard").hidden=true;update()}));
- x("xds").onchange=renderDs;x("xq").oninput=renderMods;x("xpv").onclick=preview;
- x("xall").onclick=()=>{shown().forEach(m=>pick.add(m.id));renderMods();update()};
- x("xnone").onclick=()=>{pick.clear();renderMods();update()};
+ x("xds").onchange=()=>{renderMods();renderDs()};x("xq").oninput=renderMods;x("xpv").onclick=preview;
+ x("xall").onclick=()=>{if(!M)return;shown().forEach(m=>chosenIds().add(m.id));renderMods();update()};
+ x("xnone").onclick=()=>{chosenIds().clear();renderMods();update()};
  x("xgo").onclick=e=>{if(x("xgo").classList.contains("dis"))e.preventDefault()};
- const chk=()=>{if(document.body.dataset.view=="export")load()};addEventListener("hashchange",chk);chk()})();
+ const chk=()=>{if(document.body.dataset.view=="export")load()};addEventListener("hashchange",chk);addEventListener("dashboard-refreshed",chk);chk()})();
 </script></body></html>"""
