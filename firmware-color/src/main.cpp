@@ -1426,16 +1426,18 @@ static void handleState() {
   }
   ui_set_state(incoming);
   server.send(200, "text/plain", "OK");
-  // Cached so a reboot shows numbers before the next poll. Routine writes are
-  // throttled so SPI flash erases don't glitch the RGB scanout, but a new
-  // local day is written immediately. Otherwise a reboot keeps calling
-  // yesterday's totals "today".
+  // Cached so a reboot shows numbers before the next poll. A flash write
+  // tears the picture for a moment (RGB scanout on the S3, the DSI on the P4),
+  // so it is only written on the first push after boot and on the first push
+  // of a new local day; otherwise a reboot would keep calling yesterday's
+  // totals "today". The poller pushes fresh numbers as soon as a rebooted
+  // panel answers, so an older cache only shows for a few seconds.
   static uint32_t lastCacheMs = 0;
   static int cachedDay = -1;
   uint32_t now = millis();
   int day = (int)((incoming.t + incoming.tz) / 86400);
   bool newDay = incoming.t && day != cachedDay;
-  if (fsOk && (newDay || !lastCacheMs || now - lastCacheMs >= 15UL * 60 * 1000)) {
+  if (fsOk && (newDay || !lastCacheMs)) {
     lastCacheMs = now ? now : 1;
     cachedDay = day;
     File f = LittleFS.open(STATE_FILE, "w");

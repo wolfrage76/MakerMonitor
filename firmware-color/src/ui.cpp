@@ -6290,12 +6290,33 @@ bool ui_show(const char* page, const char* tab, const char* open, char* shown, s
   return true;
 }
 
+// Most polls bring the same numbers; only the poll times and the status line
+// move. Redrawing every page then is what made the screen flicker on each
+// poll, so an unchanged state only updates the header and Status (both also
+// refresh every second). parse_state() zeroes the struct, so memcmp is safe.
+static bool sameAsShown(const State& s) {
+  if (!st.valid || !s.valid) return false;
+  st.t = s.t;
+  st.lastPoll = s.lastPoll;
+  st.cookieAge = s.cookieAge;
+  memcpy(st.msg, s.msg, sizeof(st.msg));
+  st.health.since = s.health.since;
+  memcpy(st.health.srcT, s.health.srcT, sizeof(st.health.srcT));
+  return memcmp(&st, &s, sizeof(State)) == 0;
+}
+
 void ui_set_state(const State& s) {
-  st = s;
+  bool same = sameAsShown(s);
+  memcpy(&st, &s, sizeof(State));
   stateMs = millis();
   if (st.valid) {
     settings_set_guide_done();
     guideClose(false);
+  }
+  if (same) {
+    refreshTodayHeader();
+    if (statusOpen) refreshStatus();
+    return;
   }
   refreshAll();
 }
