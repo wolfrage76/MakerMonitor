@@ -41,3 +41,6 @@ firmware-color/CMakeLists.txt
 
 # Browser flasher output (tools/build_flasher.sh)
 flasher/dist/
+
+# Panel screenshots captured during testing
+screens/
