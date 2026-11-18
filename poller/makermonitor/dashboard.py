@@ -471,6 +471,10 @@ dialog.dlg .row{justify-content:flex-end}
 .earn .meter i{position:absolute;top:-4px;width:3px;height:14px;border-radius:2px;background:var(--acc)}
 .earn .meter span{position:absolute;inset:0;border-radius:3px;background:color-mix(in srgb,var(--acc) 22%,transparent)}
 .earn .ax{display:flex;justify-content:space-between;font-size:13px;color:var(--ink3)}
+.msl .fr{display:flex;justify-content:space-between;align-items:baseline;gap:16px;padding:10px 0;border-bottom:1px solid var(--line2)}
+.msl .fr:last-child{border-bottom:0}.msl .fr>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.msl .fr>span small{color:var(--ink3);font-size:14px}
+.msl .fr>small{color:var(--ink3);font-size:14px;white-space:nowrap}.msl .fr a{text-decoration:none;color:inherit}.msl .fr a:hover{text-decoration:underline;color:var(--acc)}
+.msl .f{color:var(--acc);margin-right:8px}
 .earn .fr{display:flex;justify-content:space-between;align-items:baseline;gap:16px;padding:10px 0;border-bottom:1px solid var(--line2)}
 .earn .fr:last-child{border-bottom:0}.earn .fr>span{color:var(--ink2);min-width:0}.earn .fr>span small{display:block;color:var(--ink3);font-size:14px}
 .earn .fr>b{text-align:right;font:650 17px var(--sans);white-space:nowrap}
@@ -521,6 +525,7 @@ dialog.dlg .row{justify-content:flex-end}
  <div class="card o2"><h2 id=needs-you tabindex=-1>Needs you<span class=sp></span><small id=actn></small></h2><p class=freshness id=action-freshness hidden></p><ul class=acts id=acts></ul></div>
  <div class="card o4"><h2>Funnel<span class=sp></span><small>30 days, and yesterday</small></h2><div class=fn id=fun></div></div>
  <div class="card o6"><h2>7 and 30 days<span class=sp></span><small>bars: last 7 days</small></h2><div class="tw fit" id=periods></div></div>
+ <div class="card o6"><h2>Recent milestones<span class=sp></span><small>last 7 days</small></h2><div class=msl id=msl></div></div>
  </div>
  <div class="card ovw o8"><h2>Creator at a glance<span class=sp></span><small id=cprog></small></h2><div class=facts id=ckp></div></div>
  <div class="card ovw o9" id=earncard><h2><span class=tip tabindex=0 data-tip="What your models' lifetime downloads, prints and boosts are worth under MakerWorld's reward rules, using the PrintNexus earnings calculator's formula.">Earnings estimate</span><span class=sp></span><small>lifetime, all models</small></h2><div class=earn id=earn><p class=mut>Waiting for the first poll</p></div>
@@ -793,7 +798,28 @@ function renderOverview(){const t=S.today||{},y=S.yday||{},hr=S.hours||{},X=S.da
   ${pegs(b.hour,null,KC[bestM],23,{big:true,lin:true,hi:b.bestHour,now:false,tip:i=>`${hh(i)}: ${fmt(b.hour[i])} over ${ins.days} days`})}${HAX}
   <div class=wk>${b.wday.map((v,i)=>`<div class="${i==bd?"hi":""}" title="${av[i]!=null?nf(av[i])+" a day over "+wn[i]+" full "+WD[i]+(wn[i]==1?"":"s"):fmt(v)}">${WD[i]}<b>${av[i]!=null?nf(av[i]):fmt(v)}</b></div>`).join("")}</div>
   <p class=mut style="margin:12px 0 0">Busiest hour ${hh(b.bestHour)}, busiest day ${WDL[bd]||"–"}. Day cells show ${wn.length?"the average a day":"the total"}, over the last ${ins.days} days.</p>`}
- renderBestHourTable();renderActs();renderFunnel();renderKpis()}
+ renderBestHourTable();renderActs();renderFunnel();renderKpis();renderMilestones()}
+/* ---------- recent milestones ---------- */
+// Round-number ladder (same as /kiosk): a milestone is crossing a multiple of msStep(v).
+function msStep(v){v=Math.abs(v);if(v<100)return 10;if(v<1000)return 50;if(v<10000)return 250;if(v<100000)return 2500;
+ return Math.pow(10,Math.floor(Math.log10(v)))/4}
+const MSK=[["downloads","downloads"],["prints","prints"],["likes","likes"],["boosts","boosts"],["points","points"],["followers","followers"]];
+// Account crossings per day (from daily deltas walked back from the total), plus per-model crossings this week.
+function msCrossings(){const out=[],tot=S.total||{},days=S.days||[];
+ const label=i=>{const n=days.length;if(i==n-1)return"today";if(i==n-2)return"yesterday";const w=WD.indexOf((days[i]||{}).d);return w>=0?WDL[w]:(n-1-i)+" days ago"};
+ for(const [k,l] of MSK){if(tot[k]==null)continue;
+  const s=k=="followers"?((S.followers||{}).series30||[]).slice(-days.length||-7):days.map(d=>+d[k]||0),n=s.length;let end=+tot[k];
+  for(let i=n-1;i>=0;i--){const start=end-s[i],st=msStep(Math.max(start,1)),a=Math.floor(start/st),b=Math.floor(end/st);
+   if(b>a&&start>0)out.push({t:`<b>${fmt(b*st)}</b> ${l}`,when:k=="followers"?(i==n-1?"today":i==n-2?"yesterday":(n-1-i)+" days ago"):label(i),age:n-1-i});
+   end=start}}
+ for(const [id,m] of Object.entries((C&&C.models)||{})){const life=m.life||{},w=m.w||{};
+  for(const [k,l] of [["d","downloads"],["p","prints"]]){const end=+life[k]||0,start=end-(+w[k]||0);if(start<=0||end<=start)continue;
+   const st=msStep(start),a=Math.floor(start/st),b=Math.floor(end/st);
+   if(b>a)out.push({t:`<b>${fmt(b*st)}</b> ${l} <small>· <a href="#models/${encodeURIComponent(id)}">${esc(modelName(id,m.n))}</a></small>`,when:"this week",age:7})}}
+ return out.sort((a,b)=>a.age-b.age)}
+function renderMilestones(){const x=msCrossings().slice(0,8);
+ $("msl").innerHTML=x.length?x.map(r=>`<div class=fr><span><span class=f aria-hidden=true>◆</span>${r.t}</span><small>${r.when}</small></div>`).join("")
+  :`<p class=mut>No milestones crossed in the last 7 days.</p>`}
 function renderKpis(){if(!C)return;const a=C.acct||{},p=C.progress||{},fo=S.followers||{};
  $("cprog").textContent=p.of?(p.have<p.of?`analytics for ${p.have} of ${p.of} models so far`:`analytics for all ${p.of} models`):"waiting for the first poll";
  const e=(a.e100||{}).m||{},tr=a.ptsTrend=="up"?"up":a.ptsTrend=="down"?"down":"",dd=a.dpv7!=null&&a.dpv30!=null?(a.dpv7>a.dpv30?"up":a.dpv7<a.dpv30?"down":""):"";
