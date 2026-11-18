@@ -76,6 +76,13 @@ void ui_github_check_started();  // main loop only, like ui_github_check_done
 void ui_github_check_done(bool ok, const char* err);
 bool ota_install_github_update(const char* downloadUrl, void (*onProgress)(int pct),
                                char* errOut, size_t errCap);
+// On-screen Install: queued here and run by loop() through the same steps as
+// the web console (fresh check, then download), outside the input handler.
+// loop() reports back through the ui_github_install_* calls below.
+void ota_request_github_install();
+void ui_github_install_progress(int pct);
+void ui_github_install_failed(const char* err);
+void ui_github_install_done();
 bool ota_update_available();
 const char* ota_cached_latest_version();
 const char* ota_cached_download_url();

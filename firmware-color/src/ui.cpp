@@ -4784,8 +4784,7 @@ static void refreshUpdate() {
   }
 }
 
-static bool updInstallAfterCheck = false;  // Install tapped before any check
-static bool updRecheck = false;            // Beta toggled during a check
+static bool updRecheck = false;  // Beta toggled during a check
 
 static void runGithubCheckUi() {
   if (ota_check_running()) {
@@ -4797,8 +4796,6 @@ static void runGithubCheckUi() {
   }
 }
 
-static void runGithubInstallUi();
-
 void ui_github_check_started() { refreshUpdate(); }
 
 void ui_github_check_done(bool ok, const char* err) {
@@ -4807,11 +4804,8 @@ void ui_github_check_done(bool ok, const char* err) {
     runGithubCheckUi();
     return;
   }
-  bool install = updInstallAfterCheck;
-  updInstallAfterCheck = false;
   if (ok) {
     refreshUpdate();
-    if (install && updRoot && !display_is_suspended()) runGithubInstallUi();
     return;
   }
   if (!updRoot) return;
@@ -4821,8 +4815,12 @@ void ui_github_check_done(bool ok, const char* err) {
   setUpdStatus(msg, C_ERR);
 }
 
-static void onGithubProgressUi(int pct) {
+void ui_github_install_progress(int pct) {
   if (display_is_suspended()) return;
+  if (ui_updating()) {  // full-screen update page (flash writes started)
+    ui_update_progress(pct);
+    return;
+  }
   if (updBar) {
     show(updBar, true);
     lv_bar_set_value(updBar, pct, LV_ANIM_OFF);
@@ -4833,41 +4831,56 @@ static void onGithubProgressUi(int pct) {
   lv_refr_now(nullptr);
 }
 
+void ui_github_install_done() {
+  if (display_is_suspended()) return;
+  if (ui_updating()) {
+    ui_update_progress(100);
+    return;
+  }
+  setUpdStatus(updShort() ? "Rebooting..." : "Update complete! Rebooting...", C_OK);
+  lv_refr_now(nullptr);
+}
+
+// One short word for the knob and compact headers, from the full error.
+static const char* installFailWord(const char* err) {
+  if (!err || !err[0]) return "error";
+  if (strstr(err, "Wi-Fi")) return "no Wi-Fi";
+  if (strstr(err, "connection")) return "connection";
+  if (strstr(err, "timed out")) return "timeout";
+  if (strstr(err, "Verify")) return "verify";
+  if (strstr(err, "Flash") || strstr(err, "Update.begin")) return "flash";
+  if (strstr(err, "size")) return "size";
+  if (strstr(err, "URL")) return "no URL";
+  return "check";
+}
+
+void ui_github_install_failed(const char* err) {
+  if (updBar) show(updBar, false);
+  if (!updRoot || display_is_suspended()) {
+    ui_toast("Update failed - still on v" FW_VERSION);
+    return;
+  }
+  char msg[128];
+  int code = 0;
+  if (updShort()) {
+    if (err && sscanf(err, "Download HTTP %d", &code) == 1) snprintf(msg, sizeof(msg), "Failed: HTTP %d", code);
+    else snprintf(msg, sizeof(msg), "Failed: %s", installFailWord(err));
+  } else {
+    snprintf(msg, sizeof(msg), "Update failed: %s", err && err[0] ? err : "error");
+  }
+  setUpdStatus(msg, C_ERR);
+  lv_refr_now(nullptr);
+}
+
+// Queued for loop(), which checks GitHub again and then downloads.
 static void runGithubInstallUi() {
-  if (ota_check_running()) {
-    setUpdChecking();
-    return;
-  }
-  if (!ota_cached_latest_version()[0]) {
-    // Find the release first; ui_github_check_done() comes back here.
-    updInstallAfterCheck = true;
-    runGithubCheckUi();
-    if (!ota_check_running()) updInstallAfterCheck = false;
-    return;
-  }
   if (updBar) {
     show(updBar, true);
     lv_bar_set_value(updBar, 0, LV_ANIM_OFF);
   }
   setUpdStatus(updShort() ? "Connecting..." : "Connecting to GitHub...", C_ACCENT);
   lv_refr_now(nullptr);
-  char err[96] = "";
-  if (ota_install_github_update(ota_cached_download_url(), onGithubProgressUi, err, sizeof(err))) {
-    setUpdStatus(updShort() ? "Rebooting..." : "Update complete! Rebooting...", C_OK);
-    lv_refr_now(nullptr);
-    delay(700);
-    ESP.restart();
-  } else if (display_is_suspended()) {
-    delay(300);
-    ESP.restart();
-  } else {
-    if (updBar) show(updBar, false);
-    char msg[128];
-    if (updShort()) snprintf(msg, sizeof(msg), "Update failed");
-    else snprintf(msg, sizeof(msg), "Update failed: %s", err[0] ? err : "error");
-    setUpdStatus(msg, C_ERR);
-    lv_refr_now(nullptr);
-  }
+  ota_request_github_install();
 }
 
 // Web console QR overlay: built on open, freed on close.
@@ -6278,7 +6291,13 @@ bool ui_show(const char* page, const char* tab, const char* open, char* shown, s
   }
   if (!strcmp(page, "status")) openStatus(true);
   else if (!strcmp(page, "about")) openAbout(true);
-  else if (!strcmp(page, "update")) openUpdate(true);
+  else if (!strcmp(page, "update")) {
+    openUpdate(true);
+    if (!strcmp(open, "install")) {  // same as pressing Install
+      runGithubInstallUi();
+      snprintf(shown, cap, "update/install");
+    }
+  }
   else if (!strcmp(page, "webqr")) {
     openUpdate(true);
     updQrOpen();

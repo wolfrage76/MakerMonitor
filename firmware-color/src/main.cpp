@@ -850,11 +850,40 @@ static String resolveGithubRedirect(const String& source) {
   int code = http.GET();
   String location = http.header("Location");
   http.end();
-  return code >= 300 && code < 400 && location.startsWith("https://") ? location : source;
+  bool moved = code >= 300 && code < 400 && location.startsWith("https://");
+  if (!moved) deviceLogf("GitHub OTA: redirect lookup got HTTP %d; using the release URL", code);
+  return moved ? location : source;
 }
 
+// "objects.githubusercontent.com" from "https://objects.githubusercontent.com/..."
+static String urlHost(const String& url) {
+  int a = url.indexOf("://");
+  a = a < 0 ? 0 : a + 3;
+  int b = url.indexOf('/', a);
+  return url.substring(a, b < 0 ? url.length() : b);
+}
+
+static bool otaInstallGithub(const char* downloadUrl, void (*progress)(int), char* errOut, size_t errCap);
+
+// Every caller (web console, on-screen Install) gets the failure in the log.
 bool ota_install_github_update(const char* downloadUrl, void (*progress)(int),
                                char* errOut, size_t errCap) {
+  char err[96] = "";
+  deviceLogf("GitHub OTA: connecting; internal heap %u, largest block %u",
+             (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+             (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
+  bool ok = otaInstallGithub(downloadUrl, progress, err, sizeof(err));
+  if (!ok) {
+    if (!err[0]) strlcpy(err, "error", sizeof(err));
+    deviceLogf("GitHub OTA failed: %s; internal heap %u, largest block %u", err,
+               (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+               (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
+  }
+  if (errOut && errCap) strlcpy(errOut, err, errCap);
+  return ok;
+}
+
+static bool otaInstallGithub(const char* downloadUrl, void (*progress)(int), char* errOut, size_t errCap) {
   if (errOut && errCap) errOut[0] = 0;
   if (WiFi.status() != WL_CONNECTED) {
     if (errOut) strlcpy(errOut, "Wi-Fi not connected", errCap);
@@ -865,6 +894,7 @@ bool ota_install_github_update(const char* downloadUrl, void (*progress)(int),
     if (errOut) strlcpy(errOut, "No release download URL", errCap);
     return false;
   }
+  deviceLogf("GitHub OTA: downloading from %s", urlHost(url).c_str());
   WiFiClientSecure tls;
   tls.setInsecure();
   HTTPClient http;
@@ -878,12 +908,16 @@ bool ota_install_github_update(const char* downloadUrl, void (*progress)(int),
   }
   http.addHeader("User-Agent", String("MakerMonitor/") + BOARD_ID);
   int code = http.GET();
+  int total = http.getSize();
+  deviceLogf("GitHub OTA: HTTP %d, size %d", code, total);
   if (code != 200) {
-    if (errOut) snprintf(errOut, errCap, "Download HTTP %d", code);
+    if (errOut && code < 0)
+      snprintf(errOut, errCap, "Download connection failed: %s", HTTPClient::errorToString(code).c_str());
+    else if (errOut)
+      snprintf(errOut, errCap, "Download HTTP %d", code);
     http.end();
     return false;
   }
-  int total = http.getSize();
   if (total > 0 && total < 200000) {
     if (errOut) strlcpy(errOut, "Invalid firmware size", errCap);
     http.end();
@@ -1621,7 +1655,6 @@ static void handleGithubUpdate() {
   }
   deviceLogf("Installing GitHub release v%s", latestVersion);
   if (!ota_install_github_update(latestUrl, webOtaProgress, err, sizeof(err))) {
-    deviceLogf("GitHub OTA failed: %s", err);
     String body = String("{\"ok\":false,\"message\":\"") + htmlEscape(err) + "\"}";
     server.send(500, "application/json", body);
     if (display_is_suspended() || ui_updating()) {
@@ -1635,6 +1668,36 @@ static void handleGithubUpdate() {
               String("{\"ok\":true,\"version\":\"") + latestVersion +
               "\",\"progress\":100,\"reboot\":true,\"message\":\"Installed; rebooting\"}");
   delay(500);
+  ESP.restart();
+}
+
+// ---- On-screen Install -----------------------------------------------------
+// The Install row only queues the request; loop() runs it here with the same
+// steps as the web console: a fresh GitHub check, then the download.
+static bool ghInstallQueued = false;
+
+void ota_request_github_install() { ghInstallQueued = true; }
+
+static void ghInstallTick() {
+  if (!ghInstallQueued || ota_check_running() || otaActive || otaDownloadActive) return;
+  ghInstallQueued = false;
+  char ver[32], url[256], err[96] = "";
+  if (!ota_check_github_update(ver, sizeof(ver), url, sizeof(url), err, sizeof(err))) {
+    deviceLogf("GitHub OTA failed: check: %s", err);
+    ui_github_install_failed(err[0] ? err : "Check failed");
+    return;
+  }
+  deviceLogf("Installing GitHub release v%s (on-screen)", latestVersion);
+  if (!ota_install_github_update(latestUrl, ui_github_install_progress, err, sizeof(err))) {
+    if (display_is_suspended() || ui_updating()) {
+      delay(300);
+      ESP.restart();
+    }
+    ui_github_install_failed(err);
+    return;
+  }
+  ui_github_install_done();
+  delay(700);
   ESP.restart();
 }
 
@@ -1980,6 +2043,7 @@ void loop() {
   server.handleClient();
   if (netStarted) ArduinoOTA.handle();
   ghCheckTick();
+  ghInstallTick();
 
 #ifdef SERIAL_SHOTS
   serialShotTick();
