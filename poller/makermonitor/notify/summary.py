@@ -19,6 +19,8 @@ from .style import num, signed, stars
 _STATS = (("downloads", "⬇️", "Downloads"), ("prints", "🖨️", "Prints"), ("likes", "❤️", "Likes"),
           ("collects", "📌", "Collects"), ("boosts", "🚀", "Boosts"))
 _NAME_MAX = 48
+_TOP = 5   # models under Top models today
+_TODO = 5  # To do entries
 
 
 def _short(name: str) -> str:
@@ -49,10 +51,7 @@ def build(today: dict[str, Any], yday: dict[str, Any] | None, full: dict[str, An
     rows = list(((full or {}).get("models") or {}).values())
     spikes = {str(s["id"]): s for s in spiked}
     top = [{"id": str(r["id"]), "n": r["n"], "d": r["todayD"]}
-           for r in sorted((r for r in rows if r.get("todayD")), key=lambda r: -r["todayD"])[:3]]
-    have = {t["id"] for t in top}
-    top += [{"id": str(s["id"]), "n": s["n"], "d": s["today"]} for s in spiked if str(s["id"]) not in have]
-    top = top[:5]
+           for r in sorted((r for r in rows if r.get("todayD")), key=lambda r: -r["todayD"])[:_TOP]]
     for t in top:
         s = spikes.get(t["id"])
         if s:
@@ -62,16 +61,18 @@ def build(today: dict[str, Any], yday: dict[str, Any] | None, full: dict[str, An
     if acct.get("unans"):
         n = acct["unans"]
         todo.append(f"💬 {num(n)} comment{'' if n == 1 else 's'} waiting for a reply")
-    # The page most behind your typical downloads per view (the dashboard's "Pages to improve").
+    # The pages most behind your typical downloads per view (the dashboard's "Pages to improve").
     has = [r for r in rows if r.get("has")]
     dpv = [r["dpv30"] for r in has if r["m"]["v"] >= 30 and r.get("dpv30") is not None]
     if dpv:
         md = statistics.median(dpv)
         under = [r for r in has if r["m"]["v"] >= 150 and r.get("dpv30") is not None and r["dpv30"] < md * 0.5]
-        if under:
-            r = max(under, key=lambda r: r["m"]["v"] * (md - r["dpv30"]))
+        for r in sorted(under, key=lambda r: -r["m"]["v"] * (md - r["dpv30"]))[:_TODO - 1]:
             todo.append(f"🔧 Improve [{_short(r['n'])}]({_url(r['id'])}): {r['dpv30'] * 100:.1f}% of "
-                        f"{num(int(r['m']['v']))} views downloaded in 30 days (typical {md * 100:.1f}%)")
+                        f"{num(int(r['m']['v']))} views downloaded (typical {md * 100:.1f}%)")
+    # Fill the rest with the models that have the most unanswered comments.
+    for r in sorted((r for r in rows if r.get("unans")), key=lambda r: -r["unans"])[:max(0, _TODO - len(todo))]:
+        todo.append(f"💬 Reply on [{_short(r['n'])}]({_url(r['id'])}): {num(r['unans'])} waiting")
 
     n = today.get("ratings") or 0
     return {
@@ -88,11 +89,14 @@ def build(today: dict[str, Any], yday: dict[str, Any] | None, full: dict[str, An
     }
 
 
-def _delta(v: float, y: float | None) -> str:
+def _today(v: float, y: float | None) -> str:
+    """"19 ▲ (+3 from 16)": today, an up/down indicator, the change from yesterday."""
     if y is None:
-        return ""
+        return num(v)
     d = v - y
-    return f"▲ {num(d)}" if d > 0 else f"▼ {num(-d)}" if d < 0 else "same"
+    if not d:
+        return f"{num(v)} = (same as yesterday)"
+    return f"{num(v)} {'▲' if d > 0 else '▼'} ({signed(d)} from {num(y)})"
 
 
 def _top_line(i: int, t: dict[str, Any]) -> str:
@@ -102,72 +106,86 @@ def _top_line(i: int, t: dict[str, Any]) -> str:
     return line
 
 
-def _extras(r: dict[str, Any]) -> list[str]:
-    out = []
-    if r["points"]:
-        p = f"⭐ Points: {signed(r['points'])}"
-        if r.get("points7"):
-            p += f" (7-day avg {num(r['points7'])})"
-        out.append(p)
-    if r["ratings"]:
-        out.append(f"🌟 Ratings: {signed(r['ratings'])}" + (f" ({r['stars']}{'' if r['ratings'] == 1 else ' avg'})"
-                                                            if r["stars"] else ""))
-    if r["followers"]:
-        out.append(f"👤 Followers: {signed(r['followers'])}")
-    return out
+def _ratings(r: dict[str, Any]) -> str:
+    """"1 new (5★)" or "3 new (4.3★ avg)"."""
+    n = r["ratings"]
+    return f"{num(n)} new" + (f" ({r['stars']}{'' if n == 1 else ' avg'})" if r["stars"] else "")
+
+
+def _points(r: dict[str, Any]) -> str:
+    return signed(r["points"]) + (f" (7-day avg {num(r['points7'])})" if r.get("points7") else "")
+
+
+_RULE = "━━━━━━━━━━━━━━━━"
 
 
 def lines(r: dict[str, Any]) -> list[str]:
-    """The report as text, one block per section with a blank line between."""
-    out = []
+    """The report as text: a heading and a rule per section, a blank line between."""
+    out = ["📅 Today", _RULE]
     if any(s["v"] for s in r["stats"]) or any(s["y"] for s in r["stats"]):
-        out.append("Today" + (" (vs yesterday)" if any(s["y"] is not None for s in r["stats"]) else ""))
-        for s in r["stats"]:
-            d = _delta(s["v"], s["y"])
-            out.append(f"{s['e']} {s['label']}: {num(s['v'])}"
-                       + (f"  {d} from {num(s['y'])}" if d and d != "same" else "  same as yesterday" if d else ""))
+        out += [f"{s['e']} {s['label']}: {_today(s['v'], s['y'])}" for s in r["stats"]]
     else:
         out.append("No new downloads, prints or likes today.")
-    out += _extras(r)
+    if r["points"]:
+        out.append(f"⭐ Points: {_points(r)}")
+    if r["ratings"]:
+        out.append(f"🌟 Ratings: {_ratings(r)}")
+    if r["followers"]:
+        out.append(f"👤 Followers: {signed(r['followers'])}")
     if r["top"]:
-        out += ["", "🔥 Top models today"] + [_top_line(i, t).replace("**", "") for i, t in enumerate(r["top"], 1)]
+        out += ["", "🔥 Top models today", _RULE] + [_top_line(i, t).replace("**", "") for i, t in enumerate(r["top"], 1)]
     if r["todo"]:
-        out += ["", "📝 To do"] + r["todo"]
+        out += ["", "📝 To do", _RULE] + r["todo"]
     return out
+
+
+_GAP = "\n\u200b"  # ends a section's values with a blank line, to space the sections apart
 
 
 def fields(r: dict[str, Any]) -> list[dict[str, Any]]:
     """Discord embed fields: a grid of today's numbers, then the lists."""
     out = []
     for s in r["stats"]:
-        d = _delta(s["v"], s["y"])
-        val = f"**{num(s['v'])}**" + (f"  {d}" if d and d != "same" else "")
-        if s["y"] is not None:
-            val += f"\nyesterday {num(s['y'])}"
-        out.append({"name": f"{s['e']} {s['label']}", "value": val, "inline": True})
+        t = _today(s["v"], s["y"])
+        n = num(s["v"])
+        out.append({"name": f"{s['e']} {s['label']}", "value": f"**{n}**{t[len(n):]}", "inline": True})
     if r["points"]:
-        val = f"**{signed(r['points'])}**" + (f"\n7-day avg {num(r['points7'])}" if r.get("points7") else "")
-        out.append({"name": "⭐ Points", "value": val, "inline": True})
+        p = _points(r)
+        n = signed(r["points"])
+        out.append({"name": "⭐ Points", "value": f"**{n}**{p[len(n):]}", "inline": True})
     if r["ratings"]:
-        out.append({"name": "🌟 Ratings", "value": f"**{signed(r['ratings'])}**" + (
-            f"\n{r['stars']}{'' if r['ratings'] == 1 else ' avg'}" if r["stars"] else ""), "inline": True})
+        out.append({"name": "🌟 Ratings", "value": f"**{_ratings(r)}**", "inline": True})
     if r["followers"]:
         out.append({"name": "👤 Followers", "value": f"**{signed(r['followers'])}**", "inline": True})
     while sum(1 for f in out if f["inline"]) % 3:  # keep the grid's last row aligned
-        out.append({"name": "​", "value": "​", "inline": True})
+        out.append({"name": "\u200b", "value": "\u200b", "inline": True})
+    lists = []
     if r["top"]:
-        out.append({"name": "🔥 Top models today",
-                    "value": "\n".join(_top_line(i, t) for i, t in enumerate(r["top"], 1))[:1024], "inline": False})
+        lists.append({"name": "🔥 Top models today",
+                      "value": _fit([_top_line(i, t) for i, t in enumerate(r["top"], 1)]), "inline": False})
     if r["todo"]:
-        out.append({"name": "📝 To do", "value": "\n".join(r["todo"])[:1024], "inline": False})
+        lists.append({"name": "📝 To do", "value": _fit(r["todo"]), "inline": False})
+    # Every section but the last ends with a blank line: the grid's last row, then each list.
+    for f in (out[-3:] if lists else []) + lists[:-1]:
+        f["value"] += _GAP
+    return out + lists
+
+
+def _fit(rows: list[str], limit: int = 1024 - len(_GAP)) -> str:
+    """Whole lines only, within Discord's field limit."""
+    out = ""
+    for ln in rows:
+        if len(out) + len(ln) + 1 > limit:
+            break
+        out += ("\n" if out else "") + ln
     return out
 
 
 def sample() -> dict[str, Any]:
     """A made-up report for the test message."""
     full = {"acct": {"unans": 3, "pts7avg": 12.4},
-            "models": {"1": {"id": 123456, "n": "Sample Model", "todayD": 9},
-                       "2": {"id": 654321, "n": "Another Model", "todayD": 4}}}
+            "models": {"1": {"id": 123456, "n": "Sample Model", "todayD": 9, "unans": 2},
+                       "2": {"id": 654321, "n": "Another Model", "todayD": 4, "unans": 1}}}
     today = {"downloads": 17, "prints": 9, "likes": 5, "collects": 24, "points": 14.2, "ratings": 1, "rating_sum": 5}
     yday = {"downloads": 18, "prints": 6, "likes": 5, "collects": 20}
     spiked = [{"id": 123456, "n": "Sample Model", "today": 9, "exp": 1.5, "x": 6}]
