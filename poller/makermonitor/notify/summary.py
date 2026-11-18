@@ -113,7 +113,7 @@ def _ratings(r: dict[str, Any]) -> str:
 
 
 def _points(r: dict[str, Any]) -> str:
-    return signed(r["points"]) + (f" (7-day avg {num(r['points7'])})" if r.get("points7") else "")
+    return signed(r["points"]) + (f" (7d avg {num(r['points7'])})" if r.get("points7") else "")
 
 
 _RULE = "━━━━━━━━━━━━━━━━"
