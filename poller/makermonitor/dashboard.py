@@ -474,7 +474,7 @@ dialog.dlg .row{justify-content:flex-end}
 .msl .fr{display:flex;justify-content:space-between;align-items:baseline;gap:16px;padding:10px 0;border-bottom:1px solid var(--line2)}
 .msl .fr:last-child{border-bottom:0}.msl .fr>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.msl .fr>span small{color:var(--ink3);font-size:14px}
 .msl .fr>small{color:var(--ink3);font-size:14px;white-space:nowrap}.msl .fr a{text-decoration:none;color:inherit}.msl .fr a:hover{text-decoration:underline;color:var(--acc)}
-.msl .f{color:var(--acc);margin-right:8px}
+.msl .f{color:var(--acc);margin-right:8px}.msl .rwp{color:var(--ink2);font-weight:600}
 .earn .fr{display:flex;justify-content:space-between;align-items:baseline;gap:16px;padding:10px 0;border-bottom:1px solid var(--line2)}
 .earn .fr:last-child{border-bottom:0}.earn .fr>span{color:var(--ink2);min-width:0}.earn .fr>span small{display:block;color:var(--ink3);font-size:14px}
 .earn .fr>b{text-align:right;font:650 17px var(--sans);white-space:nowrap}
@@ -525,7 +525,7 @@ dialog.dlg .row{justify-content:flex-end}
  <div class="card o2"><h2 id=needs-you tabindex=-1>Needs you<span class=sp></span><small id=actn></small></h2><p class=freshness id=action-freshness hidden></p><ul class=acts id=acts></ul></div>
  <div class="card o4"><h2>Funnel<span class=sp></span><small>30 days, and yesterday</small></h2><div class=fn id=fun></div></div>
  <div class="card o6"><h2>7 and 30 days<span class=sp></span><small>bars: last 7 days</small></h2><div class="tw fit" id=periods></div></div>
- <div class="card o6"><h2>Recent milestones<span class=sp></span><small>last 7 days</small></h2><div class=msl id=msl></div></div>
+ <div class="card o6"><h2><span class=tip tabindex=0 data-tip="★ MakerWorld reward milestones per model, from the same rules as the Earnings estimate. ◆ round-number milestones for your account and models.">Recent milestones</span><span class=sp></span><small>last 7 days</small></h2><div class=msl id=msl></div></div>
  </div>
  <div class="card ovw o8"><h2>Creator at a glance<span class=sp></span><small id=cprog></small></h2><div class=facts id=ckp></div></div>
  <div class="card ovw o9" id=earncard><h2><span class=tip tabindex=0 data-tip="What your models' lifetime downloads, prints and boosts are worth under MakerWorld's reward rules, using the PrintNexus earnings calculator's formula.">Earnings estimate</span><span class=sp></span><small>lifetime, all models</small></h2><div class=earn id=earn><p class=mut>Waiting for the first poll</p></div>
@@ -815,10 +815,24 @@ function msCrossings(){const out=[],tot=S.total||{},days=S.days||[];
  for(const [id,m] of Object.entries((C&&C.models)||{})){const life=m.life||{},w=m.w||{};
   for(const [k,l] of [["d","downloads"],["p","prints"]]){const end=+life[k]||0,start=end-(+w[k]||0);if(start<=0||end<=start)continue;
    const st=msStep(start),a=Math.floor(start/st),b=Math.floor(end/st);
-   if(b>a)out.push({t:`<b>${fmt(b*st)}</b> ${l} <small>· <a href="#models/${encodeURIComponent(id)}">${esc(modelName(id,m.n))}</a></small>`,when:"this week",age:7})}}
- return out.sort((a,b)=>a.age-b.age)}
-function renderMilestones(){const x=msCrossings().slice(0,8);
- $("msl").innerHTML=x.length?x.map(r=>`<div class=fr><span><span class=f aria-hidden=true>◆</span>${r.t}</span><small>${r.when}</small></div>`).join("")
+   if(b>a)out.push({t:`<b>${fmt(b*st)}</b> ${l} <small>· <a href="#models/${encodeURIComponent(id)}">${esc(modelName(id,m.n))}</a></small>`,when:"this week",age:8})}}
+ // MakerWorld reward milestones (model ladder from earnings.py): weighted uses now vs 7 days ago.
+ const e=EST();
+ for(const [id,em] of Object.entries((e&&e.models)||{})){const w=((C&&C.models||{})[id]||{}).w||{};
+  const now=+em.u||0,was=now-(+w.d||0)-2*(+w.p||0);if(was<0||now<=was)continue;
+  const n=rwCount(now)-rwCount(was);if(n<=0)continue;
+  const p=(rwPts(now)-rwPts(was))*(em.x?1.25:1)*(+e.adjust||1);
+  out.push({t:`<b>${fmt(rwTop(now))}</b> uses${n>1?` <small>(${n} reward milestones)</small>`:""} <small>· <a href="#models/${encodeURIComponent(id)}">${esc(modelName(id,id))}</a></small>`,
+   pts:p,when:"this week",age:7,rw:1})}
+ return out.sort((a,b)=>a.age-b.age||(b.pts||0)-(a.pts||0))}
+// Reward ladder: [tier upper bound in uses, uses per milestone, points per milestone].
+const RW=[[50,10,15],[500,25,12],[1000,50,20],[null,100,30]];
+function rwWalk(u,f){let tot=0,lo=0,top=0;for(const [hi,st,p] of RW){if(u<=lo)break;const t=hi==null?u:Math.min(u,hi),k=Math.floor((t-lo)/st);
+ tot+=f=="pts"?k*p:k;if(k)top=lo+k*st;if(hi==null)break;lo=hi}return f=="top"?top:tot}
+const rwCount=u=>rwWalk(u,"n"),rwPts=u=>rwWalk(u,"pts"),rwTop=u=>rwWalk(u,"top");
+function renderMilestones(){const x=msCrossings().slice(0,10);
+ $("msl").innerHTML=x.length?x.map(r=>`<div class=fr><span><span class=f aria-hidden=true>${r.rw?"★":"◆"}</span>${r.t}</span><small>${r.rw?`<b class=rwp>+${pts(r.pts)} pts</b> · `:""}${r.when}</small></div>`).join("")+
+  (x.some(r=>r.rw)?`<p class=mut style="margin:8px 0 0;font-size:14px">★ MakerWorld reward milestones (uses = downloads + 2 × prints), points estimated as in Earnings. ◆ round numbers.</p>`:"")
   :`<p class=mut>No milestones crossed in the last 7 days.</p>`}
 function renderKpis(){if(!C)return;const a=C.acct||{},p=C.progress||{},fo=S.followers||{};
  $("cprog").textContent=p.of?(p.have<p.of?`analytics for ${p.have} of ${p.of} models so far`:`analytics for all ${p.of} models`):"waiting for the first poll";
