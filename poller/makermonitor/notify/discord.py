@@ -19,11 +19,15 @@ class Discord(Channel):
         embeds = []
         for s in digest.sections:
             e: dict[str, Any] = {"title": s.title[:256], "color": s.style.color}
-            if s.lines:
+            if s.fields:
+                e["fields"] = s.fields[:25]
+            elif s.lines:
                 desc = "\n".join(f"> {s.lines[0]}" if s.type == "comment" else ln for ln in s.lines)
                 e["description"] = desc[:4000]
             if s.url:
                 e["url"] = s.url
+            if s.footer:
+                e["footer"] = {"text": s.footer[:2048]}
             if s.author:
                 e["author"] = {"name": s.author[:256]}
             embeds.append(e)

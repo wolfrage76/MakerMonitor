@@ -279,8 +279,8 @@ class AppContext:
             self.day.note_spikes(((full or {}).get("acct") or {}).get("spikes"))
             if self.day.summary_due(self.notifier.summary_time):
                 v = self.day.view()
-                title, lines = notify_summary.build(v["today"], v.get("yday"), full, self.day.spiked_today())
-                self.notifier.send_summary(title, lines)
+                self.notifier.send_summary(notify_summary.build(v["today"], v.get("yday"), full,
+                                                                self.day.spiked_today()))
                 self.day.mark_summary()
         except Exception as exc:  # noqa: BLE001 - never break the poll
             log.exception("daily summary failed: %s", exc)

@@ -34,6 +34,8 @@ class Event:
     # Health only: "warn" or "ok", with a short title.
     level: str = ""
     title: str = ""
+    # Summary only: the structured report (notify/summary.py), for channels with richer layouts.
+    data: dict[str, Any] = field(default_factory=dict)
     t: float = field(default_factory=time.time)
 
     @property
@@ -48,6 +50,8 @@ class Event:
             d.pop("total")
         if not self.stars:
             d.pop("stars")
+        if not self.data:
+            d.pop("data")
         if self.url:
             d["url"] = self.url
         return d

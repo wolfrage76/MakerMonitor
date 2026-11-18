@@ -54,6 +54,7 @@ class Section:
     url: str = ""
     author: str = ""  # comment author
     footer: str = ""
+    fields: list[dict] = field(default_factory=list)  # Discord embed fields (daily summary)
 
 
 @dataclass
@@ -110,7 +111,10 @@ def build_digest(events: list[Event], handle: str = "", heading: str = "") -> Di
             sections.append(Section(e.type, st, f"{st.emoji} {e.title}", [e.text] if e.text else []))
             continue
         if e.type == "summary":
-            sections.append(Section(e.type, st, f"{st.emoji} {e.title}", e.text.split("\n") if e.text else []))
+            from .summary import fields  # here: summary imports this module
+            sections.append(Section(e.type, st, f"{st.emoji} {e.title}", e.text.split("\n") if e.text else [],
+                                    footer=f"Totals since midnight · sent {e.data['time']}" if e.data else "",
+                                    fields=fields(e.data) if e.data else []))
             continue
         totals[e.type] = totals.get(e.type, 0) + e.count
         if e.type == "rating":

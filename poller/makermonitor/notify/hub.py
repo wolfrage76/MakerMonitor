@@ -14,6 +14,7 @@ from . import (  # noqa: F401 - registers the built-in channels
 from .base import CHANNELS, Channel, expand_env
 from .events import Event, HealthWatch, snapshot_events
 from .style import build_digest
+from . import summary
 
 log = logging.getLogger(__name__)
 
@@ -48,8 +49,8 @@ class NotifyHub:
     def wants_summary(self) -> bool:
         return any("summary" in ch.events for ch in self.channels)
 
-    def send_summary(self, title: str, lines: list[str]) -> None:
-        self.dispatch([Event("summary", title=title, text="\n".join(lines))])
+    def send_summary(self, report: dict[str, Any]) -> None:
+        self.dispatch([summary_event(report)])
 
     def submit(self, prev: Snapshot | None, cur: Snapshot | None, health: dict[str, Any] | None = None,
                skip: set[str] | frozenset[str] = frozenset(), baseline: bool = False) -> list[Event]:
@@ -93,9 +94,7 @@ class NotifyHub:
         sample = [
             Event("health", level="ok", title="MakerMonitor test message",
                   text="Notifications are set up. This is how each kind of event looks."),
-            Event("summary", title="Daily summary · Thursday",
-                  text="+17 downloads, +9 prints, +5 likes, +24 collects\nYesterday: 18 downloads, 9 prints\n"
-                       "📈 Spiked: [Sample Model](https://makerworld.com/en/models/123456), 9 downloads against about 1.5 by then"),
+            summary_event(summary.sample()),
             Event("comment", 1, model="Sample Model", model_id="123456", user="A Maker", text="Printed great, thanks!"),
             Event("follower", 1, 321),
             Event("download", 3, 1205, "Sample Model", "123456"),
@@ -107,6 +106,10 @@ class NotifyHub:
         for ch in self.channels:
             out[ch.name] = await self._send(ch, [e for e in sample if e.type in ch.events] or sample)
         return out
+
+
+def summary_event(report: dict[str, Any]) -> Event:
+    return Event("summary", title=report["title"], text="\n".join(summary.lines(report)), data=report)
 
 
 def _clean(exc: Exception) -> str:
