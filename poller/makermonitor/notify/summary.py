@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import statistics
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from .events import MAKERWORLD
@@ -21,11 +21,13 @@ _STATS = (("downloads", "⬇️", "Downloads"), ("prints", "🖨️", "Prints"),
 _NAME_MAX = 48
 _TOP = 5   # models under Top models today
 _TODO = 5  # To do entries
+_TODO_COMMENTS = 3  # of which new unanswered comments (the rest: pages to improve)
+_QUOTE_MAX = 80
 
 
-def _short(name: str) -> str:
+def _short(name: str, n: int = _NAME_MAX) -> str:
     name = " ".join(str(name).split())
-    return name if len(name) <= _NAME_MAX else name[:_NAME_MAX - 1].rstrip() + "…"
+    return name if len(name) <= n else name[:n - 1].rstrip() + "…"
 
 
 def _url(mid: Any) -> str:
@@ -36,9 +38,27 @@ def _clock(t: datetime) -> str:
     return t.strftime("%I:%M %p").lstrip("0")
 
 
+def _ts(iso: Any) -> float:
+    try:
+        return datetime.fromisoformat(str(iso).replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return 0.0
+
+
+def _when(ts: float, now: datetime) -> str:
+    """"3:12 PM" today, "yesterday 8:05 PM" before that."""
+    t = datetime.fromtimestamp(ts)
+    return _clock(t) if t.date() == now.date() else f"yesterday {_clock(t)}"
+
+
 def build(today: dict[str, Any], yday: dict[str, Any] | None, full: dict[str, Any] | None,
-          spiked: list[dict[str, Any]], now: datetime | None = None) -> dict[str, Any]:
-    """The summary's numbers, ready for lines() and fields()."""
+          spiked: list[dict[str, Any]], now: datetime | None = None,
+          unanswered: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    """The summary's numbers, ready for lines() and fields().
+
+    `unanswered`: comments still waiting for a reply (creator.unanswered()); only
+    those posted since the start of yesterday go in To do.
+    """
     now = now or datetime.now()
     acct = (full or {}).get("acct") or {}
     stats = []
@@ -57,22 +77,27 @@ def build(today: dict[str, Any], yday: dict[str, Any] | None, full: dict[str, An
         if s:
             t["x"] = s.get("x") or round(s["today"] / max(s.get("exp") or 0, 0.5), 1)
 
+    # To do: two-line entries (a bold headline, then "↳ detail").
     todo = []
-    if acct.get("unans"):
-        n = acct["unans"]
-        todo.append(f"💬 {num(n)} comment{'' if n == 1 else 's'} waiting for a reply")
+    since = datetime.combine(now.date() - timedelta(days=1), datetime.min.time()).timestamp()
+    recent = sorted((c for c in unanswered or [] if _ts(c.get("t")) >= since), key=lambda c: -_ts(c.get("t")))
+    for c in recent[:_TODO_COMMENTS]:
+        text = " ".join(str(c.get("x") or "").split())
+        text = text if len(text) <= _QUOTE_MAX else text[:_QUOTE_MAX - 1].rstrip() + "…"
+        todo.append(f"💬 **Reply to {c.get('u') or 'someone'}** on [{_short(c.get('m') or c.get('mid'), 36)}]"
+                    f"({_url(c.get('mid'))})\n↳ {_when(_ts(c.get('t')), now)} · “{text}”")
+    if len(recent) > _TODO_COMMENTS:
+        more = len(recent) - _TODO_COMMENTS
+        todo[-1] += f"\n↳ +{more} more new comment{'' if more == 1 else 's'} waiting"
     # The pages most behind your typical downloads per view (the dashboard's "Pages to improve").
     has = [r for r in rows if r.get("has")]
     dpv = [r["dpv30"] for r in has if r["m"]["v"] >= 30 and r.get("dpv30") is not None]
     if dpv:
         md = statistics.median(dpv)
         under = [r for r in has if r["m"]["v"] >= 150 and r.get("dpv30") is not None and r["dpv30"] < md * 0.5]
-        for r in sorted(under, key=lambda r: -r["m"]["v"] * (md - r["dpv30"]))[:_TODO - 1]:
-            todo.append(f"🔧 Improve [{_short(r['n'])}]({_url(r['id'])}): {r['dpv30'] * 100:.1f}% of "
-                        f"{num(int(r['m']['v']))} views downloaded (typical {md * 100:.1f}%)")
-    # Fill the rest with the models that have the most unanswered comments.
-    for r in sorted((r for r in rows if r.get("unans")), key=lambda r: -r["unans"])[:max(0, _TODO - len(todo))]:
-        todo.append(f"💬 Reply on [{_short(r['n'])}]({_url(r['id'])}): {num(r['unans'])} waiting")
+        for r in sorted(under, key=lambda r: -r["m"]["v"] * (md - r["dpv30"]))[:max(0, _TODO - len(todo))]:
+            todo.append(f"🔧 **Improve** [{_short(r['n'])}]({_url(r['id'])})\n↳ {r['dpv30'] * 100:.1f}% of "
+                        f"{num(int(r['m']['v']))} views downloaded in 30 days (typical {md * 100:.1f}%)")
 
     n = today.get("ratings") or 0
     return {
@@ -135,7 +160,9 @@ def lines(r: dict[str, Any]) -> list[str]:
     if r["top"]:
         out += ["", "🔥 Top models today", _RULE] + [_top_line(i, t).replace("**", "") for i, t in enumerate(r["top"], 1)]
     if r["todo"]:
-        out += ["", "📝 To do", _RULE] + r["todo"]
+        out += ["", "📝 To do", _RULE]
+        for i, t in enumerate(r["todo"]):
+            out += ([""] if i else []) + t.replace("**", "").split("\n")  # a blank line between entries
     return out
 
 
@@ -164,20 +191,20 @@ def fields(r: dict[str, Any]) -> list[dict[str, Any]]:
         lists.append({"name": "🔥 Top models today",
                       "value": _fit([_top_line(i, t) for i, t in enumerate(r["top"], 1)]), "inline": False})
     if r["todo"]:
-        lists.append({"name": "📝 To do", "value": _fit(r["todo"]), "inline": False})
+        lists.append({"name": "📝 To do", "value": _fit(r["todo"], sep="\n\u200b\n"), "inline": False})
     # Every section but the last ends with a blank line: the grid's last row, then each list.
     for f in (out[-3:] if lists else []) + lists[:-1]:
         f["value"] += _GAP
     return out + lists
 
 
-def _fit(rows: list[str], limit: int = 1024 - len(_GAP)) -> str:
-    """Whole lines only, within Discord's field limit."""
+def _fit(rows: list[str], limit: int = 1024 - len(_GAP), sep: str = "\n") -> str:
+    """Whole entries only, within Discord's field limit."""
     out = ""
     for ln in rows:
-        if len(out) + len(ln) + 1 > limit:
+        if len(out) + len(ln) + len(sep) > limit:
             break
-        out += ("\n" if out else "") + ln
+        out += (sep if out else "") + ln
     return out
 
 
@@ -189,4 +216,7 @@ def sample() -> dict[str, Any]:
     today = {"downloads": 17, "prints": 9, "likes": 5, "collects": 24, "points": 14.2, "ratings": 1, "rating_sum": 5}
     yday = {"downloads": 18, "prints": 6, "likes": 5, "collects": 20}
     spiked = [{"id": 123456, "n": "Sample Model", "today": 9, "exp": 1.5, "x": 6}]
-    return build(today, yday, full, spiked, datetime.fromtimestamp(time.time()))
+    now = datetime.fromtimestamp(time.time())
+    unans = [{"mid": "123456", "m": "Sample Model", "u": "A Maker", "x": "Printed great, thanks! Any tips for PETG?",
+              "t": datetime.fromtimestamp(time.time() - 3600).astimezone().isoformat()}]
+    return build(today, yday, full, spiked, now, unans)

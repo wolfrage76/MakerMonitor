@@ -53,6 +53,16 @@ def _fit(blocks: list[str], limit: int = 1024) -> str:
     for i, b in enumerate(blocks):
         more = f"\n\n(+{len(blocks) - i} more)"
         if len(out) + len(b) + 2 + len(more) > limit:
-            return (out + more).strip() if out else b[:limit]
+            return (out + more).strip() if out else _cut(b, limit)
         out += ("\n\n" if out else "") + b
+    return out
+
+
+def _cut(block: str, limit: int) -> str:
+    """One block over the limit (the daily summary): whole lines only, so no tag or entity is cut."""
+    out = ""
+    for ln in block.split("\n"):
+        if len(out) + len(ln) + 3 > limit:
+            return out + "\n…"
+        out += ("\n" if out else "") + ln
     return out

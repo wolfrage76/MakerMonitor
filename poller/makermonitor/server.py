@@ -279,8 +279,11 @@ class AppContext:
             self.day.note_spikes(((full or {}).get("acct") or {}).get("spikes"))
             if self.day.summary_due(self.notifier.summary_time):
                 v = self.day.view()
-                self.notifier.send_summary(notify_summary.build(v["today"], v.get("yday"), full,
-                                                                self.day.spiked_today()))
+                snap = self.store.status.last_snapshot
+                names = {mid: m.name for mid, m in snap.models.items()} if snap and snap.models else {}
+                self.notifier.send_summary(notify_summary.build(
+                    v["today"], v.get("yday"), full, self.day.spiked_today(),
+                    unanswered=self.creator.unanswered(names, limit=500)))
                 self.day.mark_summary()
         except Exception as exc:  # noqa: BLE001 - never break the poll
             log.exception("daily summary failed: %s", exc)
