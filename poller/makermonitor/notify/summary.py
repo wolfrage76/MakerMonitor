@@ -15,9 +15,10 @@ from typing import Any
 from .events import MAKERWORLD
 from .style import num, signed, stars
 
-# key in the daily totals, emoji, label. Boosts are shown only when there were any.
+# key in the daily totals, emoji, label: always shown, in this order.
 _STATS = (("downloads", "⬇️", "Downloads"), ("prints", "🖨️", "Prints"), ("likes", "❤️", "Likes"),
-          ("collects", "📌", "Collects"), ("boosts", "🚀", "Boosts"))
+          ("collects", "📌", "Collects"), ("boosts", "🚀", "Boosts"), ("points", "⭐", "Points"),
+          ("ratings", "🌟", "Ratings"))
 _NAME_MAX = 48
 _TOP = 5   # models under Top models today
 _TODO = 5  # To do entries
@@ -64,9 +65,13 @@ def build(today: dict[str, Any], yday: dict[str, Any] | None, full: dict[str, An
     stats = []
     for k, emoji, label in _STATS:
         v, y = today.get(k) or 0, (yday.get(k) or 0) if yday else None
-        if k == "boosts" and not v and not y:
-            continue
-        stats.append({"k": k, "e": emoji, "label": label, "v": v, "y": y})
+        note = ""
+        if k == "points":
+            v, y = round(v, 1), round(y, 1) if y is not None else None
+            note = f"7d avg {num(acct['pts7avg'])}" if acct.get("pts7avg") else ""
+        elif k == "ratings" and v:
+            note = stars(today.get("rating_sum") or 0, v) + ("" if v == 1 else " avg")
+        stats.append({"k": k, "e": emoji, "label": label, "v": v, "y": y, "note": note})
 
     rows = list(((full or {}).get("models") or {}).values())
     spikes = {str(s["id"]): s for s in spiked}
@@ -99,16 +104,11 @@ def build(today: dict[str, Any], yday: dict[str, Any] | None, full: dict[str, An
             todo.append(f"🔧 **Improve** [{_short(r['n'])}]({_url(r['id'])})\n↳ {r['dpv30'] * 100:.1f}% of "
                         f"{num(int(r['m']['v']))} views downloaded in 30 days (typical {md * 100:.1f}%)")
 
-    n = today.get("ratings") or 0
     return {
         "title": f"Daily summary · {now.strftime('%A, %b')} {now.day}",
         "time": _clock(now),
         "stats": stats,
-        "points": round(today.get("points") or 0, 1),
-        "points7": acct.get("pts7avg"),
         "followers": today.get("followers") or 0,
-        "ratings": n,
-        "stars": stars(today.get("rating_sum") or 0, n) if n else "",
         "top": top,
         "todo": todo,
     }
@@ -118,7 +118,7 @@ def _today(v: float, y: float | None) -> str:
     """"19 ▲ (+3 from 16)": today, an up/down indicator, the change from yesterday."""
     if y is None:
         return num(v)
-    d = v - y
+    d = round(v - y, 2)
     if not d:
         return f"{num(v)} = (same as yesterday)"
     return f"{num(v)} {'▲' if d > 0 else '▼'} ({signed(d)} from {num(y)})"
@@ -131,16 +131,6 @@ def _top_line(i: int, t: dict[str, Any]) -> str:
     return line
 
 
-def _ratings(r: dict[str, Any]) -> str:
-    """"1 new (5★)" or "3 new (4.3★ avg)"."""
-    n = r["ratings"]
-    return f"{num(n)} new" + (f" ({r['stars']}{'' if n == 1 else ' avg'})" if r["stars"] else "")
-
-
-def _points(r: dict[str, Any]) -> str:
-    return signed(r["points"]) + (f" (7d avg {num(r['points7'])})" if r.get("points7") else "")
-
-
 _RULE = "━━━━━━━━━━━━━━━━"
 
 
@@ -148,13 +138,10 @@ def lines(r: dict[str, Any]) -> list[str]:
     """The report as text: a heading and a rule per section, a blank line between."""
     out = ["📅 Today", _RULE]
     if any(s["v"] for s in r["stats"]) or any(s["y"] for s in r["stats"]):
-        out += [f"{s['e']} {s['label']}: {_today(s['v'], s['y'])}" for s in r["stats"]]
+        out += [f"{s['e']} {s['label']}: {_today(s['v'], s['y'])}" + (f" · {s['note']}" if s["note"] else "")
+                for s in r["stats"]]
     else:
         out.append("No new downloads, prints or likes today.")
-    if r["points"]:
-        out.append(f"⭐ Points: {_points(r)}")
-    if r["ratings"]:
-        out.append(f"🌟 Ratings: {_ratings(r)}")
     if r["followers"]:
         out.append(f"👤 Followers: {signed(r['followers'])}")
     if r["top"]:
@@ -175,13 +162,8 @@ def fields(r: dict[str, Any]) -> list[dict[str, Any]]:
     for s in r["stats"]:
         t = _today(s["v"], s["y"])
         n = num(s["v"])
-        out.append({"name": f"{s['e']} {s['label']}", "value": f"**{n}**{t[len(n):]}", "inline": True})
-    if r["points"]:
-        p = _points(r)
-        n = signed(r["points"])
-        out.append({"name": "⭐ Points", "value": f"**{n}**{p[len(n):]}", "inline": True})
-    if r["ratings"]:
-        out.append({"name": "🌟 Ratings", "value": f"**{_ratings(r)}**", "inline": True})
+        out.append({"name": f"{s['e']} {s['label']}", "inline": True,
+                    "value": f"**{n}**{t[len(n):]}" + (f"\n{s['note']}" if s["note"] else "")})
     if r["followers"]:
         out.append({"name": "👤 Followers", "value": f"**{signed(r['followers'])}**", "inline": True})
     while sum(1 for f in out if f["inline"]) % 3:  # keep the grid's last row aligned
