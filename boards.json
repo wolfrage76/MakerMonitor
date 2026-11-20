@@ -1,10 +1,11 @@
 {
-  "version": "0.4.156",
-  "commit": "ab7a84f",
+  "version": "0.4.167",
+  "commit": "b1332b1",
   "boards": [
     { "env": "crowpanel_70", "name": "Elecrow CrowPanel 7.0\"", "manifest": "manifest-crowpanel_70.json" },
     { "env": "waveshare_70", "name": "Waveshare ESP32-S3-Touch-LCD-7", "manifest": "manifest-waveshare_70.json" },
     { "env": "jc3248w535", "name": "Guition JC3248W535 3.5\"", "manifest": "manifest-jc3248w535.json" },
+    { "env": "wt32_sc01_plus", "name": "Wireless-Tag WT32-SC01 Plus 3.5\"", "manifest": "manifest-wt32_sc01_plus.json" },
     { "env": "ws_lcd2", "name": "Waveshare ESP32-S3-Touch-LCD-2", "manifest": "manifest-ws_lcd2.json" },
     { "env": "ws316", "name": "Waveshare ESP32-S3-LCD-3.16 (knob)", "manifest": "manifest-ws316.json" },
     { "env": "jc4880p443", "name": "Guition JC4880P443C 4.3\"", "manifest": "manifest-jc4880p443.json" }

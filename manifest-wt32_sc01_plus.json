@@ -1,0 +1,8 @@
+{
+  "name": "MakerMonitor for the Wireless-Tag WT32-SC01 Plus 3.5\"",
+  "version": "0.4.167",
+  "new_install_prompt_erase": true,
+  "builds": [
+    { "chipFamily": "ESP32-S3", "parts": [{ "path": "firmware/makermonitor-wt32-sc01-plus-0.4.167.bin", "offset": 0 }] }
+  ]
+}
