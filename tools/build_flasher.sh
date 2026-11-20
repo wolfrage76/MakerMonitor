@@ -5,7 +5,7 @@
 #   tools/build_flasher.sh [git-ref] [env ...]
 #
 # Builds from a clean export of git-ref (default HEAD), so uncommitted work in
-# firmware-color/ never ends up in a published image. Default envs: crowpanel_70 waveshare_70 jc3248w535 ws_lcd2 ws316 jc4880p443.
+# firmware-color/ never ends up in a published image. Default envs: crowpanel_70 waveshare_70 jc3248w535 wt32_sc01_plus ws_lcd2 ws316 jc4880p443.
 # Each board's OTA app image (the asset name from its board header) also goes
 # to flasher/release/ for the GitHub release.
 #
@@ -20,7 +20,7 @@ REPO="$(cd "$(dirname "$0")/.." && pwd)"
 REF="${1:-HEAD}"
 shift || true
 ENVS=("$@")
-[ ${#ENVS[@]} -eq 0 ] && ENVS=(crowpanel_70 waveshare_70 jc3248w535 ws_lcd2 ws316 jc4880p443)
+[ ${#ENVS[@]} -eq 0 ] && ENVS=(crowpanel_70 waveshare_70 jc3248w535 wt32_sc01_plus ws_lcd2 ws316 jc4880p443)
 
 # The same PlatformIO as `platformio` on PATH: a custom_sdkconfig build runs a
 # second pass through that one, and a different core version swaps SCons,
@@ -40,6 +40,7 @@ board_name() {
     crowpanel_70) echo 'Elecrow CrowPanel 7.0"' ;;
     waveshare_70) echo 'Waveshare ESP32-S3-Touch-LCD-7' ;;
     jc3248w535) echo 'Guition JC3248W535 3.5"' ;;
+    wt32_sc01_plus) echo 'Wireless-Tag WT32-SC01 Plus 3.5"' ;;
     ws_lcd2) echo 'Waveshare ESP32-S3-Touch-LCD-2' ;;
     ws316) echo 'Waveshare ESP32-S3-LCD-3.16 (knob)' ;;
     jc4880p443) echo 'Guition JC4880P443C 4.3"' ;;
@@ -78,10 +79,10 @@ for env in "${ENVS[@]}"; do
     chip=esp32p4 family=ESP32-P4 boot_off=0x2000
   else
   # A build linked against the stock core crashes on its first flash write.
-  # The Guition's QSPI and the Waveshare 2"'s SPI panels have no RGB ISR; the
-  # Guition's speaker I2S one must be in IRAM.
+  # The Guition's QSPI, the WT32-SC01 Plus's i80 and the Waveshare 2"'s SPI
+  # panels have no RGB ISR; the Guition's speaker I2S one must be in IRAM.
   want=(gdma_start gdma_reset gdma_append gdma_hal_append gdma_default_tx_isr)
-  case "$env" in jc3248w535|ws_lcd2) ;; *) want+=(rgb_lcd_default_isr_handler) ;; esac
+  case "$env" in jc3248w535|wt32_sc01_plus|ws_lcd2) ;; *) want+=(rgb_lcd_default_isr_handler) ;; esac
   case "$env" in crowpanel_70|jc3248w535) want+=(i2s_dma_tx_callback) ;; esac
   syms="$("$NM" "$build/firmware.elf")"
   for s in "${want[@]}"; do
