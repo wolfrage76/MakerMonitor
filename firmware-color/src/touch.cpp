@@ -2,7 +2,7 @@
 // GT911 (capacitive, I2C) on the 5" and 7", XPT2046 (resistive, SPI) on the
 // 4.3", the AXS15231B's own touch (I2C) on the Guition 3.5". ui.cpp turns
 // swipes, taps and long presses into navigation. The Waveshare 2" has a
-// CST816D (I2C).
+// CST816D (I2C), the WT32-SC01 Plus an FT6336U (I2C).
 #include "touch.h"
 
 #include <Arduino.h>
@@ -24,7 +24,7 @@ static void mapPoint(int rx, int ry, lv_indev_data_t* d) {
   bool flipX = TOUCH_FLIP_X;
   bool flipY = TOUCH_FLIP_Y;
   // Every touch board reports widget coordinates. Landscape panels (the
-  // CrowPanels, the Waveshare 7" and 2", the Guition 3.5") turn a 180 mount
+  // CrowPanels, the Waveshare 7" and 2", the 3.5" boards) turn a 180 mount
   // here. The 3.16" turns inside LVGL and has no touch, so it is not here.
   if (display_upside_down() && LCD_ROTATION == LV_DISP_ROT_NONE) {
     flipX = !flipX;
@@ -384,6 +384,62 @@ static bool hwInit() {
   }
   Serial.printf("CST816 touch %s (0x%02X)\n", cstFound ? "found" : "not found", TOUCH_ADDR);
   return cstFound;
+}
+
+#elif TOUCH_FT6336
+#include <Wire.h>
+
+// FT6336U (WT32-SC01 Plus): finger count at 0x02, then x and y (12 bits
+// each, event in the top 2 bits of x high: 0 down, 1 lift, 2 contact) in
+// portrait panel coordinates. Its reset is the LCD's, already pulsed by
+// display_init(). A failed read keeps the last state for a few reads so a
+// bus hiccup doesn't cut a swipe into taps, then releases.
+#define TOUCH_READ_MS 15
+static const int FT_MISSES = 3;
+static bool ftFound = false;
+
+static void readCb(lv_indev_drv_t*, lv_indev_data_t* d) {
+  static lv_indev_data_t last = {};
+  static int misses = 0;
+  *d = last;
+  if (!ftFound) return;
+  uint8_t b[5] = {};
+  bool got = false;
+  Wire.beginTransmission(TOUCH_ADDR);
+  Wire.write(0x02);
+  if (Wire.endTransmission(false) == 0 && Wire.requestFrom((uint8_t)TOUCH_ADDR, (uint8_t)5) == 5) {
+    for (uint8_t& v : b) v = Wire.read();
+    got = true;
+  }
+  const int n = b[0] & 0x0F;
+  const int rx = ((b[1] & 0x0F) << 8) | b[2], ry = ((b[3] & 0x0F) << 8) | b[4];
+  const bool lift = (b[1] >> 6) == 1;
+  if (got && n >= 1 && n <= 2 && !lift && rx < LCD_NATIVE_H && ry < LCD_NATIVE_W) {
+    misses = 0;
+    mapPoint(rx, ry, d);
+    d->state = LV_INDEV_STATE_PR;
+  } else if (got || ++misses >= FT_MISSES) {
+    d->state = LV_INDEV_STATE_REL;
+  }
+#if DEBUG_SWIPE
+  if (d->state != last.state)
+    deviceLogf("ft %s %d,%d [%02X %02X %02X %02X %02X]%s", d->state == LV_INDEV_STATE_PR ? "down" : "up", d->point.x,
+               d->point.y, b[0], b[1], b[2], b[3], b[4], got ? "" : " nack");
+#endif
+  last = *d;
+}
+
+static bool hwInit() {
+  pinMode(TOUCH_INT, INPUT_PULLUP);
+  Wire.begin(TOUCH_SDA, TOUCH_SCL, 400000);
+  Wire.setTimeOut(10);  // a stuck read must not stall the UI loop
+  for (int i = 0; i < 5 && !ftFound; i++) {
+    Wire.beginTransmission(TOUCH_ADDR);
+    ftFound = Wire.endTransmission() == 0;
+    if (!ftFound) delay(20);
+  }
+  Serial.printf("FT6336 touch %s (0x%02X)\n", ftFound ? "found" : "not found", TOUCH_ADDR);
+  return ftFound;
 }
 
 #elif TOUCH_XPT2046

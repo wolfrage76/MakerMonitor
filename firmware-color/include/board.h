@@ -20,6 +20,8 @@
 #include "boards/ws_lcd2.h"
 #elif defined(BOARD_JC4880P443)
 #include "boards/jc4880p443.h"
+#elif defined(BOARD_WT32_SC01_PLUS)
+#include "boards/wt32_sc01_plus.h"
 #else
 #include "boards/ws316.h"
 #endif
@@ -61,11 +63,15 @@
 #ifndef LCD_MIPI_P4
 #define LCD_MIPI_P4 0
 #endif
+#ifndef LCD_I80_ST7796
+#define LCD_I80_ST7796 0
+#endif
 // Panels that keep their own picture: frames go from a PSRAM framebuffer
 // over SPI, and the screen survives flash writes. The P4's DSI glass is
 // treated the same: a landscape PSRAM frame, turned onto the glass by the PPA
-// and scanned by DMA that keeps running through flash writes.
-#define LCD_HAS_GRAM (LCD_QSPI_AXS15231B || LCD_SPI_ST7789 || LCD_MIPI_P4)
+// and scanned by DMA that keeps running through flash writes. The
+// WT32-SC01 Plus ST7796 takes dirty windows over an 8-bit parallel bus.
+#define LCD_HAS_GRAM (LCD_QSPI_AXS15231B || LCD_SPI_ST7789 || LCD_MIPI_P4 || LCD_I80_ST7796)
 #ifndef LCD_BL_ONOFF
 #define LCD_BL_ONOFF 0
 #endif

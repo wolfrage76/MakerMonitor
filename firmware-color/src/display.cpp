@@ -3,7 +3,8 @@
 // is rotated to 820x320 landscape; the CrowPanels are landscape already. The
 // Guition 3.5" is a QSPI panel with its own GRAM instead: frames are kept in
 // a PSRAM framebuffer and sent to the panel whole. The Waveshare 2" ST7789
-// also keeps its picture; it takes dirty windows over plain SPI. The Guition
+// also keeps its picture; it takes dirty windows over plain SPI, and the
+// WT32-SC01 Plus ST7796 the same over an 8-bit parallel bus. The Guition
 // 4.3" (ESP32-P4) keeps the same landscape PSRAM framebuffer and hands each
 // whole frame to the PPA, which turns it onto the portrait DSI glass.
 #include "display.h"
@@ -457,6 +458,145 @@ static void stInit() {
 }
 #endif
 
+#if LCD_I80_ST7796
+// ---- ST7796 over an 8-bit 8080 bus (WT32-SC01 Plus) -------------------------
+// Same scheme as the ST7789: the panel turns itself to landscape (MADCTL MV)
+// and honours CASET/RASET, so a flush sends just its window from the PSRAM
+// framebuffer, byte-swapped into one of two DMA chunks. Chunks go out
+// asynchronously; a chunk is refilled only after its transfer is done (the
+// done callback gives a semaphore). The LCD ISR isn't IRAM-safe, so during a
+// flash write it is just held off and the transfer finishes afterwards.
+#include <esp_lcd_panel_io.h>
+#include <freertos/semphr.h>
+
+static esp_lcd_i80_bus_handle_t i80Bus = nullptr;
+static esp_lcd_panel_io_handle_t i80Io = nullptr;
+static SemaphoreHandle_t i80Free = nullptr;  // chunk buffers not in flight
+static uint16_t* txBuf[2] = {nullptr, nullptr};
+static const int TX_PX = 16 * LCD_NATIVE_W;  // pixels per DMA chunk
+static uint16_t* stFb = nullptr;
+
+static bool i80Done(esp_lcd_panel_io_handle_t, esp_lcd_panel_io_event_data_t*, void*) {
+  BaseType_t woke = pdFALSE;
+  xSemaphoreGiveFromISR(i80Free, &woke);
+  return woke == pdTRUE;
+}
+
+static void stCmd(uint8_t cmd, const uint8_t* data = nullptr, size_t len = 0) {
+  esp_lcd_panel_io_tx_param(i80Io, cmd, data, len);  // waits for queued pixels first
+}
+
+static void stPush(int x1, int y1, int x2, int y2) {
+  if (!i80Io || displaySuspended) return;
+  const uint8_t ca[4] = {(uint8_t)(x1 >> 8), (uint8_t)x1, (uint8_t)(x2 >> 8), (uint8_t)x2};
+  const uint8_t ra[4] = {(uint8_t)(y1 >> 8), (uint8_t)y1, (uint8_t)(y2 >> 8), (uint8_t)y2};
+  stCmd(0x2A, ca, 4);
+  stCmd(0x2B, ra, 4);
+  const int w = x2 - x1 + 1, rows = max(1, TX_PX / w);
+  int n = 0;
+  for (int y = y1; y <= y2; y += rows, n++) {
+    const int h = min(rows, y2 - y + 1);
+    xSemaphoreTake(i80Free, portMAX_DELAY);
+    uint16_t* buf = txBuf[n & 1];
+    for (int r = 0; r < h; r++) {
+      const uint16_t* src = stFb + (y + r) * LCD_NATIVE_W + x1;
+      uint16_t* dst = buf + r * w;
+      for (int i = 0; i < w; i++) dst[i] = __builtin_bswap16(src[i]);
+    }
+    // RAMWR starts the window; later chunks continue it (RAMWRC).
+    esp_lcd_panel_io_tx_color(i80Io, n ? 0x3C : 0x2C, buf, (size_t)h * w * 2);
+  }
+  // Both buffers back before returning: the next flush may refill either.
+  for (int i = 0; i < 2; i++) xSemaphoreTake(i80Free, portMAX_DELAY);
+  for (int i = 0; i < 2; i++) xSemaphoreGive(i80Free);
+}
+
+static void stPushAll() { stPush(0, 0, LCD_NATIVE_W - 1, LCD_NATIVE_H - 1); }
+
+static uint8_t stMadctl() {
+  // MV + MX (or MV + MY when flipped): landscape; BGR as the glass wants.
+  return (panelMadctlFlip() ? 0xA0 : 0x60) | (LCD_BGR ? 0x08 : 0x00);
+}
+
+static void stApplyFlip() {
+  if (!i80Io) return;
+  const uint8_t madctl = stMadctl();
+  stCmd(0x36, &madctl, 1);
+  stPushAll();
+}
+
+struct St7796Cmd {
+  uint8_t cmd;
+  uint8_t len;
+  uint8_t data[14];
+  uint16_t delayMs;
+};
+
+// TFT_eSPI's ST7796 init (command set unlock, power, gamma, lock again).
+static const St7796Cmd ST7796_INIT[] = {
+  {0xF0, 1, {0xC3}, 0},
+  {0xF0, 1, {0x96}, 0},
+  {0x3A, 1, {0x55}, 0},  // RGB565
+  {0xB4, 1, {0x01}, 0},  // 1-dot inversion
+  {0xB6, 3, {0x80, 0x02, 0x3B}, 0},
+  {0xE8, 8, {0x40, 0x8A, 0x00, 0x00, 0x29, 0x19, 0xA5, 0x33}, 0},
+  {0xC1, 1, {0x06}, 0},
+  {0xC2, 1, {0xA7}, 0},
+  {0xC5, 1, {0x18}, 120},
+  {0xE0, 14, {0xF0, 0x09, 0x0B, 0x06, 0x04, 0x15, 0x2F, 0x54, 0x42, 0x3C, 0x17, 0x14, 0x18, 0x1B}, 0},
+  {0xE1, 14, {0xE0, 0x09, 0x0B, 0x06, 0x04, 0x03, 0x2B, 0x43, 0x42, 0x3B, 0x16, 0x14, 0x17, 0x1B}, 120},
+  {0xF0, 1, {0x3C}, 0},
+  {0xF0, 1, {0x69}, 120},
+};
+
+static void stInit() {
+  pinMode(LCD_PIN_RST, OUTPUT);
+  digitalWrite(LCD_PIN_RST, LOW);
+  delay(10);
+  digitalWrite(LCD_PIN_RST, HIGH);
+  delay(120);
+  esp_lcd_i80_bus_config_t bus = {};
+  bus.clk_src = LCD_CLK_SRC_DEFAULT;
+  bus.dc_gpio_num = LCD_PIN_DC;
+  bus.wr_gpio_num = LCD_PIN_WR;
+  const int pins[8] = LCD_DATA8_PINS;
+  for (int i = 0; i < 8; i++) bus.data_gpio_nums[i] = pins[i];
+  bus.bus_width = 8;
+  bus.max_transfer_bytes = TX_PX * 2;
+  ESP_ERROR_CHECK(esp_lcd_new_i80_bus(&bus, &i80Bus));
+  i80Free = xSemaphoreCreateCounting(2, 2);
+  esp_lcd_panel_io_i80_config_t io = {};
+  io.cs_gpio_num = -1;
+  io.pclk_hz = LCD_I80_HZ;
+  io.trans_queue_depth = 2;
+  io.on_color_trans_done = i80Done;
+  io.lcd_cmd_bits = 8;
+  io.lcd_param_bits = 8;
+  io.dc_levels.dc_idle_level = 0;
+  io.dc_levels.dc_cmd_level = 0;
+  io.dc_levels.dc_dummy_level = 0;
+  io.dc_levels.dc_data_level = 1;
+  ESP_ERROR_CHECK(esp_lcd_new_panel_io_i80(i80Bus, &io, &i80Io));
+  for (auto& b : txBuf) b = (uint16_t*)heap_caps_aligned_alloc(16, TX_PX * 2, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
+
+  stCmd(0x01);  // SWRESET
+  delay(120);
+  stCmd(0x11);  // SLPOUT
+  delay(120);
+  for (const St7796Cmd& c : ST7796_INIT) {
+    stCmd(c.cmd, c.data, c.len);
+    if (c.delayMs) delay(c.delayMs);
+  }
+  const uint8_t madctl = stMadctl();
+  stCmd(0x36, &madctl, 1);
+  stCmd(LCD_INVERT ? 0x21 : 0x20);  // INVON on IPS glass
+  stCmd(0x13);  // NORON
+  delay(10);
+  stCmd(0x29);  // DISPON
+  delay(20);
+}
+#endif
+
 #if LCD_MIPI_P4
 // ---- Guition 4.3" (ESP32-P4, MIPI-DSI) --------------------------------------
 // The PPA reads p4Fb by DMA, so the CPU cache is written back first. Presents
@@ -484,7 +624,7 @@ static bool composing = false;
 static bool panelLive() {
 #if LCD_QSPI_AXS15231B
   return qspiFb != nullptr;
-#elif LCD_SPI_ST7789
+#elif LCD_SPI_ST7789 || LCD_I80_ST7796
   return stFb != nullptr;
 #elif LCD_MIPI_P4
   return p4Fb != nullptr && !p4Stopped;
@@ -524,7 +664,7 @@ static void flushCb(lv_disp_drv_t* drv, const lv_area_t* a, lv_color_t* px) {
       memcpy(qspiFb + y * LCD_NATIVE_W + a->x1, (const uint16_t*)px + (y - a->y1) * w, w * 2);
     if (lv_disp_flush_is_last(drv)) axsPush();
   }
-#elif LCD_SPI_ST7789
+#elif LCD_SPI_ST7789 || LCD_I80_ST7796
   if (stFb && !displaySuspended && !composing) {
     const int w = a->x2 - a->x1 + 1;
     for (int y = a->y1; y <= a->y2; y++)
@@ -651,7 +791,7 @@ uint16_t display_view_pixel(const uint16_t* fb, int x, int y) {
 void display_set_upside_down(bool on) {
   if (glassUpsideDown == on) return;
   glassUpsideDown = on;
-#if LCD_SPI_ST7789
+#if LCD_SPI_ST7789 || LCD_I80_ST7796
   stApplyFlip();
 #endif
 #if LCD_HAS_GRAM
@@ -715,7 +855,7 @@ void display_compose(const uint16_t* nb, int dx, const lv_area_t* keep, int nkee
   }
 #if LCD_QSPI_AXS15231B
   axsPush();
-#elif LCD_SPI_ST7789
+#elif LCD_SPI_ST7789 || LCD_I80_ST7796
   stPushAll();
 #elif LCD_MIPI_P4
   p4Push();
@@ -788,7 +928,7 @@ void display_init() {
   void* fbp = qspiFb;
   fbAny = qspiFb;
   axsPush();  // clear whatever the panel's GRAM held
-#elif LCD_SPI_ST7789
+#elif LCD_SPI_ST7789 || LCD_I80_ST7796
   stInit();
   stFb = (uint16_t*)heap_caps_calloc(LCD_NATIVE_W * LCD_NATIVE_H, 2, MALLOC_CAP_SPIRAM);
   void* fbp = stFb;
