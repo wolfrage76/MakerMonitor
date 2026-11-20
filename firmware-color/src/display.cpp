@@ -514,8 +514,9 @@ static void stPush(int x1, int y1, int x2, int y2) {
 static void stPushAll() { stPush(0, 0, LCD_NATIVE_W - 1, LCD_NATIVE_H - 1); }
 
 static uint8_t stMadctl() {
-  // MV + MX (or MV + MY when flipped): landscape; BGR as the glass wants.
-  return (panelMadctlFlip() ? 0xA0 : 0x60) | (LCD_BGR ? 0x08 : 0x00);
+  // MV (or MV + MX + MY when flipped): landscape; MV + MX came out mirrored
+  // on the glass. BGR as the glass wants.
+  return (panelMadctlFlip() ? 0xE0 : 0x20) | (LCD_BGR ? 0x08 : 0x00);
 }
 
 static void stApplyFlip() {
