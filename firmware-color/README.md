@@ -9,7 +9,7 @@ Color stats panel firmware. It shows today's Boosts, Likes, Collects, Downloads 
 | Elecrow CrowPanel ESP32-S3 HMI 7.0" | 800×480 | capacitive touch | `crowpanel_70` |
 | Waveshare ESP32-S3-Touch-LCD-7 | 800×480 | capacitive touch | `waveshare_70` |
 | Guition JC3248W535 (3.5") | 480×320 | capacitive touch | `jc3248w535` |
-| Wireless-Tag WT32-SC01 Plus (3.5") | 480×320 | capacitive touch | `wt32_sc01_plus` |
+| WT32-SC01 Plus (3.5") | 480×320 | capacitive touch | `wt32_sc01_plus` |
 | Waveshare ESP32-S3-Touch-LCD-2 (2") | 320×240 | capacitive touch | `ws_lcd2` |
 | Waveshare ESP32-S3-LCD-3.16 (3.16") | 820×320 | rotary knob (KY-040) | `ws316` |
 | Guition JC4880P443C (4.3", ESP32-P4) | 800×480 | capacitive touch | `jc4880p443` |
