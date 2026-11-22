@@ -246,7 +246,7 @@ a.rowlink{color:inherit;text-decoration:none}a.rowlink:hover{color:var(--acc);te
 .ev{display:grid;grid-template-columns:56px 1fr auto;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid var(--line2)}
 .ev:last-child{border:0}
 .tag{font:700 14px var(--sans);padding:3px 0;border-radius:5px;text-align:center;color:color-mix(in srgb,var(--k) 58%,var(--ink));background:color-mix(in srgb,var(--k) 15%,transparent)}
-.ev .m{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ev .t{color:var(--ink3);font-size:14px}
+.ev .m{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ev .kico{vertical-align:-3px;margin-right:6px;color:color-mix(in srgb,var(--k) 58%,var(--ink))}.ev .t{color:var(--ink3);font-size:14px}
 .cm{padding:12px 0;border-bottom:1px solid var(--line2)}.cm:last-child{border:0}
 .cm .who{font-weight:650}.cm .on{color:var(--ink3);font-size:14px}.cm p{margin:4px 0 0;color:var(--ink2)}
 /* ---- health ---- */
@@ -604,6 +604,9 @@ dialog.dlg .row{justify-content:flex-end}
 "use strict";
 const K=[["downloads","Downloads","d"],["prints","Prints","p"],["boosts","Boosts","b"],["likes","Likes","l"],["collects","Collects","c"]];
 const KC={boosts:"b",likes:"l",collects:"c",downloads:"d",prints:"p",comment:"f",ratings:"r"};
+// Kind icons: the same outlines the panels draw (firmware-color/tools/gen_icons.py).
+const KICO={boosts:"M13 2 4 14h7l-1 8 9-12h-7l1-8z",likes:"M12 21s-7-4.5-9.5-9A5 5 0 0 1 12 6a5 5 0 0 1 9.5 6C19 16.5 12 21 12 21z",collects:"M6 3h12v18l-6-4-6 4z",downloads:"M12 3v12M7 10l5 5 5-5M4 21h16",prints:"M6 9V3h12v6M6 18H4v-7h16v7h-2M8 14h8v7H8z",comment:"M21 12a8 8 0 0 1-11.6 7.1L4 21l1.9-5.4A8 8 0 1 1 21 12z",ratings:"M12 3 14.53 9.12 21.13 9.63 16.09 13.93 17.64 20.37 12 16.9 6.36 20.37 7.91 13.93 2.87 9.63 9.47 9.12z"};
+const kIco=(k,l)=>KICO[k]?`<svg class=kico width=16 height=16 viewBox="0 0 24 24" role=img aria-label="${esc(l)}"><title>${esc(l)}</title><path d="${KICO[k]}" fill="${k=="ratings"?"currentColor":"none"}" stroke=currentColor stroke-width=2.2 stroke-linecap=round stroke-linejoin=round /></svg>`:`<span class=mut>${esc(l)}</span> · `;
 const WD=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],WDL=["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
 const EV={health:"Health alerts",comment:"Comments",follower:"Followers",download:"Downloads",print:"Prints",boost:"Boosts",like:"Likes",collect:"Collects",rating:"Ratings",points:"Points",summary:"Daily summary"};
 let aMod=null,aKind=null,mFocus=null,iView="fix",S=null,C=null,topMode="today",bestM="downloads",mSort="d30",mDir=-1,mView="30",mQ="",mAct=false;
@@ -1122,7 +1125,7 @@ function renderActivity(){const all=(S.dash||{}).feedAll||S.feed||[],X=S.dash||{
  if($("reply").dataset.rendered!==replyHtml){$("reply").innerHTML=replyHtml;$("reply").dataset.rendered=replyHtml}
  if($("retry-replies"))$("retry-replies").onclick=loadModelReplies;
  $("feed").innerHTML=f.length?f.map(e=>{const c=KC[e.k]||"ink2",id=e.mid||idOf(e.m);return `<div class=ev style="--k:var(--${c})"><span class=tag>${e.k=="comment"?"new":"+"+e.n}</span>
-  <span class=m><span class=mut>${esc(e.k=="comment"?"comment":e.k=="ratings"?(e.n==1?"rating":"ratings")+(e.s?" ("+e.s+" stars)":""):e.k)}</span> · ${id?`<a class=rowlink href="${mwUrl(id)}" target=_blank rel=noopener data-tip="Open on MakerWorld">${esc(e.m)}</a>`:esc(e.m)}</span><span class=t>${ago(e.t)}</span></div>`}).join("")
+  <span class=m>${kIco(e.k,e.k=="comment"?"comment":e.k=="ratings"?(e.n==1?"rating":"ratings"):e.n==1?e.k.replace(/s$/,""):e.k)}${e.k=="ratings"&&e.s?`<span class=mut>${esc(e.s)} stars</span> · `:""}${id?`<a class=rowlink href="${mwUrl(id)}" target=_blank rel=noopener data-tip="Open on MakerWorld">${esc(e.m)}</a>`:esc(e.m)}</span><span class=t>${ago(e.t)}</span></div>`}).join("")
   :`<p class=empty>${aKind||mn?"Nothing matches this filter today. <a href=\"#activity\">Show all</a>":"Nothing yet today. New downloads, prints, boosts, likes, ratings and comments show here as they happen."}</p>`;
  const cm=(X.comments||[]).length?X.comments.map(c=>({u:c.user,x:c.text,m:c.model,t:c.time,mid:c.designId})):(S.comments||[]).map(c=>({...c,mid:idOf(c.m)}));
  $("comments").innerHTML=cm.length?cm.map(c=>`<div class=cm><span class=who>${esc(c.u)}</span> <span class=on>on ${c.mid?`<a class=rowlink href="${mwUrl(c.mid)}" target=_blank rel=noopener data-tip="Open the model on MakerWorld to read or reply">${esc(c.m)}</a>`:esc(c.m)}${c.t?" · "+ago(Date.parse(c.t)/1e3):""}</span><p>${esc(c.x)}</p></div>`).join("")
