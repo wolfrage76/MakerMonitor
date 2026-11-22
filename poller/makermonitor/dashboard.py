@@ -102,7 +102,20 @@ section.view{display:none}section.view.on{display:block;animation:in .16s cubic-
 .seg button{border:0;background:none;min-height:36px;padding:4px 11px;border-radius:6px;color:var(--ink2);cursor:pointer;font-size:15px;font-weight:600}
 .seg button:hover{color:var(--ink)}
 .seg button.on{background:var(--panel);color:var(--ink);box-shadow:var(--shadow),inset 0 0 0 1px var(--line)}
-/* ---- today board: one fixed slot per metric, a peg per hour ---- */
+/* ---- today: one tile per stat, a sparkline per tile (dashed: yesterday) ---- */
+.hero{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px}
+@media (max-width:1100px){.hero{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:760px){.hero{grid-template-columns:repeat(2,minmax(0,1fr))}.stat .val{font-size:28px}}
+.stat{position:relative;padding:14px 14px 10px;border-radius:12px;background:var(--panel2);overflow:hidden;min-width:0}
+.stat .lab{font-size:14px;font-weight:600;color:var(--ink2);display:flex;justify-content:space-between;align-items:center;gap:6px}
+.stat .lab .rowlink{color:inherit}
+.stat .val{font:800 34px/1.1 var(--sans);margin:6px 0 2px;color:var(--ink);font-variant-numeric:tabular-nums}
+.stat .val.zero{color:var(--ink3)}
+.stat .cmp{font-size:13px;color:var(--ink3);display:flex;flex-wrap:wrap;gap:0 6px;min-height:19px}
+.stat .cmp .up,.stat .cmp .down{font-weight:700}
+.stat svg.dl{display:block;width:100%;height:30px;margin-top:8px}
+.stat svg.stars{display:block;width:120px;height:24px;margin-top:8px}
+/* ---- peg strips (Best times) ---- */
 .board{display:flex;flex-direction:column}
 .brow{display:grid;grid-template-columns:200px minmax(0,1fr);grid-template-areas:"lab pegs" "cmp pegs";gap:2px 20px;align-items:center;padding:13px 0;border-top:1px solid var(--line2)}
 .hour-details{margin-top:12px;border-top:1px solid var(--line2);padding-top:4px}
@@ -133,9 +146,9 @@ section.view{display:none}section.view.on{display:block;animation:in .16s cubic-
  .baxis{grid-template-columns:minmax(0,1fr)}.baxis>span{display:none}}
 .ov{display:grid;grid-template-columns:minmax(0,7fr) minmax(0,5fr);gap:20px;align-items:start}.ovl,.ovr{display:flex;flex-direction:column;gap:20px;min-width:0}.ovw{grid-column:1/-1}
 @media (max-width:1000px){.ov{display:flex;flex-direction:column;align-items:stretch}.ovl,.ovr{display:contents}.o1{order:1}.o2{order:2}.o3{order:3}.o4{order:4}.o5{order:5}.o6{order:6}.o7{order:7}.o8{order:8}.o9{order:9}}
-.herofoot{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:12px 20px;margin:14px -20px 0;padding:14px 20px 0;border-top:1px solid var(--line2)}
-.herofoot span{display:flex;flex-direction:column;font-size:14.5px;color:var(--ink2)}
-.herofoot b{font:650 18px var(--sans);color:var(--ink)}
+.herofoot{display:flex;flex-wrap:wrap;gap:6px 22px;margin-top:14px;color:var(--ink2);font-size:14.5px}
+.herofoot>span{display:inline-flex;align-items:baseline;gap:6px}
+.herofoot b{font:650 15px var(--sans);color:var(--ink);font-variant-numeric:tabular-nums}
 .herofoot b small{font:500 14px var(--sans);color:var(--ink3);margin-left:4px}
 /* ---- tables ---- */
 .tw{overflow-x:auto;margin:0 -4px}
@@ -423,7 +436,7 @@ dialog.dlg .row{justify-content:flex-end}
  input[type=checkbox]{width:22px;height:22px}#mtable th,#mtable td{padding:10px 6px;font-size:15px}#mtable td.nm{min-width:110px;max-width:170px}#mtable td:nth-child(11){white-space:normal;min-width:64px}#mcount{display:block}.setnav a{min-height:40px;display:inline-flex;align-items:center}}
 @media (max-width:760px){.setnav{margin:-8px -12px 0!important;padding:10px 12px!important}}
 @media (max-width:760px){main{padding:14px 12px}.bar{padding:10px 14px}.card{padding:0 14px 14px}.card>h2,.h2{margin:0 -14px 12px;padding:10px 14px}
- .herofoot{margin:12px -14px 0;padding:12px 14px 0}.acct{display:none}.kio span{display:none}#since:not(.show-date){display:none}.kio{padding:5px 9px}
+ .acct{display:none}.kio span{display:none}#since:not(.show-date){display:none}.kio{padding:5px 9px}
  body{padding-bottom:calc(64px + env(safe-area-inset-bottom))}
  nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:25;max-width:none;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:0;padding:0 2px env(safe-area-inset-bottom);
   background:var(--hb);border-top:1px solid color-mix(in srgb,var(--hb-ink) 14%,transparent)}
@@ -508,27 +521,25 @@ dialog.dlg .row{justify-content:flex-end}
 <div class=banner id=banner role=status></div>
 <div class=banner id=dashboard-error hidden><span role=status id=dashboard-error-text></span> <button type=button class="btn sm" id=retry-dashboard>Retry</button></div>
 
-<section class=view id=v-overview aria-label=Overview><div class=next-action id=next-action hidden></div><div class=ov><div class=ovl>
- <div class="card todayc o1"><h2><span id=today-title>Today</span><small id=since></small><span class=sp></span><small id=ydaynote></small></h2>
-  <div class=board id=hero></div>
+<section class=view id=v-overview aria-label=Overview><div class=next-action id=next-action hidden></div><div class=grid>
+ <div class="card s12"><h2><span id=today-title>Today</span><small id=since></small><span class=sp></span><small id=ydaynote></small></h2>
+  <div class=hero id=hero></div>
   <details class=hour-details id=hour-details><summary>View hourly counts</summary>
    <p class=mut><span id=hour-zone>Hours use the poller’s time zone.</span> Counts are recorded increases and can differ from daily net totals.</p>
    <label for=hour-metric>Metric</label> <select id=hour-metric></select>
    <div class=tw id=hour-table></div>
   </details><div class=herofoot id=herofoot></div></div>
- <div class="card o3"><h2>Top models<span class=sp></span><span class=seg id=topseg role=group aria-label="Top models period"></span></h2><div class="tw fit" id=top></div></div>
- <div class="card o5"><h2>Best times<span class=sp></span><span class=seg id=bestseg role=group aria-label="Best times metric"></span></h2><div id=best></div><details class=hour-details id=best-hours hidden><summary>View hourly totals</summary>
- <div class=tw id=best-hour-table></div></details></div>
- <div class="card o7"><h2>Followers<span class=sp></span><small>last 30 days</small></h2><div class=minis id=fol></div>
+ <div class="card s7"><h2 id=needs-you tabindex=-1>To do<span class=sp></span><small id=actn></small></h2><p class=freshness id=action-freshness hidden></p><ul class=acts id=acts></ul></div>
+ <div class="card s5"><h2>Funnel<span class=sp></span><small>30 days, and yesterday</small></h2><div class=fn id=fun></div></div>
+ <div class="card s7"><h2>Top models<span class=sp></span><span class=seg id=topseg role=group aria-label="Top models period"></span></h2><div class="tw fit" id=top></div></div>
+ <div class="card s5"><h2>Followers<span class=sp></span><small>last 30 days</small></h2><div class=minis id=fol></div>
   <div class=bars id=folbars style="height:70px"></div><div class=axis><span>30 days ago</span><span>today</span></div></div>
- </div><div class=ovr>
- <div class="card o2"><h2 id=needs-you tabindex=-1>Needs you<span class=sp></span><small id=actn></small></h2><p class=freshness id=action-freshness hidden></p><ul class=acts id=acts></ul></div>
- <div class="card o4"><h2>Funnel<span class=sp></span><small>30 days, and yesterday</small></h2><div class=fn id=fun></div></div>
- <div class="card o6"><h2>7 and 30 days<span class=sp></span><small>bars: last 7 days</small></h2><div class="tw fit" id=periods></div></div>
- <div class="card o6"><h2><span class=tip tabindex=0 data-tip="★ MakerWorld reward milestones per model, from the same rules as the Earnings estimate. ◆ round-number milestones for your account and models.">Recent milestones</span><span class=sp></span><small>last 7 days</small></h2><div class=msl id=msl></div></div>
- </div>
- <div class="card ovw o8"><h2>Creator at a glance<span class=sp></span><small id=cprog></small></h2><div class=facts id=ckp></div></div>
- <div class="card ovw o9" id=earncard><h2><span class=tip tabindex=0 data-tip="What your models' lifetime downloads, prints and boosts are worth under MakerWorld's reward rules, using the PrintNexus earnings calculator's formula.">Earnings estimate</span><span class=sp></span><small>lifetime, all models</small></h2><div class=earn id=earn><p class=mut>Waiting for the first poll</p></div>
+ <div class="card s5"><h2>7 and 30 days<span class=sp></span><small>bars: last 7 days</small></h2><div class="tw fit" id=periods></div></div>
+ <div class="card s7"><h2>Best times<span class=sp></span><span class=seg id=bestseg role=group aria-label="Best times metric"></span></h2><div id=best></div><details class=hour-details id=best-hours hidden><summary>View hourly totals</summary>
+ <div class=tw id=best-hour-table></div></details></div>
+ <div class="card s12"><h2><span class=tip tabindex=0 data-tip="★ MakerWorld reward milestones per model, from the same rules as the Earnings estimate. ◆ round-number milestones for your account and models.">Recent milestones</span><span class=sp></span><small>last 7 days</small></h2><div class=msl id=msl></div></div>
+ <div class="card s12"><h2>Creator at a glance<span class=sp></span><small id=cprog></small></h2><div class=facts id=ckp></div></div>
+ <div class="card s12" id=earncard><h2><span class=tip tabindex=0 data-tip="What your models' lifetime downloads, prints and boosts are worth under MakerWorld's reward rules, using the PrintNexus earnings calculator's formula.">Earnings estimate</span><span class=sp></span><small>lifetime, all models</small></h2><div class=earn id=earn><p class=mut>Waiting for the first poll</p></div>
   <div class=earnfoot><p>An estimate, not a statement. MakerWorld can delay or reject rewards, and likes and comments earn nothing. Uses are downloads plus 2 per print.</p>
    <details class=earnset id=earnset><summary>Assumptions</summary><form class=row id=earnform>
     <label>Model reward adjustment<input type=number id=eadj min=0 max=3 step=0.01 inputmode=decimal></label>
@@ -710,6 +721,16 @@ function pegs(td,yd,color,h,o={}){const W=240,H=o.big?24:20,cy=H/2-(o.big?0:1),R
   s+="</g>"}
  if(o.now!==false&&h>=0&&h<24)s+=`<rect x=${h*10+1.5} y=${H-1.8} width=7 height=1.8 rx=.9 fill="var(--acc)"/>`;
  return s+"</svg>"}
+// Today tiles: today's hours as a filled line in the stat's colour, yesterday's as a dashed line.
+function dayLine(td,yd,color,h,w=120,ht=30){const t=(td||[]).slice(0,h+1),all=[...t,...(yd||[])].map(v=>+v||0),mx=Math.max(1,...all),st=w/23;
+ const pts=a=>a.map((v,i)=>`${(i*st).toFixed(1)},${(ht-2-((+v||0)/mx)*(ht-5)).toFixed(1)}`).join(" ");
+ return `<svg class=dl viewBox="0 0 ${w} ${ht}" preserveAspectRatio=none aria-hidden=true>`+
+  (yd&&yd.length?`<polyline points="${pts(yd)}" fill=none stroke="var(--ink3)" stroke-opacity=.55 stroke-width=1.2 stroke-dasharray="3 3" vector-effect=non-scaling-stroke />`:"")+
+  (t.length>1?`<polygon points="0,${ht} ${pts(t)} ${((t.length-1)*st).toFixed(1)},${ht}" style="fill:var(--${color})" opacity=.14 /><polyline points="${pts(t)}" fill=none style="stroke:var(--${color})" stroke-width=1.7 stroke-linejoin=round vector-effect=non-scaling-stroke />`:"")+`</svg>`}
+// Ratings have no hourly buckets, so that tile shows the average as stars.
+const STAR=x=>{let d="";for(let i=0;i<10;i++){const r=i%2?4.6:10.5,t=-Math.PI/2+i*Math.PI/5;d+=(i?"L":"M")+(x+12+r*Math.cos(t)).toFixed(1)+" "+(12.6+r*Math.sin(t)).toFixed(1)}return d+"Z"};
+function stars(a){const pct=Math.max(0,Math.min(100,a/5*100));
+ return `<svg class=stars viewBox="0 0 120 24" role=img aria-label="${a?a.toFixed(1)+" out of 5 stars":"no ratings yet"}"><defs><linearGradient id=rg><stop offset="${pct}%" style="stop-color:var(--r)"/><stop offset="${pct}%" style="stop-color:color-mix(in srgb,var(--r) 22%,var(--panel2))"/></linearGradient></defs><path fill="url(#rg)" d="${[0,1,2,3,4].map(i=>STAR(i*24)).join("")}"/></svg>`}
 const HAX=`<div class=hax>${[[0,"12 AM"],[6,"6 AM"],[12,"12 PM"],[18,"6 PM"],[23,"11 PM"]].map(([i,l])=>`<span style="left:${((i*10+5)/2.4).toFixed(2)}%">${l}</span>`).join("")}</div>`;
 function brow(l,c,val,zero,body,cmp,k){return `<div class="brow${zero?" zero":""}" style="--k:var(--${c})"><div class=lab><span><span class=kdot></span>${k?`<a class=rowlink href="#activity/k:${k}" data-tip="See today's ${l.toLowerCase()}, model by model">${l}</a>`:l}</span><div class="val${zero?" zero":""}">${val}</div></div>${body}<div class=cmp>${cmp}</div></div>`}
 const PTIP={downloads:"Downloads of your models' files.",prints:"Prints started from your print profiles.",boosts:"Boosts other people gave your models.",likes:"Likes on your models.",collects:"Times someone saved a model to a collection.",
@@ -756,16 +777,17 @@ function renderOverview(){const t=S.today||{},y=S.yday||{},hr=S.hours||{},X=S.da
  $("today-title").textContent=oldDay?"Last recorded day":"Today";
  $("since").classList.toggle("show-date",Boolean(oldDay));
  $("since").textContent=oldDay?X.hourSpan.date:S.midnight?"since midnight":"since "+hm(S.since||0);
- $("ydaynote").innerHTML=`<span class=blegend aria-hidden=true><span><svg width=10 height=10><circle cx=5 cy=5 r=4 fill="var(--ink2)"/></svg>today</span>${yh?`<span><svg width=10 height=10><circle cx=5 cy=5 r=3.8 fill=none stroke="var(--ink3)" stroke-width=1.3 /></svg>yesterday</span>`:""}<span><svg width=10 height=4><rect width=10 height=3 rx=1.5 fill="var(--acc)"/></svg>now</span></span>`;
+ $("ydaynote").textContent=yh?"dashed line: yesterday":"";
  const tot=S.total||{},m=S.month||{},ra=+tot.ratingAvg||0,rv=t.ratings||0;
  $("hero").innerHTML=K.map(([k,l,c])=>{const v=t[k]||0,yv=y[k],yk=yh&&yh[k];
-  let cmp="";const by=yk?byNow(yk,yv):null;
+  let cmp="&nbsp;";const by=yk?byNow(yk,yv):null;
   const BYT=`Yesterday's ${l.toLowerCase()} up to this time of day: ${fmt(yv)} all day, scaled by how much of yesterday's activity had happened by now.`;
-  if(by!=null){const d=v-by;cmp=d?`<b class="${d>0?"up":"down"}">${ARR(d)}${sg(d)}</b> ${TIP(`vs ${fmt(by)} by now yesterday`,BYT)}`:`<b>even</b> ${TIP(`with ${fmt(by)} by now yesterday`,BYT)}`}
-  else if(yv!=null)cmp=`<b>${fmt(yv)}</b> all day yesterday`;
-  return brow(l,c,v?sg(v):"0",!v,pegs(hr[k],yk,c,h),cmp,k)}).join("")+
-  brow("Ratings","r",rv?sg(rv):"0",!rv,`<div class=note>Ratings aren't counted by the hour, so there is no day strip.</div>`,(y.ratings!=null?`<b>${fmt(y.ratings)}</b> all day yesterday<br>`:"")+(ra?`${ra.toFixed(2)} average from ${fmt(tot.ratings)}`:"no ratings yet"))+
-  `<div class=baxis><span></span>${HAX}<span></span></div>`;
+  if(by!=null){const d=v-by;cmp=`<span class="${d>0?"up":d<0?"down":""}">${d?sg(d):"±0"}</span>${TIP(`vs ${fmt(by)} by now yesterday`,BYT)}`}
+  else if(yv!=null)cmp=`<span>${fmt(yv)} all day yesterday</span>`;
+  return `<div class=stat style="--k:var(--${c})"><div class=lab><span><span class=kdot></span><a class=rowlink href="#activity/k:${k}" data-tip="See today's ${l.toLowerCase()}, model by model">${l}</a></span></div>
+   <div class="val${v?"":" zero"}">${v?sg(v):"0"}</div><div class=cmp>${cmp}</div>${dayLine(hr[k],yk,c,h)}</div>`}).join("")+
+  `<div class=stat style="--k:var(--r)"><div class=lab><span><span class=kdot></span>Ratings</span><span data-tip="Average of ${fmt(tot.ratings)} ratings">${ra?ra.toFixed(2)+" avg":""}</span></div>
+   <div class="val${rv?"":" zero"}">${rv?sg(rv):"0"}</div><div class=cmp>${y.ratings!=null?`<span>${fmt(y.ratings)} all day yesterday</span>`:`<span>${fmt(tot.ratings||0)} total</span>`}</div>${stars(ra)}</div>`;
  renderHourTable();
  const acu=S.account?"https://makerworld.com/en/@"+encodeURIComponent(S.account):null;
  $("herofoot").innerHTML=[t.points!=null?`<span>${TIP("Points today","MakerWorld points earned since midnight, from every source.")}<b>${sg(+(+t.points).toFixed(1))}${y.points!=null?`<small>yesterday ${nf(y.points)}</small>`:""}</b></span>`:"",
