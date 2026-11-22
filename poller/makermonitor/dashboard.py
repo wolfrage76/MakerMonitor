@@ -145,7 +145,7 @@ section.view{display:none}section.view.on{display:block;animation:in .16s cubic-
  #top th:nth-child(n+5),#top td:nth-child(n+5){display:none}#top th:nth-child(2),#periods th:nth-child(2){display:none}.brow .val{font-size:26px}
  .baxis{grid-template-columns:minmax(0,1fr)}.baxis>span{display:none}}
 .ov{display:grid;grid-template-columns:minmax(0,7fr) minmax(0,5fr);gap:20px;align-items:start}.ovl,.ovr{display:flex;flex-direction:column;gap:20px;min-width:0}.ovw{grid-column:1/-1}
-@media (max-width:1000px){.ov{display:flex;flex-direction:column;align-items:stretch}.ovl,.ovr{display:contents}.o1{order:1}.o2{order:2}.o3{order:3}.o4{order:4}.o5{order:5}.o6{order:6}.o7{order:7}.o8{order:8}.o9{order:9}}
+@media (max-width:1000px){.ov{display:flex;flex-direction:column;align-items:stretch}.ovl,.ovr{display:contents}.o1{order:1}.o2{order:2}.o3{order:3}.o4{order:4}.o5{order:5}.o6{order:6}.o7{order:7}.o8{order:8}.o9{order:9}.o10{order:10}}
 .herofoot{display:flex;flex-wrap:wrap;gap:6px 22px;margin-top:14px;color:var(--ink2);font-size:14.5px}
 .herofoot>span{display:inline-flex;align-items:baseline;gap:6px}
 .herofoot b{font:650 15px var(--sans);color:var(--ink);font-variant-numeric:tabular-nums}
@@ -521,31 +521,35 @@ dialog.dlg .row{justify-content:flex-end}
 <div class=banner id=banner role=status></div>
 <div class=banner id=dashboard-error hidden><span role=status id=dashboard-error-text></span> <button type=button class="btn sm" id=retry-dashboard>Retry</button></div>
 
-<section class=view id=v-overview aria-label=Overview><div class=next-action id=next-action hidden></div><div class=grid>
- <div class="card s12"><h2><span id=today-title>Today</span><small id=since></small><span class=sp></span><small id=ydaynote></small></h2>
+<section class=view id=v-overview aria-label=Overview><div class=next-action id=next-action hidden></div><div class=ov>
+ <div class="card ovw o1"><h2><span id=today-title>Today</span><small id=since></small><span class=sp></span><small id=ydaynote></small></h2>
   <div class=hero id=hero></div>
   <details class=hour-details id=hour-details><summary>View hourly counts</summary>
    <p class=mut><span id=hour-zone>Hours use the poller’s time zone.</span> Counts are recorded increases and can differ from daily net totals.</p>
    <label for=hour-metric>Metric</label> <select id=hour-metric></select>
    <div class=tw id=hour-table></div>
   </details><div class=herofoot id=herofoot></div></div>
- <div class="card s7"><h2 id=needs-you tabindex=-1>To do<span class=sp></span><small id=actn></small></h2><p class=freshness id=action-freshness hidden></p><ul class=acts id=acts></ul></div>
- <div class="card s5"><h2>Funnel<span class=sp></span><small>30 days, and yesterday</small></h2><div class=fn id=fun></div></div>
- <div class="card s7"><h2>Top models<span class=sp></span><span class=seg id=topseg role=group aria-label="Top models period"></span></h2><div class="tw fit" id=top></div></div>
- <div class="card s5"><h2>Followers<span class=sp></span><small>last 30 days</small></h2><div class=minis id=fol></div>
-  <div class=bars id=folbars style="height:70px"></div><div class=axis><span>30 days ago</span><span>today</span></div></div>
- <div class="card s5"><h2>7 and 30 days<span class=sp></span><small>bars: last 7 days</small></h2><div class="tw fit" id=periods></div></div>
- <div class="card s7"><h2>Best times<span class=sp></span><span class=seg id=bestseg role=group aria-label="Best times metric"></span></h2><div id=best></div><details class=hour-details id=best-hours hidden><summary>View hourly totals</summary>
+ <div class=ovl>
+ <div class="card o2"><h2 id=needs-you tabindex=-1>To do<span class=sp></span><small id=actn></small></h2><p class=freshness id=action-freshness hidden></p><ul class=acts id=acts></ul></div>
+ <div class="card o4"><h2>Top models<span class=sp></span><span class=seg id=topseg role=group aria-label="Top models period"></span></h2><div class="tw fit" id=top></div></div>
+ <div class="card o6"><h2>Best times<span class=sp></span><span class=seg id=bestseg role=group aria-label="Best times metric"></span></h2><div id=best></div><details class=hour-details id=best-hours hidden><summary>View hourly totals</summary>
  <div class=tw id=best-hour-table></div></details></div>
- <div class="card s12"><h2><span class=tip tabindex=0 data-tip="★ MakerWorld reward milestones per model, from the same rules as the Earnings estimate. ◆ round-number milestones for your account and models.">Recent milestones</span><span class=sp></span><small>last 7 days</small></h2><div class=msl id=msl></div></div>
- <div class="card s12"><h2>Creator at a glance<span class=sp></span><small id=cprog></small></h2><div class=facts id=ckp></div></div>
- <div class="card s12" id=earncard><h2><span class=tip tabindex=0 data-tip="What your models' lifetime downloads, prints and boosts are worth under MakerWorld's reward rules, using the PrintNexus earnings calculator's formula.">Earnings estimate</span><span class=sp></span><small>lifetime, all models</small></h2><div class=earn id=earn><p class=mut>Waiting for the first poll</p></div>
+ <div class="card o5"><h2>Followers<span class=sp></span><small>last 30 days</small></h2><div class=minis id=fol></div>
+  <div class=bars id=folbars style="height:70px"></div><div class=axis><span>30 days ago</span><span>today</span></div></div>
+ </div><div class=ovr>
+ <div class="card o3"><h2>Funnel<span class=sp></span><small>30 days, and yesterday</small></h2><div class=fn id=fun></div></div>
+ <div class="card o7"><h2>7 and 30 days<span class=sp></span><small>bars: last 7 days</small></h2><div class="tw fit" id=periods></div></div>
+ <div class="card o8"><h2><span class=tip tabindex=0 data-tip="★ MakerWorld reward milestones per model, from the same rules as the Earnings estimate. ◆ round-number milestones for your account and models.">Recent milestones</span><span class=sp></span><small>last 7 days</small></h2><div class=msl id=msl></div></div>
+ </div>
+ <div class="card ovw o9"><h2>Creator at a glance<span class=sp></span><small id=cprog></small></h2><div class=facts id=ckp></div></div>
+ <div class="card ovw o10" id=earncard><h2><span class=tip tabindex=0 data-tip="What your models' lifetime downloads, prints and boosts are worth under MakerWorld's reward rules, using the PrintNexus earnings calculator's formula.">Earnings estimate</span><span class=sp></span><small>lifetime, all models</small></h2><div class=earn id=earn><p class=mut>Waiting for the first poll</p></div>
   <div class=earnfoot><p>An estimate, not a statement. MakerWorld can delay or reject rewards, and likes and comments earn nothing. Uses are downloads plus 2 per print.</p>
    <details class=earnset id=earnset><summary>Assumptions</summary><form class=row id=earnform>
     <label>Model reward adjustment<input type=number id=eadj min=0 max=3 step=0.01 inputmode=decimal></label>
     <label>Value per point, $<input type=number id=eusd min=0 max=10 step=0.0001 inputmode=decimal></label>
     <button class="btn sm pri" type=submit>Save</button><button class="btn sm ghost" type=button id=edef>Use defaults</button>
     <span class=hint>Adjustment seen from 1.0× to 1.5× (default 1.37×); it scales model milestone points only. $0.0816 is a $40 gift card for 490 points. Mark exclusive models under <a href="#models/earnings">Models</a>.</span></form></details></div></div>
+
 </div></section>
 
 <section class=view id=v-models aria-label=Models><div class=grid>
