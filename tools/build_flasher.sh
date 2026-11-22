@@ -40,7 +40,7 @@ board_name() {
     crowpanel_70) echo 'Elecrow CrowPanel 7.0"' ;;
     waveshare_70) echo 'Waveshare ESP32-S3-Touch-LCD-7' ;;
     jc3248w535) echo 'Guition JC3248W535 3.5"' ;;
-    wt32_sc01_plus) echo 'Wireless-Tag WT32-SC01 Plus 3.5"' ;;
+    wt32_sc01_plus) echo 'WT32-SC01 Plus 3.5"' ;;
     ws_lcd2) echo 'Waveshare ESP32-S3-Touch-LCD-2' ;;
     ws316) echo 'Waveshare ESP32-S3-LCD-3.16 (knob)' ;;
     jc4880p443) echo 'Guition JC4880P443C 4.3"' ;;
