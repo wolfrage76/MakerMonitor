@@ -200,6 +200,8 @@ class MakerWorldClient:
                         published=str(h.get("publishTime") or h.get("createTime") or ""),
                         ratings=sum(int(_num(i.get("ratingCount"))) for i in h.get("instances") or []),
                         rating_sum=sum(int(_num(i.get("ratingScoreTotal"))) for i in h.get("instances") or []),
+                        # The owner's list marks public models status 1; anything else isn't public.
+                        private=own and int(_num(h.get("status"))) != 1,
                     )
                     earn[mid] = _earn_info(h)
                 offset += len(hits)

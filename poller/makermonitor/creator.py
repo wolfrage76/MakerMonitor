@@ -307,7 +307,9 @@ class CreatorStats:
 
     def progress(self, snap: Snapshot) -> dict[str, int]:
         cache = self.d["models"]
-        return {"have": sum(1 for m in snap.models if cache.get(m, {}).get("t")), "of": len(snap.models)}
+        pub = [k for k, m in snap.models.items() if not m.private]
+        return {"have": sum(1 for k in pub if cache.get(k, {}).get("t")), "of": len(pub),
+                "private": len(snap.models) - len(pub)}
 
     def compute(self, snap: Snapshot, day_view: dict[str, Any], daily_days: list[dict[str, Any]],
                 hour_profile: list[int] | None = None) -> dict[str, Any]:
@@ -385,9 +387,16 @@ class CreatorStats:
             # 5. points, 6. followers
             r["pts7"], r["pts30"] = r["w"]["pt"], r["m"]["pt"]
             r["fol7"], r["fol30"] = int(r["w"]["f"]), int(r["m"]["f"])
+            r["priv"] = m.private
             rows[mid] = r
 
-        acct = self._account(rows, snap, daily_days, last7, last30)
+        # Account stats leave out private models so they don't skew the averages;
+        # unanswered comments still count every model, since they still need a reply.
+        pub = {k: r for k, r in rows.items() if not r["priv"]}
+        acct = self._account(pub, snap, daily_days, last7, last30)
+        acct["unans"] = sum(r["unans"] or 0 for r in rows.values())
+        acct["unansScanned"] = sum(1 for r in rows.values() if r["unans"] is not None)
+        acct["private"] = len(rows) - len(pub)
         acct["spikes"] = find_spikes(rows, hour_profile)
         return {"t": int(time.time()), "progress": self.progress(snap), "acct": acct, "models": rows}
 
@@ -448,7 +457,8 @@ class CreatorStats:
             "unans": sum(r["unans"] for r in unans),
             "unansScanned": sum(1 for r in rows.values() if r["unans"] is not None),
             "rt": sum(r["rt"] for r in rows.values()),
-            "ra": _ratio(sum(m.rating_sum for m in snap.models.values()), sum(m.ratings for m in snap.models.values())),
+            "ra": _ratio(sum(m.rating_sum for k, m in snap.models.items() if k in rows),
+                         sum(m.ratings for k, m in snap.models.items() if k in rows)),
         }
 
     def compact(self, full: dict[str, Any], n: int = 4) -> dict[str, Any]:

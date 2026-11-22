@@ -965,6 +965,7 @@ def create_app(settings: Settings, cfg_path=None) -> FastAPI:
             st["dash"]["unans"] = ctx.creator.unanswered({mid: m.name for mid, m in snap.models.items()})
             st["dash"]["commentScans"] = ctx.creator.comment_scan_status(snap.models)
             st["dash"]["modelNames"] = {mid: m.name for mid, m in snap.models.items()}
+            st["dash"]["private"] = [mid for mid, m in snap.models.items() if m.private]
             try:
                 st["dash"]["earnings"] = earnings_estimate(snap, ctx.earnings.values)
             except Exception as exc:  # noqa: BLE001 - never break the dashboard

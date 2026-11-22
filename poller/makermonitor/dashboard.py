@@ -170,6 +170,7 @@ td svg.wk7{width:64px;height:20px;vertical-align:middle}
 #top th:nth-child(2),#top td:nth-child(2){display:none}#top td.nm{white-space:normal}#top td.nm>a,#top td.nm>span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.35}
 @media (max-width:760px){.nophone{display:none}.fit table td.nm,.fit table th:first-child{min-width:100px}#periods td.nm{white-space:nowrap;overflow:visible;max-width:none;width:auto}
  #mtable td.nm{white-space:normal;max-width:none;min-width:118px}#mtable th,#mtable td{padding:8px 5px;font-size:15px}#mtable td.nm>a,#mtable td.nm>span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.35}}
+.priv{display:inline-block;margin-right:2px;padding:0 6px;border-radius:5px;border:1px solid var(--line);color:var(--ink2);font-size:12px;font-weight:600;line-height:18px;vertical-align:1px;white-space:nowrap}
 .kdot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--k);margin-right:6px;vertical-align:1px}
 .empty{padding:18px 4px;color:var(--ink3);text-align:center}
 /* ---- charts ---- */
@@ -643,7 +644,9 @@ const idOf=n=>{if(!C||!n)return null;for(const r of Object.values(C.models||{}))
 const DO=list=>`<span class=do>${list.filter(Boolean).map(([l,h,t,x])=>`<a href="${h}"${x?" target=_blank rel=noopener":""}${t?` data-tip="${esc(t)}"`:""}>${l}${x?EXT:""}</a>`).join("")}</span>`;
 const OPEN=(id,l="Open on MakerWorld")=>id?[l,mwUrl(id),"Opens the model page in a new tab.",1]:null;
 const TIP=(txt,t)=>`<span class=tip tabindex=0 data-tip="${esc(t)}">${txt}</span>`;
-const mwLink=(id,n)=>id?`<a href="https://makerworld.com/en/models/${encodeURIComponent(id)}" target=_blank rel=noopener title="${esc(n)}">${esc(n)}</a>`:`<span title="${esc(n)}">${esc(n)}</span>`;
+// Published but not public on MakerWorld (only the signed-in owner list has them).
+const PRIV=id=>(S?.dash?.private||[]).includes(String(id))?`<span class=priv data-tip="Not public on MakerWorld">Private</span> `:"";
+const mwLink=(id,n)=>PRIV(id)+(id?`<a href="https://makerworld.com/en/models/${encodeURIComponent(id)}" target=_blank rel=noopener title="${esc(n)}">${esc(n)}</a>`:`<span title="${esc(n)}">${esc(n)}</span>`);
 function seg(el,items,cur,set){
  const active=el.contains(document.activeElement)?document.activeElement.dataset.k:null;
  el.innerHTML=items.map(([k,l])=>`<button type=button class="${k==cur?"on":""}" aria-pressed="${k==cur}" data-k="${k}">${l}</button>`).join("");
@@ -838,14 +841,14 @@ function msCrossings(){const out=[],tot=S.total||{},days=S.days||[];
  for(const [id,m] of Object.entries((C&&C.models)||{})){const life=m.life||{},w=m.w||{};
   for(const [k,l] of [["d","downloads"],["p","prints"]]){const end=+life[k]||0,start=end-(+w[k]||0);if(start<=0||end<=start)continue;
    const st=msStep(start),a=Math.floor(start/st),b=Math.floor(end/st);
-   if(b>a)out.push({t:`<b>${fmt(b*st)}</b> ${l} <small>· <a href="#models/${encodeURIComponent(id)}">${esc(modelName(id,m.n))}</a></small>`,when:"this week",age:8})}}
+   if(b>a)out.push({t:`<b>${fmt(b*st)}</b> ${l} <small>· ${PRIV(id)}<a href="#models/${encodeURIComponent(id)}">${esc(modelName(id,m.n))}</a></small>`,when:"this week",age:8})}}
  // MakerWorld reward milestones (model ladder from earnings.py): weighted uses now vs 7 days ago.
  const e=EST();
  for(const [id,em] of Object.entries((e&&e.models)||{})){const w=((C&&C.models||{})[id]||{}).w||{};
   const now=+em.u||0,was=now-(+w.d||0)-2*(+w.p||0);if(was<0||now<=was)continue;
   const n=rwCount(now)-rwCount(was);if(n<=0)continue;
   const p=(rwPts(now)-rwPts(was))*(em.x?1.25:1)*(+e.adjust||1);
-  out.push({t:`<b>${fmt(rwTop(now))}</b> uses${n>1?` <small>(${n} reward milestones)</small>`:""} <small>· <a href="#models/${encodeURIComponent(id)}">${esc(modelName(id,id))}</a></small>`,
+  out.push({t:`<b>${fmt(rwTop(now))}</b> uses${n>1?` <small>(${n} reward milestones)</small>`:""} <small>· ${PRIV(id)}<a href="#models/${encodeURIComponent(id)}">${esc(modelName(id,id))}</a></small>`,
    pts:p,when:"this week",age:7,rw:1})}
  return out.sort((a,b)=>a.age-b.age||(b.pts||0)-(a.pts||0))}
 // Reward ladder: [tier upper bound in uses, uses per milestone, points per milestone].
@@ -858,7 +861,8 @@ function renderMilestones(){const x=msCrossings().slice(0,10);
   (x.some(r=>r.rw)?`<p class=mut style="margin:8px 0 0;font-size:14px">★ MakerWorld reward milestones (uses = downloads + 2 × prints), points estimated as in Earnings. ◆ round numbers.</p>`:"")
   :`<p class=mut>No milestones crossed in the last 7 days.</p>`}
 function renderKpis(){if(!C)return;const a=C.acct||{},p=C.progress||{},fo=S.followers||{};
- $("cprog").textContent=p.of?(p.have<p.of?`analytics for ${p.have} of ${p.of} models so far`:`analytics for all ${p.of} models`):"waiting for the first poll";
+ const pv=p.private?`, ${p.private} private not counted`:"";
+ $("cprog").textContent=p.of?(p.have<p.of?`analytics for ${p.have} of ${p.of} public models so far${pv}`:`analytics for all ${p.of} public models${pv}`):"waiting for the first poll";
  const e=(a.e100||{}).m||{},tr=a.ptsTrend=="up"?"up":a.ptsTrend=="down"?"down":"",dd=a.dpv7!=null&&a.dpv30!=null?(a.dpv7>a.dpv30?"up":a.dpv7<a.dpv30?"down":""):"";
  const row=(l,sub,v,extra="",tip="",href="")=>`<div class=fr><span>${tip?TIP(l,tip):l}${sub?`<small>${sub}</small>`:""}</span><b>${href?`<a class=rowlink href="${href}">${v}</a>`:v}${extra?`<small>${extra}</small>`:""}</b></div>`;
  const grp=(h,rows)=>`<div><h3>${h}</h3>${rows.join("")}</div>`;
@@ -892,7 +896,7 @@ function renderEarn(){const e=EST(),box=$("earn");
  <div><h3>Where the points come from</h3>${row("Model milestones",`${xf(e.adjust)} reward adjustment`,pts(e.parts.model))}
   ${row("Print profile milestones","",pts(e.parts.profile))}${row("Boosts",`${fmt(boosts)} received`,pts(e.parts.boost))}
   ${row("Weighted uses","downloads + 2 × prints",fmt(e.uses))}</div>
- <div><h3>Next milestones</h3>${near.map(([id,m])=>row(`<a class=nm href="#models/${encodeURIComponent(id)}" title="${esc(modelName(id,id))}">${esc(modelName(id,id))}</a>`,`${fmt(m.need)} more use${m.need==1?"":"s"}`,"+"+pts(m.pays)+" pts")).join("")||`<p class=mut>No uses yet</p>`}</div>`;
+ <div><h3>Next milestones</h3>${near.map(([id,m])=>row(`${PRIV(id)}<a class=nm href="#models/${encodeURIComponent(id)}" title="${esc(modelName(id,id))}">${esc(modelName(id,id))}</a>`,`${fmt(m.need)} more use${m.need==1?"":"s"}`,"+"+pts(m.pays)+" pts")).join("")||`<p class=mut>No uses yet</p>`}</div>`;
  const ia=$("eadj"),iu=$("eusd");
  if(document.activeElement!==ia)ia.value=e.adjust;if(document.activeElement!==iu)iu.value=e.usdPerPoint}
 function earnLine(id){const m=EST()?.models?.[id];if(!m)return"";
@@ -906,7 +910,7 @@ function renderEarnModels(all,q){const e=EST(),box=$("etable");
  $("ecount").textContent=` ${rows.length} earning${idle?`, ${idle} with no uses yet`:""}`;
  const H=(l,t,c="")=>`<th${c?` class=${c}`:""}>${TIP(l,t)}</th>`;
  box.innerHTML=`<table><thead><tr>${H("Model","Model name. Opens its stats in MakerMonitor.")}${H("Uses","Downloads plus 2 per print, lifetime.")}${H("Model pts","Complete model milestones, with the reward adjustment.","nophone")}${H("Profile pts","Complete print profile milestones.","nophone")}${H("Boost pts","12 points a boost, 15 on an Exclusive Model.","nophone")}${H("Points","Total estimated points.")}${H("Value","Points × value per point.")}${H("Next milestone","Uses still needed for the next model milestone, and what it pays.","nophone")}${H("Exclusive","Tick if this is a MakerWorld Exclusive Model.")}</tr></thead><tbody>`+
-  (rows.map(([id,m])=>{const n=modelName(id,id);return `<tr><td class=nm><a href="#models/${encodeURIComponent(id)}" title="${esc(n)}">${esc(n)}</a></td><td>${fmt(m.u)}</td><td class=nophone>${pts(m.base*e.adjust)}</td><td class=nophone>${pts(m.prof)}</td><td class=nophone>${pts(m.boost)}</td><td><b>${pts(m.pts)}</b></td><td>${usd(m.usd)}</td>
+  (rows.map(([id,m])=>{const n=modelName(id,id);return `<tr><td class=nm>${PRIV(id)}<a href="#models/${encodeURIComponent(id)}" title="${esc(n)}">${esc(n)}</a></td><td>${fmt(m.u)}</td><td class=nophone>${pts(m.base*e.adjust)}</td><td class=nophone>${pts(m.prof)}</td><td class=nophone>${pts(m.boost)}</td><td><b>${pts(m.pts)}</b></td><td>${usd(m.usd)}</td>
    <td class=nophone>${fmt(m.need)} <span class=mut>→ +${pts(m.pays)}</span></td><td>${m.auto?`<span class=tip tabindex=0 data-tip="MakerWorld lists this as an Exclusive Model">Yes</span>`:`<input type=checkbox data-x="${esc(id)}"${m.x?" checked":""} aria-label="${esc(n)} is an Exclusive Model">`}</td></tr>`}).join("")
   ||`<tr><td colspan=9 class=empty>${ids.size?"No earning models match the filter":"No models yet"}</td></tr>`)+"</tbody></table>";
  box.querySelectorAll("input[data-x]").forEach(c=>c.onchange=()=>{const cur=new Set(EST().exclusive||[]);c.checked?cur.add(c.dataset.x):cur.delete(c.dataset.x);saveEarn({exclusive:[...cur]},c)})}
@@ -1039,7 +1043,7 @@ function renderModels(){
  const spk=new Set(spikes().map(r=>r.id));
  const trend=(m,id)=>spk.has(id)?`<span class=up>${ARR(1)} spiking today</span>`:!m?"<span class=mut>–</span>":m.stalled?`<span class=down>stalled</span>`:m.rising?`<span class=up>${ARR(1)} rising fast</span>`:m.dir=="up"?`<span class=up>${ARR(1)} up</span>`:m.dir=="down"?`<span class=down>${ARR(-1)} down</span>`:"<span class=mut>flat</span>";
  const nv=v=>v==null?"<span class=mut>–</span>":fmt(Math.round(v));
- $("mtable").innerHTML=`<table><thead><tr>${head}</tr></thead><tbody>`+(rows.map(r=>`<tr><td class=nm><a href="#models/${encodeURIComponent(r.id)}" title="${esc(r.n)}">${esc(r.n)}</a></td><td class=nophone>${spark(SP[r.id],"d")}</td>
+ $("mtable").innerHTML=`<table><thead><tr>${head}</tr></thead><tbody>`+(rows.map(r=>`<tr><td class=nm>${PRIV(r.id)}<a href="#models/${encodeURIComponent(r.id)}" title="${esc(r.n)}">${esc(r.n)}</a></td><td class=nophone>${spark(SP[r.id],"d")}</td>
   <td>${nv(r.d30)}</td><td class=nophone>${nv(r.v30)}</td><td class=nophone>${pc(r.dpv)}</td><td class=nophone>${nv(r.p30)}</td><td class=nophone>${nv(r.l30)}</td><td class=nophone>${nv(r.c30)}</td><td class=nophone>${r.pt30==null?"<span class=mut>–</span>":nf(r.pt30)}</td>
   <td class=nophone>${r.rt?`${fmt(r.rt)} <span class=mut>at ${nf(r.ra,1)}</span>`:"<span class=mut>–</span>"}</td><td>${trend(r.momr,r.id)}</td><td class=nophone>${r.un?`<a href="#activity/${esc(r.id)}" style="color:var(--acc);font-weight:700" data-tip="List the unanswered comments on this model">${r.un}</a>`:`<span class=mut>${r.un==null?"Not checked":"0"}</span>`}</td></tr>`).join("")||`<tr><td colspan=12 class=empty>${all.length?"No models match the filter":"No models yet"}</td></tr>`)+"</tbody></table>";
  $("mtable").querySelectorAll("th .sb").forEach(b=>b.onclick=()=>{const k=b.dataset.k;if(mSort==k)mDir=-mDir;else{mSort=k;mDir=k=="n"?1:-1}renderModels();const f=$("mtable").querySelector(`.sb[data-k="${k}"]`);f&&f.focus()});

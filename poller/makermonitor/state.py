@@ -39,6 +39,7 @@ class ModelStats:
     # total of their stars (average = rating_sum / ratings).
     ratings: int = 0
     rating_sum: int = 0
+    private: bool = False  # published but hidden from the public list
 
 
 @dataclass
