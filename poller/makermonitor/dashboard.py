@@ -697,15 +697,11 @@ function renderHead(){const h=S.health||{},st=S.status||{};
  const nf=((S.dash||{}).feedAll||S.feed||[]).length;$("ctact").hidden=!nf;$("ctact").textContent=nf>=40?"40+":nf;tabScroll()}
 
 /* ---------- overview ---------- */
-// The poller's local hour (S.tz is its UTC offset in seconds), so the "by now" comparison
-// lines up with its hourly buckets even if the browser is in another timezone.
+// The poller's local hour (S.tz is its UTC offset in seconds), so the day lines
+// line up with its hourly buckets even if the browser is in another timezone.
 // Anchored at S.t, when today's numbers were measured.
 const pSec=()=>{const t=S&&S.t?S.t:Date.now()/1e3;return S&&S.tz!=null?(((t+S.tz)%86400)+86400)%86400:(new Date(t*1e3).getHours()*3600+new Date(t*1e3).getMinutes()*60)};
 const pHour=()=>Math.floor(pSec()/3600);
-// Yesterday's total by this time: the hourly buckets count gross gains while the day total is
-// net, so scale the total by the share of the buckets reached by now (the current hour prorated).
-function byNow(yk,total){const sec=pSec(),h=Math.floor(sec/3600),all=sum(yk,24);if(!all||total==null)return null;
- return Math.round(total*(sum(yk,h)+(+yk[h]||0)*((sec%3600)/3600))/all)}
 const sum=(a,n)=>(a||[]).slice(0,n).reduce((x,v)=>x+(+v||0),0);
 // The day as a row of peg holes, one per hour: yesterday's count is the outline ring,
 // today's (up to now) the filled peg, and the current hour gets a tick underneath.
@@ -780,14 +776,12 @@ function renderOverview(){const t=S.today||{},y=S.yday||{},hr=S.hours||{},X=S.da
  $("ydaynote").textContent=yh?"dashed line: yesterday":"";
  const tot=S.total||{},m=S.month||{},ra=+tot.ratingAvg||0,rv=t.ratings||0;
  $("hero").innerHTML=K.map(([k,l,c])=>{const v=t[k]||0,yv=y[k],yk=yh&&yh[k];
-  let cmp="&nbsp;";const by=yk?byNow(yk,yv):null;
-  const BYT=`Yesterday's ${l.toLowerCase()} up to this time of day: ${fmt(yv)} all day, scaled by how much of yesterday's activity had happened by now.`;
-  if(by!=null){const d=v-by;cmp=`<span class="${d>0?"up":d<0?"down":""}">${d?sg(d):"±0"}</span>${TIP(`vs ${fmt(by)} by now yesterday`,BYT)}`}
-  else if(yv!=null)cmp=`<span>${fmt(yv)} all day yesterday</span>`;
+  let cmp="&nbsp;";
+  if(yv!=null){const d=v-yv;cmp=`<span class="${d>0?"up":d<0?"down":""}">${d?sg(d):"±0"}</span>${TIP(`vs ${fmt(yv)} yesterday`,`Yesterday's ${l.toLowerCase()} for the whole day.`)}`}
   return `<div class=stat style="--k:var(--${c})"><div class=lab><span><span class=kdot></span><a class=rowlink href="#activity/k:${k}" data-tip="See today's ${l.toLowerCase()}, model by model">${l}</a></span></div>
    <div class="val${v?"":" zero"}">${v?sg(v):"0"}</div><div class=cmp>${cmp}</div>${dayLine(hr[k],yk,c,h)}</div>`}).join("")+
   `<div class=stat style="--k:var(--r)"><div class=lab><span><span class=kdot></span>Ratings</span><span data-tip="Average of ${fmt(tot.ratings)} ratings">${ra?ra.toFixed(2)+" avg":""}</span></div>
-   <div class="val${rv?"":" zero"}">${rv?sg(rv):"0"}</div><div class=cmp>${y.ratings!=null?`<span>${fmt(y.ratings)} all day yesterday</span>`:`<span>${fmt(tot.ratings||0)} total</span>`}</div>${stars(ra)}</div>`;
+   <div class="val${rv?"":" zero"}">${rv?sg(rv):"0"}</div><div class=cmp>${y.ratings!=null?`<span>vs ${fmt(y.ratings)} yesterday</span>`:`<span>${fmt(tot.ratings||0)} total</span>`}</div>${stars(ra)}</div>`;
  renderHourTable();
  const acu=S.account?"https://makerworld.com/en/@"+encodeURIComponent(S.account):null;
  $("herofoot").innerHTML=[t.points!=null?`<span>${TIP("Points today","MakerWorld points earned since midnight, from every source.")}<b>${sg(+(+t.points).toFixed(1))}${y.points!=null?`<small>yesterday ${nf(y.points)}</small>`:""}</b></span>`:"",
