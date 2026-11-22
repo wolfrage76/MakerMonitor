@@ -34,6 +34,13 @@ def _session(timeout: float) -> AsyncSession:
     return AsyncSession(impersonate="chrome", timeout=timeout, allow_redirects=True)
 
 
+def _json_or_none(r: Any) -> Any:
+    try:
+        return r.json()
+    except Exception:
+        return None
+
+
 class MakerWorldClient:
     def __init__(self, handle: str, user_agent: str, cookie: str = "") -> None:
         self.handle = handle.lstrip("@")
@@ -160,12 +167,19 @@ class MakerWorldClient:
             models: dict[str, ModelStats] = {}
             earn: dict[str, dict[str, Any]] = {}  # per-profile uses and exclusive flag (earnings estimate)
             offset, limit = 0, 50
+            # Signed in, the owner's own list also has models the public list leaves out
+            # (status 3, e.g. exclusives not yet public); fall back to the public list.
+            own = bool(self.cookie)
             while True:
-                r = await LIMITER.get(client, endpoint="models", core=True, url=
-                    f"{BASE}/api/v1/design-service/published/{uid}/design"
-                    f"?handle=@{self.handle}&limit={limit}&offset={offset}",
-                    headers=self._headers(),
-                )
+                url = (f"{BASE}/api/v1/design-service/my/design/published?limit={limit}&offset={offset}" if own else
+                       f"{BASE}/api/v1/design-service/published/{uid}/design"
+                       f"?handle=@{self.handle}&limit={limit}&offset={offset}")
+                r = await LIMITER.get(client, endpoint="models", core=True, url=url, headers=self._headers())
+                if own and (r.status_code >= 400 or not isinstance(_json_or_none(r), dict)):
+                    log.warning("Own design list unavailable (HTTP %s); using the public list", r.status_code)
+                    own, offset = False, 0
+                    models.clear(); earn.clear()
+                    continue
                 if r.status_code in (401, 403):
                     raise AuthError(f"design list HTTP {r.status_code}")
                 r.raise_for_status()
