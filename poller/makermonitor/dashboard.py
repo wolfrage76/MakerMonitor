@@ -533,13 +533,13 @@ dialog.dlg .row{justify-content:flex-end}
  <div class="card o2"><h2 id=needs-you tabindex=-1>To do<span class=sp></span><small id=actn></small></h2><p class=freshness id=action-freshness hidden></p><ul class=acts id=acts></ul></div>
  <div class="card o4"><h2>Top models<span class=sp></span><span class=seg id=topseg role=group aria-label="Top models period"></span></h2><div class="tw fit" id=top></div></div>
  <div class="card o6"><h2>7 and 30 days<span class=sp></span><small>bars: last 7 days</small></h2><div class="tw fit" id=periods></div></div>
- <div class="card o6b"><h2>Best times<span class=sp></span><span class=seg id=bestseg role=group aria-label="Best times metric"></span></h2><div id=best></div><details class=hour-details id=best-hours hidden><summary>View hourly totals</summary>
- <div class=tw id=best-hour-table></div></details></div>
+ <div class="card o6b"><h2>Followers<span class=sp></span><small>last 30 days</small></h2><div class=minis id=fol></div>
+  <div class=bars id=folbars style="height:70px"></div><div class=axis><span>30 days ago</span><span>today</span></div></div>
  </div><div class=ovr>
  <div class="card o3"><h2>Funnel<span class=sp></span><small>30 days, and yesterday</small></h2><div class=fn id=fun></div></div>
  <div class="card o8"><h2><span class=tip tabindex=0 data-tip="★ MakerWorld reward milestones per model, from the same rules as the Earnings estimate. ◆ round-number milestones for your account and models.">Recent milestones</span><span class=sp></span><small>last 7 days</small></h2><div class=msl id=msl></div></div>
- <div class="card o9b"><h2>Followers<span class=sp></span><small>last 30 days</small></h2><div class=minis id=fol></div>
-  <div class=bars id=folbars style="height:70px"></div><div class=axis><span>30 days ago</span><span>today</span></div></div>
+ <div class="card o9b"><h2>Best times<span class=sp></span><span class=seg id=bestseg role=group aria-label="Best times metric"></span></h2><div id=best></div><details class=hour-details id=best-hours hidden><summary>View hourly totals</summary>
+ <div class=tw id=best-hour-table></div></details></div>
  </div>
  <div class="card ovw o9"><h2>Creator at a glance<span class=sp></span><small id=cprog></small></h2><div class=facts id=ckp></div></div>
  <div class="card ovw o10" id=earncard><h2><span class=tip tabindex=0 data-tip="What your models' lifetime downloads, prints and boosts are worth under MakerWorld's reward rules, using the PrintNexus earnings calculator's formula.">Earnings estimate</span><span class=sp></span><small>lifetime, all models</small></h2><div class=earn id=earn><p class=mut>Waiting for the first poll</p></div>
