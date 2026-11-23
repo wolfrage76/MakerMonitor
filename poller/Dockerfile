@@ -2,7 +2,10 @@
 FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
-RUN apt-get update && apt-get install -y --no-install-recommends tzdata && rm -rf /var/lib/apt/lists/*
+# libnss-mdns resolves .local panel names through the host's Avahi daemon
+# (its socket is mounted by docker-compose.yml).
+RUN apt-get update && apt-get install -y --no-install-recommends tzdata libnss-mdns && rm -rf /var/lib/apt/lists/* \
+ && sed -i 's/^hosts:.*/hosts: files mdns4_minimal [NOTFOUND=return] dns/' /etc/nsswitch.conf
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

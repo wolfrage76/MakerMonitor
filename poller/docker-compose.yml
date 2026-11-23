@@ -16,3 +16,5 @@ services:
       TZ: "${TZ:-America/New_York}"   # "today", daily stats and quiet hours use this time zone
     volumes:
       - ./docker-data:/config         # config.yaml + data/ (cookie, history, logs)
+      # .local panel names resolve through the host's Avahi (avahi-daemon must be running).
+      - /run/avahi-daemon/socket:/run/avahi-daemon/socket

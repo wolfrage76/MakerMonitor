@@ -28,12 +28,13 @@ Without compose:
 mkdir -p docker-data
 docker run -d --name makermonitor-poller --restart unless-stopped --network host \
   --user $(id -u):$(id -g) -e TZ=America/New_York -e MM_HANDLE=your-makerworld-handle \
-  -v "$PWD/docker-data:/config" ghcr.io/wolfrage76/makermonitor-poller:latest
+  -v "$PWD/docker-data:/config" -v /run/avahi-daemon/socket:/run/avahi-daemon/socket \
+  ghcr.io/wolfrage76/makermonitor-poller:latest
 ```
 
 - On first start it writes `docker-data/config.yaml` from the example, with no panels, a random `api_token` and the handle from `MM_HANDLE`, and prints the dashboard link. Without `MM_HANDLE` the handle is left blank and the poller waits until you set it in the dashboard's Settings view. `MM_HANDLE` only matters on that first start.
 - Moving from a non-Docker install: copy your `config.yaml` and `data/` into `docker-data/` before the first start (`cp config.yaml docker-data/ && cp -a data docker-data/`) and it keeps them.
-- It uses host networking, so the panels reach it on the host's LAN address and `.local` panel names resolve. Docker Desktop needs host networking turned on (Settings > Resources > Network).
+- It uses host networking, so the panels reach it on the host's LAN address. `.local` panel names resolve through the host's Avahi daemon, whose socket the compose file mounts (`avahi-daemon` must be running, as it is on most Linux desktops and Raspberry Pi OS; with `docker run`, add `-v /run/avahi-daemon/socket:/run/avahi-daemon/socket`, or use panel IPs). Docker Desktop needs host networking turned on (Settings > Resources > Network).
 - Set `TZ` (default `America/New_York`) so "today", daily stats and quiet hours match your clock.
 - The container runs as your user id, so `docker-data/` stays editable; the dashboard's Settings view saves into `docker-data/config.yaml`.
 - Mount the folder, not `config.yaml` alone: saving replaces the file, which a single-file mount can't do.
