@@ -581,6 +581,11 @@ class AppContext:
     async def _poll_once_unlocked(self) -> dict[str, Any]:
         settings = self.settings
         store = self.store
+        if settings.handle.strip().lstrip("@") in ("", "your-username"):
+            msg = "No MakerWorld handle set: add yours in Settings or config.yaml"
+            log.warning(msg)
+            store.status.last_error = msg
+            return {"ok": False, "error": msg}
         cookie = store.get_cookie()
         client = MakerWorldClient(settings.handle, settings.user_agent, cookie)
         self._poll_client, self._poll_cookie = client, bool(cookie)

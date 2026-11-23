@@ -209,16 +209,28 @@ If MakerWorld changes HTML/JSON shapes, update `makermonitor/makerworld.py`.
 
 ## Docker
 
-The `Dockerfile` and `docker-compose.yml` here run the same poller in a container. `config.yaml` and `data/` live in one mounted folder, `./docker-data`:
+A prebuilt image (amd64 and arm64, so a Raspberry Pi works) is published as `ghcr.io/wolfrage76/makermonitor-poller`. You don't need this repo, only the compose file. `config.yaml` and `data/` live in one mounted folder, `./docker-data`:
 
 ```bash
-cd poller
+mkdir makermonitor && cd makermonitor
+curl -O https://raw.githubusercontent.com/wolfrage76/MakerMonitor/main/poller/docker-compose.yml
 mkdir -p docker-data
-MM_HANDLE=your-username MM_UID=$(id -u) MM_GID=$(id -g) docker compose up -d --build
+MM_HANDLE=your-makerworld-handle MM_UID=$(id -u) MM_GID=$(id -g) docker compose up -d
 docker compose logs   # shows the dashboard link with its token
 ```
 
-- On first start it writes `docker-data/config.yaml` from the example, with your handle, no panels and a random `api_token`, and prints the dashboard link. Add panels and notifications in the dashboard's Settings view, or edit the file. `MM_HANDLE` only matters on that first start.
+Update with `docker compose pull && docker compose up -d`. From a clone of this repo, `docker compose up -d --build` in `poller/` builds the image locally instead.
+
+Without compose:
+
+```bash
+mkdir -p docker-data
+docker run -d --name makermonitor-poller --restart unless-stopped --network host \
+  --user $(id -u):$(id -g) -e TZ=America/New_York -e MM_HANDLE=your-makerworld-handle \
+  -v "$PWD/docker-data:/config" ghcr.io/wolfrage76/makermonitor-poller:latest
+```
+
+- On first start it writes `docker-data/config.yaml` from the example, with no panels, a random `api_token` and the handle from `MM_HANDLE`, and prints the dashboard link. Without `MM_HANDLE` the handle is left blank and the poller waits until you set it in the dashboard's Settings view. `MM_HANDLE` only matters on that first start.
 - Moving from a non-Docker install: copy your `config.yaml` and `data/` into `docker-data/` before the first start (`cp config.yaml docker-data/ && cp -a data docker-data/`) and it keeps them.
 
 - It uses host networking, so the panels reach it on the host's LAN address and `.local` panel names resolve. Docker Desktop needs host networking turned on (Settings > Resources > Network).

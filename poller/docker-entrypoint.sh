@@ -1,6 +1,6 @@
 #!/bin/sh
 # First run: write /config/config.yaml from the example, with no panels, the
-# handle from MM_HANDLE and a random api_token. Later runs leave it alone.
+# handle from MM_HANDLE (blank if unset) and a random api_token. Later runs leave it alone.
 set -e
 CFG=/config/config.yaml
 if [ ! -f "$CFG" ]; then
@@ -10,11 +10,11 @@ if [ ! -f "$CFG" ]; then
     exit 1
   fi
   TOKEN=${MM_API_TOKEN:-$(python -c 'import secrets; print(secrets.token_urlsafe(18))')}
-  sed -e "s|^handle:.*|handle: \"${MM_HANDLE:-your-username}\"|" \
+  sed -e "s|^handle:.*|handle: \"${MM_HANDLE}\"|" \
       -e 's|^panels:.*|panels: []|' \
       -e "s|^api_token:.*|api_token: \"$TOKEN\"|" \
       /app/config.example.yaml > "$CFG"
-  echo "Created $CFG (handle: ${MM_HANDLE:-your-username})."
+  echo "Created $CFG (handle: ${MM_HANDLE:-none yet, set it in the dashboard Settings})."
   echo "Dashboard: http://<this-host>:8787/?token=$TOKEN"
   echo "The token is also api_token in config.yaml; the browser extension needs it too."
 fi
