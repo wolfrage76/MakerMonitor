@@ -9,16 +9,37 @@ MakerMonitor watches your [MakerWorld](https://makerworld.com) creator account a
 
 ![MakerMonitor on the 7 inch panel](docs/screens/boards/7-inch.png)
 
-**Anyone can use it**, no hardware needed: the web dashboard works on any phone or computer on your network, and notifications reach Discord, Telegram, Pushover, ntfy, Home Assistant and more.
-**The panels are what set it apart**: a glanceable display that shows a banner (and on the 7″, chimes) when someone downloads or prints your model, flashed straight from your browser.
+## Quick start
 
-- [Desk panels](#desk-panels)
-- [Web dashboard](#web-dashboard)
-- [Notifications](#notifications)
-- [How it works](#how-it-works)
-- [Quick setup](#quick-setup)
-- [Supported boards](#supported-boards)
-- [Configuration](#configuration) · [Privacy](#privacy-and-being-polite-to-makerworld) · [FAQ](#faq-and-troubleshooting)
+Requires Docker with Compose v2 (`docker compose version` prints v2 or newer). Run this on any always-on machine on your home network (amd64 or arm64):
+
+```bash
+mkdir makermonitor && cd makermonitor
+curl -O https://raw.githubusercontent.com/wolfrage76/MakerMonitor/main/poller/docker-compose.yml
+mkdir -p docker-data
+MM_HANDLE=your-makerworld-handle MM_UID=$(id -u) MM_GID=$(id -g) docker compose up -d
+docker compose logs
+```
+
+You should see the first start write `docker-data/config.yaml` and print the dashboard link:
+
+```
+Created /config/config.yaml (handle: your-makerworld-handle).
+Dashboard: http://<this-host>:8787/?token=<api_token>
+The token is also api_token in config.yaml; the browser extension needs it too.
+```
+
+Open `http://<host>:8787/?token=<api_token>` with that machine's address and the dashboard loads. Next, add the [browser extension](#3-install-the-browser-extension), a [panel](#4-add-a-panel) or [notifications](#5-add-notifications). No Docker? Use the [Python install](#1-run-the-poller).
+
+## Key features
+
+- **Desk panels**: an always-on display with a banner (and on the 7″, a chime) for every download or print, so no MakerWorld tab needs to stay open. Flashed from your browser.
+- **Web dashboard**: today against yesterday at the same hour, plus a To do list of what to act on, on any phone or computer with nothing to install.
+- **Notifications**: Discord, Telegram, Pushover, ntfy, Home Assistant and more, one tidy message per poll instead of checking the site.
+- **Runs without you**: the poller fetches the stats itself; the extension only passes your login along, so the numbers keep updating with the browser closed.
+- **Private and polite**: your cookie stays on your network, and MakerWorld sees about 120 requests an hour at most.
+
+**Contents:** [Desk panels](#desk-panels) · [Web dashboard](#web-dashboard) · [Notifications](#notifications) · [How it works](#how-it-works) · [Prerequisites](#prerequisites) · [Quick setup](#quick-setup) · [Supported boards](#supported-boards) · [Configuration](#configuration) · [Examples](#examples) · [Privacy](#privacy-and-being-polite-to-makerworld) · [FAQ](#faq-and-troubleshooting) · [Roadmap](#roadmap) · [Contributing](#contributing)
 
 ---
 
@@ -100,6 +121,18 @@ The **browser extension** keeps the poller logged in: when you visit MakerWorld,
 
 More detail in [`docs/architecture.md`](docs/architecture.md).
 
+## Prerequisites
+
+| What | Needed for | Check it |
+|---|---|---|
+| Docker with Compose v2 | the recommended poller install | `docker compose version` |
+| Python 3 with `venv` and `pip` (the image uses 3.12) | the poller without Docker | `python3 --version` |
+| avahi-daemon on the Docker host | `.local` panel names under Docker | `systemctl is-active avahi-daemon` |
+| Chrome, Edge or Brave | the browser extension | |
+| Chrome or Edge | the web flasher (Web Serial) | |
+
+A MakerWorld creator account, and a panel only if you want one.
+
 ## Quick setup
 
 Start with the poller; add the dashboard, notifications and panels in any order.
@@ -108,15 +141,7 @@ Start with the poller; add the dashboard, notifications and panels in any order.
 
 Both options read the same `config.yaml`.
 
-**Docker (recommended)**, using the prebuilt image (amd64 and arm64):
-
-```bash
-mkdir makermonitor && cd makermonitor
-curl -O https://raw.githubusercontent.com/wolfrage76/MakerMonitor/main/poller/docker-compose.yml
-mkdir -p docker-data
-MM_HANDLE=your-makerworld-handle MM_UID=$(id -u) MM_GID=$(id -g) docker compose up -d
-docker compose logs   # first start prints the dashboard link with its token
-```
+**Docker (recommended)**: the [Quick start](#quick-start) above.
 
 **Python (pip)**, if you'd rather not use Docker
 
@@ -149,8 +174,10 @@ USB flashing, building from source, wireless updates and recovery are in [`firmw
 Add a channel in the dashboard's Settings → Notifications and press **Send test message**, or edit `notifications:` in `config.yaml` and run:
 
 ```bash
-.venv/bin/python -m makermonitor --test-notify
+docker compose exec poller python -m makermonitor -c /config/config.yaml --test-notify
 ```
+
+With the Python install, run `.venv/bin/python -m makermonitor --test-notify` from `poller/`.
 
 ## Supported boards
 
@@ -177,6 +204,38 @@ Everything lives in `poller/config.yaml`; start from the commented [`config.exam
 Most of it can be changed from the dashboard's **Settings** tab, which checks your changes, keeps a backup of the previous file and applies them right away. Secrets can come from environment variables (`"${DISCORD_WEBHOOK}"`).
 
 Panel settings (brightness, flip display, quiet hours, which events to show) are set on the panel itself or in its web console.
+
+## Examples
+
+Phone push through ntfy (free, no account), added under `notifications:` in `config.yaml`:
+
+```yaml
+notifications:
+  channels:
+    - type: ntfy
+      topic: "makermonitor-pick-something-unguessable"
+      events: [download, print, comment, follower, health]
+```
+
+Discord, quiet overnight, with a "while you were away" catch-up and health alerts that always get through:
+
+```yaml
+notifications:
+  channels:
+    - type: discord
+      url: "https://discord.com/api/webhooks/..."
+      quiet_hours: "23:00-07:00"
+      quiet_digest: true
+      urgent: [health]
+```
+
+Two panels, one by `.local` name and one by IP:
+
+```yaml
+panels: ["makermonitor.local", "192.168.1.50"]
+```
+
+Every option is commented in [`config.example.yaml`](poller/config.example.yaml); each notification service is in [`poller/NOTIFICATIONS.md`](poller/NOTIFICATIONS.md).
 
 ## Privacy and being polite to MakerWorld
 
@@ -219,6 +278,25 @@ Every 10 minutes by default. The dashboard's Settings or a panel's Settings page
 
 **Something stopped working after MakerWorld changed its site.**
 The data comes from MakerWorld's own (unofficial) web endpoints, which can change without notice. The dashboard's Health tab shows which source is failing.
+
+## Roadmap
+
+- Test the CrowPanel 5″ and 4.3″ builds on real hardware; they share the tested code but haven't run on the boards yet.
+- The e-paper panel is on hold and doesn't get the newer creator pages.
+- Out of scope: a hosted version (the poller runs on your own network by design) and watching several creator accounts from one poller.
+
+Ideas and bugs go in [GitHub issues](https://github.com/wolfrage76/MakerMonitor/issues).
+
+## Contributing
+
+Bug reports and pull requests are welcome. Open an [issue](https://github.com/wolfrage76/MakerMonitor/issues) first for anything large. Before sending a pull request:
+
+```bash
+(cd poller && .venv/bin/python -m makermonitor.diff_test)   # poller sanity check
+(cd firmware-color && pio run -e crowpanel_70)               # firmware builds (use your board's env)
+```
+
+Keep one change per pull request and describe what you tested it on.
 
 ## License
 
