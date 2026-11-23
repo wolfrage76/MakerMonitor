@@ -8,21 +8,40 @@ Always-on Python agent:
 4. Optionally sends notifications to Discord, Pushover, ntfy, Telegram and others ([`NOTIFICATIONS.md`](NOTIFICATIONS.md))
 5. Serves a LAN dashboard at `http://<poller-host>:8787/` (see [Dashboard](#dashboard))
 
-## Setup
+## Setup (Docker, recommended)
+
+A prebuilt image (amd64 and arm64, so a Raspberry Pi works) is published as `ghcr.io/wolfrage76/makermonitor-poller`. You don't need this repo, only the compose file. `config.yaml` and `data/` live in one mounted folder, `./docker-data`:
 
 ```bash
-cd poller
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cp config.example.yaml config.yaml
-# edit handle, api_token, and panels / notifications as needed
-python -m makermonitor
+mkdir makermonitor && cd makermonitor
+curl -O https://raw.githubusercontent.com/wolfrage76/MakerMonitor/main/poller/docker-compose.yml
+mkdir -p docker-data
+MM_HANDLE=your-makerworld-handle MM_UID=$(id -u) MM_GID=$(id -g) docker compose up -d
+docker compose logs   # shows the dashboard link with its token
 ```
+
+Update with `docker compose pull && docker compose up -d`. From a clone of this repo, `docker compose up -d --build` in `poller/` builds the image locally instead.
+
+Without compose:
+
+```bash
+mkdir -p docker-data
+docker run -d --name makermonitor-poller --restart unless-stopped --network host \
+  --user $(id -u):$(id -g) -e TZ=America/New_York -e MM_HANDLE=your-makerworld-handle \
+  -v "$PWD/docker-data:/config" ghcr.io/wolfrage76/makermonitor-poller:latest
+```
+
+- On first start it writes `docker-data/config.yaml` from the example, with no panels, a random `api_token` and the handle from `MM_HANDLE`, and prints the dashboard link. Without `MM_HANDLE` the handle is left blank and the poller waits until you set it in the dashboard's Settings view. `MM_HANDLE` only matters on that first start.
+- Moving from a non-Docker install: copy your `config.yaml` and `data/` into `docker-data/` before the first start (`cp config.yaml docker-data/ && cp -a data docker-data/`) and it keeps them.
+- It uses host networking, so the panels reach it on the host's LAN address and `.local` panel names resolve. Docker Desktop needs host networking turned on (Settings > Resources > Network).
+- Set `TZ` (default `America/New_York`) so "today", daily stats and quiet hours match your clock.
+- The container runs as your user id, so `docker-data/` stays editable; the dashboard's Settings view saves into `docker-data/config.yaml`.
+- Mount the folder, not `config.yaml` alone: saving replaces the file, which a single-file mount can't do.
+- Only run one poller per account: stop the systemd service (`systemctl --user disable --now makermonitor-poller`) before starting the container, or they both poll MakerWorld.
 
 Open `http://<poller-host>:8787/health` to verify.
 
-What happened overnight is in `data/poller.log` (rotated, 1 MB × 5). Each poll logs the cookie age, MakerWorld result, and whether the e-paper and color panels accepted the update. An extension cookie push is logged there too, by cookie name only.
+What happened overnight is in `data/poller.log` (`docker-data/data/poller.log` in Docker; rotated, 1 MB × 5). Each poll logs the cookie age, MakerWorld result, and whether the e-paper and color panels accepted the update. An extension cookie push is logged there too, by cookie name only.
 
 ## Panels (optional)
 
@@ -207,37 +226,19 @@ Unofficial, best-effort order:
 
 If MakerWorld changes HTML/JSON shapes, update `makermonitor/makerworld.py`.
 
-## Docker
+## Python install
 
-A prebuilt image (amd64 and arm64, so a Raspberry Pi works) is published as `ghcr.io/wolfrage76/makermonitor-poller`. You don't need this repo, only the compose file. `config.yaml` and `data/` live in one mounted folder, `./docker-data`:
-
-```bash
-mkdir makermonitor && cd makermonitor
-curl -O https://raw.githubusercontent.com/wolfrage76/MakerMonitor/main/poller/docker-compose.yml
-mkdir -p docker-data
-MM_HANDLE=your-makerworld-handle MM_UID=$(id -u) MM_GID=$(id -g) docker compose up -d
-docker compose logs   # shows the dashboard link with its token
-```
-
-Update with `docker compose pull && docker compose up -d`. From a clone of this repo, `docker compose up -d --build` in `poller/` builds the image locally instead.
-
-Without compose:
+Without Docker, in a Python virtualenv:
 
 ```bash
-mkdir -p docker-data
-docker run -d --name makermonitor-poller --restart unless-stopped --network host \
-  --user $(id -u):$(id -g) -e TZ=America/New_York -e MM_HANDLE=your-makerworld-handle \
-  -v "$PWD/docker-data:/config" ghcr.io/wolfrage76/makermonitor-poller:latest
+cd poller
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cp config.example.yaml config.yaml
+# edit handle, api_token, and panels / notifications as needed
+python -m makermonitor
 ```
-
-- On first start it writes `docker-data/config.yaml` from the example, with no panels, a random `api_token` and the handle from `MM_HANDLE`, and prints the dashboard link. Without `MM_HANDLE` the handle is left blank and the poller waits until you set it in the dashboard's Settings view. `MM_HANDLE` only matters on that first start.
-- Moving from a non-Docker install: copy your `config.yaml` and `data/` into `docker-data/` before the first start (`cp config.yaml docker-data/ && cp -a data docker-data/`) and it keeps them.
-
-- It uses host networking, so the panels reach it on the host's LAN address and `.local` panel names resolve. Docker Desktop needs host networking turned on (Settings > Resources > Network).
-- Set `TZ` (default `America/New_York`) so "today", daily stats and quiet hours match your clock.
-- The container runs as your user id, so `docker-data/` stays editable; the dashboard's Settings view saves into `docker-data/config.yaml`.
-- Mount the folder, not `config.yaml` alone: saving replaces the file, which a single-file mount can't do.
-- Only run one poller per account: stop the systemd service (`systemctl --user disable --now makermonitor-poller`) before starting the container, or they both poll MakerWorld.
 
 ## Linux systemd install
 

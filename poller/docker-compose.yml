@@ -1,5 +1,5 @@
 # docker compose up -d   pulls the prebuilt image; --build builds this folder instead.
-# This file works on its own too: download it into an empty folder. See README "Docker".
+# This file works on its own too: download it into an empty folder. See README "Setup".
 services:
   poller:
     image: ghcr.io/wolfrage76/makermonitor-poller:latest

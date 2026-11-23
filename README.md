@@ -108,7 +108,7 @@ Start with the poller; add the dashboard, notifications and panels in any order.
 
 Both options read the same `config.yaml`.
 
-**Docker (compose)**, using the prebuilt image (amd64 and arm64):
+**Docker (recommended)**, using the prebuilt image (amd64 and arm64):
 
 ```bash
 mkdir makermonitor && cd makermonitor
@@ -118,7 +118,7 @@ MM_HANDLE=your-makerworld-handle MM_UID=$(id -u) MM_GID=$(id -g) docker compose 
 docker compose logs   # first start prints the dashboard link with its token
 ```
 
-**Python (pip)**
+**Python (pip)**, if you'd rather not use Docker
 
 ```bash
 cd poller
