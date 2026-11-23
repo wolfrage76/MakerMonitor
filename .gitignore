@@ -44,3 +44,7 @@ flasher/dist/
 
 # Panel screenshots captured during testing
 screens/
+
+# Design tool working files (local only)
+.superdesign/
+.impeccable/
