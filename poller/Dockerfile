@@ -7,7 +7,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY makermonitor ./makermonitor
-COPY config.example.yaml ./
+COPY config.example.yaml docker-entrypoint.sh ./
 RUN chmod -R a+rX /app
 
 RUN useradd --uid 1000 --create-home makermonitor && mkdir /config && chown makermonitor /config
@@ -19,4 +19,5 @@ EXPOSE 8787
 HEALTHCHECK --interval=60s --timeout=5s --start-period=20s \
   CMD python -c "import urllib.request,sys; urllib.request.urlopen('http://127.0.0.1:8787/health', timeout=4)" || exit 1
 ENV PYTHONPATH=/app
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
 CMD ["python", "-m", "makermonitor", "-c", "/config/config.yaml"]

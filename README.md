@@ -113,8 +113,8 @@ Both options read the same `config.yaml`.
 ```bash
 cd poller
 mkdir -p docker-data
-cp config.example.yaml docker-data/config.yaml   # set your handle and api_token
-MM_UID=$(id -u) MM_GID=$(id -g) docker compose up -d --build
+MM_HANDLE=your-username MM_UID=$(id -u) MM_GID=$(id -g) docker compose up -d --build
+docker compose logs   # first start prints the dashboard link with its token
 ```
 
 **Python (pip)**

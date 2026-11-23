@@ -11,6 +11,7 @@ services:
     # Run as your user so ./docker-data stays editable (MM_UID=$(id -u) MM_GID=$(id -g)).
     user: "${MM_UID:-1000}:${MM_GID:-1000}"
     environment:
+      MM_HANDLE: "${MM_HANDLE:-}"     # first run only: your MakerWorld handle for the new config.yaml
       TZ: "${TZ:-America/New_York}"   # "today", daily stats and quiet hours use this time zone
     volumes:
       - ./docker-data:/config         # config.yaml + data/ (cookie, history, logs)

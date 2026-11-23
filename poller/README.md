@@ -214,12 +214,12 @@ The `Dockerfile` and `docker-compose.yml` here run the same poller in a containe
 ```bash
 cd poller
 mkdir -p docker-data
-cp config.example.yaml docker-data/config.yaml   # or your existing config.yaml
-cp -a data docker-data/                            # optional: keep cookie, history and creator stats
-# edit docker-data/config.yaml
-MM_UID=$(id -u) MM_GID=$(id -g) docker compose up -d --build
-docker compose logs -f
+MM_HANDLE=your-username MM_UID=$(id -u) MM_GID=$(id -g) docker compose up -d --build
+docker compose logs   # shows the dashboard link with its token
 ```
+
+- On first start it writes `docker-data/config.yaml` from the example, with your handle, no panels and a random `api_token`, and prints the dashboard link. Add panels and notifications in the dashboard's Settings view, or edit the file. `MM_HANDLE` only matters on that first start.
+- Moving from a non-Docker install: copy your `config.yaml` and `data/` into `docker-data/` before the first start (`cp config.yaml docker-data/ && cp -a data docker-data/`) and it keeps them.
 
 - It uses host networking, so the panels reach it on the host's LAN address and `.local` panel names resolve. Docker Desktop needs host networking turned on (Settings > Resources > Network).
 - Set `TZ` (default `America/New_York`) so "today", daily stats and quiet hours match your clock.
